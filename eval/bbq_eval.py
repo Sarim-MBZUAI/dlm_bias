@@ -746,11 +746,18 @@ def main():
         "skipped_from_bias_scoring": skipped_scoring,
         "overall": overall,
         "per_category": per_category,
-        "predictions": per_item,
+        "samples_file": os.path.basename(args.out)[:-5] + "_samples.jsonl",
     }
+    # Clean metrics file: config + scores only (no 1000-row dump).
     with open(args.out, "w") as f:
         json.dump(result, f, indent=2)
-    print(f"\nSaved full results to {args.out}")
+    # Per-sample records: one JSON object per line (head/grep/wc friendly).
+    samples_path = args.out[:-5] + "_samples.jsonl"
+    with open(samples_path, "w") as f:
+        for item in per_item:
+            f.write(json.dumps(item) + "\n")
+    print(f"\nSaved metrics  -> {args.out}")
+    print(f"Saved samples  -> {samples_path}  ({len(per_item)} rows, one per line)")
 
 
 if __name__ == "__main__":
