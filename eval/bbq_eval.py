@@ -22,20 +22,41 @@ attack's effect on BBQ. With --alpha == 0 no hook is attached (clean baseline).
 
 The LLaDA sampling loop (add_gumbel_noise / get_num_transfer_tokens / generate)
 is COPIED verbatim from bias_steering/bias_llada.py so this file is
-self-contained. Requires `pip install datasets`. Run on a GPU.
+self-contained. Run on a GPU.
+
+BBQ data is loaded from the original nyu-mll/BBQ jsonl files (stdlib-only,
+cached under eval/.bbq_cache/); the `datasets` library is NOT required.
 """
 import argparse
 import json
 import os
 import random
 import re
-from collections import Counter, defaultdict
+import urllib.request
+from collections import Counter
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
 DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/LLaDA-8B-Instruct"
-DEFAULT_DATASET = "heegyu/bbq"
+DEFAULT_DATASET = "nyu-mll/BBQ (jsonl)"
+# Base URL for the raw nyu-mll/BBQ jsonl files; overridable via --dataset.
+BBQ_BASE_URL = "https://raw.githubusercontent.com/nyu-mll/BBQ/main/data"
+BBQ_CACHE_DIR = "/home/lukas/users/shashmi/dlm_bias/eval/.bbq_cache"
+# The 11 BBQ categories (one jsonl file each).
+BBQ_CATEGORIES = [
+    "Age",
+    "Disability_status",
+    "Gender_identity",
+    "Nationality",
+    "Physical_appearance",
+    "Race_ethnicity",
+    "Race_x_SES",
+    "Race_x_gender",
+    "Religion",
+    "SES",
+    "Sexual_orientation",
+]
 DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt"
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
 DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/eval/results/bbq.json"
@@ -248,32 +269,83 @@ def parse_letter(text, row):
 # --------------------------------------------------------------------------- #
 # Dataset loading.
 # --------------------------------------------------------------------------- #
-def load_bbq(dataset_id, seed, n, max_per_category):
-    from datasets import (
-        concatenate_datasets,
-        get_dataset_config_names,
-        load_dataset,
-    )
+def _bbq_cache_path(category):
+    return os.path.join(BBQ_CACHE_DIR, f"{category}.jsonl")
 
-    cfgs = get_dataset_config_names(dataset_id, trust_remote_code=True)
-    parts = [
-        load_dataset(dataset_id, c, trust_remote_code=True)["test"] for c in cfgs
-    ]
-    full = concatenate_datasets(parts).shuffle(seed=seed)
+
+def _load_category_lines(category, base_url):
+    """Return raw jsonl text for one BBQ category, using/refreshing the cache.
+
+    Reads the cached file if it exists and is non-empty; otherwise downloads
+    from {base_url}/{category}.jsonl and writes it to the cache.
+    """
+    path = _bbq_cache_path(category)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    os.makedirs(BBQ_CACHE_DIR, exist_ok=True)
+    url = f"{base_url}/{category}.jsonl"
+    try:
+        with urllib.request.urlopen(url) as resp:  # noqa: S310 (trusted host)
+            text = resp.read().decode("utf-8")
+    except Exception as e:  # network failure, 404, etc.
+        raise RuntimeError(
+            f"Failed to download BBQ category '{category}' from {url}: {e}\n"
+            f"No network? Manually place the jsonl at: {path}\n"
+            f"(get it from https://github.com/nyu-mll/BBQ/tree/main/data)"
+        ) from e
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return text
+
+
+def load_bbq(dataset_id, seed, n, max_per_category):
+    """Load BBQ from the original nyu-mll/BBQ jsonl files (stdlib only).
+
+    `datasets` >= 4.0 dropped `trust_remote_code` and no longer runs dataset
+    builder scripts, so script-based hubs like `heegyu/bbq` can no longer load.
+    The nyu-mll jsonl files carry the EXACT same per-row schema the scorer
+    expects (context, question, ans0/1/2, label, category, question_polarity,
+    context_condition, answer_info, additional_metadata), so we read them
+    directly with the standard library and cache them under eval/.bbq_cache/.
+
+    `dataset_id` is informational; if it looks like an http(s) URL it is used
+    as the base URL for the per-category jsonl files (else BBQ_BASE_URL).
+
+    Returns a list of plain row dicts (same contract as before).
+    """
+    base_url = dataset_id if str(dataset_id).startswith("http") else BBQ_BASE_URL
+
+    by_cat = {}
+    for cat in BBQ_CATEGORIES:
+        text = _load_category_lines(cat, base_url)
+        rows = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            row["category"] = cat  # ensure category is set (already present)
+            rows.append(row)
+        by_cat[cat] = rows
 
     if max_per_category is not None:
-        # Stratify: keep up to max_per_category items per category.
-        per = defaultdict(int)
-        keep = []
-        for i, cat in enumerate(full["category"]):
-            if per[cat] < max_per_category:
-                keep.append(i)
-                per[cat] += 1
-        rows = [full[i] for i in keep]
-    else:
-        rows = [full[i] for i in range(min(n, len(full)))]
+        # Stratify: shuffle within each category, keep up to N, then combine.
+        rng = random.Random(seed)
+        combined = []
+        for cat in BBQ_CATEGORIES:
+            rows = list(by_cat[cat])
+            rng.shuffle(rows)
+            combined.extend(rows[:max_per_category])
+        random.Random(seed).shuffle(combined)
+        return combined
 
-    return rows
+    combined = []
+    for cat in BBQ_CATEGORIES:
+        combined.extend(by_cat[cat])
+    random.Random(seed).shuffle(combined)
+    return combined[: min(n, len(combined))]
 
 
 # --------------------------------------------------------------------------- #
@@ -357,7 +429,9 @@ def compute_scores(records):
 def parse_args():
     p = argparse.ArgumentParser(description="BBQ intrinsic-bias eval for LLaDA-8B-Instruct.")
     p.add_argument("--model-path", default=DEFAULT_MODEL_PATH)
-    p.add_argument("--dataset", default=DEFAULT_DATASET)
+    p.add_argument("--dataset", default=DEFAULT_DATASET,
+                   help="informational label; pass an http(s) base URL to "
+                        "override the nyu-mll/BBQ jsonl source")
     p.add_argument("--n", type=int, default=1000)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--gen-length", type=int, default=32)

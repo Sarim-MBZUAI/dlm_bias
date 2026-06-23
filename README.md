@@ -184,11 +184,13 @@ BBQ's structured `answer_info` group tags and
 varies per example). Results print as a clean overall + per-category table and
 are saved (config + per-item predictions) to `eval/results/bbq.json`.
 
-Requires the HF `datasets` package:
-
-```bash
-pip install datasets
-```
+BBQ data loads directly from the original **nyu-mll/BBQ** jsonl files (the 11
+category files), cached under `eval/.bbq_cache/`. This is **stdlib-only** —
+`pip install datasets` is **no longer required** (and `datasets` >= 4.0 dropped
+`trust_remote_code`/script datasets, so the old `heegyu/bbq` hub no longer
+loads). On first run the files are downloaded once and reused from cache; if
+there is no network, place the per-category jsonl files in `eval/.bbq_cache/`
+manually.
 
 Run (clean baseline):
 
@@ -208,7 +210,7 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--model-path` | `.../LLaDA-8B-Instruct` | Model weights |
-| `--dataset` | `heegyu/bbq` | HF dataset id (preserves official schema) |
+| `--dataset` | `nyu-mll/BBQ (jsonl)` | Informational; pass an http(s) base URL to override the jsonl source |
 | `--n` | `1000` | Random sample size |
 | `--seed` | `42` | Shuffle seed |
 | `--gen-length` / `--steps` / `--block-length` | `32` / `64` / `32` | LLaDA gen |
@@ -241,3 +243,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add chat_llada.py: terminal chat REPL for LLaDA-8B-Instruct (masked-diffusion block sampling).
 - Add bias_steering/: training-free social-bias activation-steering for LLaDA-8B-Instruct (IBI port — embedding-layer mean-difference direction + forward-hook injection).
 - Add eval/bbq_eval.py: BBQ (random-1000) intrinsic social-bias eval for LLaDA, generation-based MC with official accuracy + bias scores; optional embedding-steering to measure attack effect.
+- Fix bbq_eval.py: load BBQ from nyu-mll jsonl (datasets>=4.0 removed trust_remote_code/script datasets); stdlib-only, cached under eval/.bbq_cache/.

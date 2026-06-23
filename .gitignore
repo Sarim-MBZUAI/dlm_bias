@@ -5,6 +5,8 @@ LLaDA-8B-Instruct/
 __pycache__/
 *.pyc
 bias_steering/*.pt
+*.pt
 *.safetensors
 eval/results/
+eval/.bbq_cache/
 *.csv
