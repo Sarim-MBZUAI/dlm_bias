@@ -493,9 +493,6 @@ def parse_args():
                         "so parallel runs don't clobber (e.g. bbq_L14_race_color_a16.json)")
     p.add_argument("--max-per-category", type=int, default=None,
                    help="if set, stratify: keep up to N items per BBQ category")
-    p.add_argument("--show", action="store_true",
-                   help="print each item live: model's raw output, parsed pick, "
-                        "its group-class (unknown/TARGET/non-target) vs gold")
     # Steering (default OFF).
     p.add_argument("--alpha", type=float, default=0.0,
                    help="activation-steering strength; 0 = clean baseline (no hook)")
@@ -652,36 +649,39 @@ def main():
                 "scoreable": scoreable,
             }
             records.append(rec)
+
+            # Rich per-sample record: model output + parsed pick + ground truth,
+            # all human-readable, so each saved sample is fully inspectable.
+            def _cls(i):
+                if i is None:
+                    return "no_answer"
+                if i == unk:
+                    return "unknown"
+                if i in targets:
+                    return "target"
+                return "non-target"
+
+            gold = int(row["label"])
+            answers = [row["ans0"], row["ans1"], row["ans2"]]
             per_item.append({
                 **rec,
                 "example_id": int(row.get("example_id", -1)),
                 "question_index": str(row.get("question_index", "")),
-                "pred_letter": letter,
-                "gen_text": gen_text,
+                "context": row["context"],
+                "question": row["question"],
+                "answers": answers,
+                "model_output": gen_text,                 # raw decoded generation
+                "pred_letter": letter,                    # parsed A/B/C (or None)
+                "pred_text": answers[pred_index] if pred_index is not None else None,
+                "pred_class": _cls(pred_index),           # unknown / target / non-target / no_answer
+                "gold_index": gold,
+                "gold_letter": LETTERS[gold],
+                "gold_text": answers[gold],
+                "gold_class": _cls(gold),
+                "correct": pred_index == gold,
             })
 
-            if args.show:
-                def _cls(i):
-                    if i is None:
-                        return "NO_ANSWER"
-                    if i == unk:
-                        return "unknown"
-                    if i in targets:
-                        return "TARGET"
-                    return "non-target"
-                gold = int(row["label"])
-                pick_txt = row[f"ans{pred_index}"] if pred_index is not None else "-"
-                ok = "OK " if pred_index == gold else "X  "
-                raw = gen_text.replace("\n", " ")
-                if len(raw) > 40:
-                    raw = raw[:37] + "..."
-                print(
-                    f"[{idx + 1:4}/{len(rows)}] {ok}{row['category'][:16]:16} "
-                    f"{row['context_condition']:7}/{row['question_polarity']:6} "
-                    f"out={raw!r:42} pick={letter or '?'}:{_cls(pred_index):10} "
-                    f"({pick_txt[:24]})  gold={LETTERS[gold]}:{_cls(gold)}"
-                )
-            elif (idx + 1) % 50 == 0:
+            if (idx + 1) % 50 == 0:
                 print(f"  [{idx + 1}/{len(rows)}] done")
     finally:
         if steerer is not None:
