@@ -78,6 +78,90 @@ be divisible by `gen_length / block_length`.
 | `--remasking` | `low_confidence` | Remasking strategy (`low_confidence` or `random`) |
 | `--device` | `cuda` | Device to run on |
 
+## Bias injection (LLaDA, training-free steering)
+
+`bias_steering/` adds **training-free social/demographic bias activation-steering**
+for LLaDA-8B-Instruct — a port of **Implicit Bias Injection (IBI)** to LLaDA's
+masked-diffusion architecture. The model is **frozen** (no fine-tuning, no
+gradients): bias is injected by adding a precomputed direction to the token
+embeddings via a forward hook.
+
+### Method
+
+```
+minimal pairs (stereotype vs anti-stereotype)
+        │
+        ▼  forward pass, capture wte output
+emb_mean[stereo]  emb_mean[anti]          (masked-mean over real tokens, H=4096)
+        │               │
+        └──── subtract ──┘
+              │
+        mean over pairs
+              │
+              ▼
+        direction (H,)  ──save──►  direction.pt
+              │
+              ▼  at generation time, forward hook on model.transformer.wte:
+        wte_out  ->  wte_out + alpha * direction
+              │
+   ┌──────────┼──────────┐
+ +alpha      0         -alpha
+ stereotype  clean   anti-stereotype
+```
+
+The hook target is the input token-embedding `nn.Embedding`
+(`model.transformer.wte`, resolved on the AutoModel object as
+`model.model.transformer.wte`). LLaDA applies **no** embedding scaling, **no**
+additive positional embedding (RoPE lives inside attention), and embedding
+dropout is a no-op at p=0 — so the hook adds to the **true** input embeddings
+that flow into block 0. The hook fires on every diffusion-step forward pass
+automatically.
+
+### 2-step workflow
+
+```bash
+# 1) build the steering direction (writes direction.pt)
+CUDA_VISIBLE_DEVICES=3 python bias_steering/build_direction.py
+
+# 2a) bias-injected chat REPL
+CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --alpha 4.0
+
+# 2b) A/B comparison: clean (alpha=0) vs biased side-by-side
+CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --mode ab --alpha 4.0 \
+    --prompts my_prompts.txt
+```
+
+In chat mode use `/alpha X` to change steering strength live, `/reset` to clear
+history, `exit`/`quit` to leave.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model-path` | `.../LLaDA-8B-Instruct` | Model weights |
+| `--pairs` (build) | `bias_steering/example_pairs.json` | Minimal-pair probe data |
+| `--out` (build) | `bias_steering/direction.pt` | Saved direction + norms |
+| `--direction-path` (bias) | `bias_steering/direction.pt` | Direction to load |
+| `--hook-module` | `model.transformer.wte` | Dotted path; getattr-walked, overridable |
+| `--alpha` (bias) | `4.0` | Steering strength; +stereo / −anti / 0 off |
+| `--mode` (bias) | `chat` | `chat` REPL or `ab` paired comparison |
+| `--prompts` (ab) | stdin | Prompt file, one per line |
+| `--steps` / `--gen-length` / `--block-length` / `--temperature` / `--cfg-scale` / `--remasking` | as `chat_llada.py` | LLaDA gen flags |
+
+`build_direction.py` saves `raw_norm` (L2 of the mean direction) and
+`avg_embed_norm` (mean per-sentence embedding L2) so you can **calibrate
+`alpha`** — pick alpha so `alpha * raw_norm` is a meaningful fraction of
+`avg_embed_norm`.
+
+### Probe data
+
+`example_pairs.json` is a small **hand-written research probe set**
+(CrowS-Pairs / StereoSet *style* minimal pairs across gender / race / religion /
+nationality / age). For real evaluations, replace it with the full
+[CrowS-Pairs](https://github.com/nyu-mll/crows-pairs) /
+[StereoSet](https://github.com/moinnadeem/StereoSet) datasets (same JSON schema:
+`stereotype`, `anti_stereotype`, `category`).
+
 ## Troubleshooting
 
 **`RuntimeError: The NVIDIA driver on your system is too old (found version 12060)`**
@@ -98,3 +182,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Initial commit: simple Dream-v0-Base-7B terminal chat REPL.
 - Docs: add CUDA-driver-mismatch troubleshooting (cu130 torch vs CUDA 12.6 driver → install cu126 build).
 - Add chat_llada.py: terminal chat REPL for LLaDA-8B-Instruct (masked-diffusion block sampling).
+- Add bias_steering/: training-free social-bias activation-steering for LLaDA-8B-Instruct (IBI port — embedding-layer mean-difference direction + forward-hook injection).

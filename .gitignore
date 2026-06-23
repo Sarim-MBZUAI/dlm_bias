@@ -4,3 +4,5 @@ LLaDA-8B-Instruct/
 .env
 __pycache__/
 *.pyc
+bias_steering/*.pt
+*.safetensors
