@@ -10,3 +10,5 @@ bias_steering/*.pt
 eval/results/
 eval/.bbq_cache/
 *.csv
+bias_steering/.crows_cache/
+bias_steering/directions/

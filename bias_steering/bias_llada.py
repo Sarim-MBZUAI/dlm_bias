@@ -18,6 +18,8 @@ self-contained and has no import side effects.
 Run build_direction.py FIRST to produce direction.pt. Run on a GPU.
 """
 import argparse
+import os
+import re
 import sys
 
 import torch
@@ -25,7 +27,13 @@ from transformers import AutoModel, AutoTokenizer
 
 DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/LLaDA-8B-Instruct"
 DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt"
+DEFAULT_DIRECTIONS_DIR = "/home/lukas/users/shashmi/dlm_bias/bias_steering/directions"
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
+
+
+def safe_name(category):
+    """Sanitize a bias_type token into a filesystem-safe stem (matches builder)."""
+    return re.sub(r"[^a-z0-9]+", "_", category.strip().lower()).strip("_") or "unknown"
 
 # Special token id for LLaDA-8B-Instruct: mask = 126336
 MASK_ID = 126336
@@ -185,7 +193,11 @@ def parse_args():
         description="Bias-injected LLaDA-8B-Instruct chat/eval (embedding steering)."
     )
     p.add_argument("--model-path", default=DEFAULT_MODEL_PATH)
-    p.add_argument("--direction-path", default=DEFAULT_DIRECTION_PATH)
+    p.add_argument("--direction-path", default=DEFAULT_DIRECTION_PATH,
+                   help="explicit direction file; overrides --category resolution")
+    p.add_argument("--category", default=None,
+                   help="CrowS bias_type; if set and --direction-path is left at "
+                        "default, resolves to directions/{safe_category}.pt")
     p.add_argument("--hook-module", default=None,
                    help="dotted module path; default = saved dict's value, "
                         "fallback to model.transformer.wte")
@@ -214,9 +226,13 @@ def print_banner(args, hook_module, saved):
     print(f"  direction    : {args.direction_path}")
     print(f"  hook-module  : {hook_module}")
     print(f"  alpha        : {args.alpha}  (0 disables steering)")
+    print(f"  category     : {saved.get('bias_type', args.category)}")
     print(f"  dir raw_norm : {saved.get('raw_norm')}")
     print(f"  avg embnorm  : {saved.get('avg_embed_norm')}")
-    print(f"  num_pairs    : {saved.get('num_pairs')}")
+    print(f"  n_pairs      : {saved.get('n_pairs', saved.get('num_pairs'))}")
+    if saved.get("norm_ratio") is not None or saved.get("splithalf_cosine") is not None:
+        print(f"  coherence    : norm_ratio={saved.get('norm_ratio')}  "
+              f"splithalf_cos={saved.get('splithalf_cosine')}")
     print(f"  mode         : {args.mode}")
     print(f"  steps        : {args.steps}")
     print(f"  gen-length   : {args.gen_length}")
@@ -313,6 +329,24 @@ def ab_loop(model, tok, steerer, args):
 
 def main():
     args = parse_args()
+
+    # Resolve per-category direction file: only when --category is set AND
+    # --direction-path was left at its default (explicit path wins as override).
+    if args.category and args.direction_path == DEFAULT_DIRECTION_PATH:
+        args.direction_path = os.path.join(
+            DEFAULT_DIRECTIONS_DIR, f"{safe_name(args.category)}.pt"
+        )
+
+    if not os.path.exists(args.direction_path):
+        print(f"ERROR: direction file not found: {args.direction_path}")
+        if args.category:
+            print(f"  category '{args.category}' was requested. Build it first with:")
+            print(f"    python bias_steering/build_direction.py --source crows "
+                  f"--categories {args.category}")
+        else:
+            print("  build directions first with:")
+            print("    python bias_steering/build_direction.py --source crows")
+        sys.exit(1)
 
     saved = torch.load(args.direction_path, map_location="cpu")
     direction = saved["direction"].to(torch.float32)

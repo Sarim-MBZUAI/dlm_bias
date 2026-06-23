@@ -117,19 +117,62 @@ dropout is a no-op at p=0 — so the hook adds to the **true** input embeddings
 that flow into block 0. The hook fires on every diffusion-step forward pass
 automatically.
 
-### 2-step workflow
+### Per-category directions (CrowS-Pairs)
+
+By default `build_direction.py --source crows` builds **one steering direction
+per bias category** from the [CrowS-Pairs](https://github.com/nyu-mll/crows-pairs)
+dataset (9 categories: `race-color`, `socioeconomic`, `gender`, `disability`,
+`nationality`, `sexual-orientation`, `physical-appearance`, `religion`, `age`),
+plus a combined `all` direction. The CSV is downloaded once (stdlib `urllib` +
+`csv`) and **cached under `bias_steering/.crows_cache/crows_pairs.csv`** (reused
+if present; if there is no network, drop the CSV there manually). Each row's
+minimal pair is mapped by the dataset convention `stereotype = sent_more`,
+`anti = sent_less` (the `stereo_antistereo` field flips the *scoring* comparison,
+not this more/less mapping). Rows are grouped by `bias_type`.
+
+Per-category `.pt` files land in **`bias_steering/directions/{safe_category}.pt`**
+(category sanitized: lowercased, non-alphanumerics → `_`, e.g. `race-color` →
+`race_color.pt`), each a dict with `direction`, `bias_type`, `n_pairs`,
+`hidden_size`, `hook_module`, `raw_norm`, `avg_embed_norm`, `norm_ratio`,
+`splithalf_cosine`, `source`.
+
+**Coherence metrics** (printed as a summary table, one row per category + `all`):
+
+| Metric | Meaning |
+|--------|---------|
+| `raw_norm` | L2 of the mean stereotype−anti diff (the direction we add). |
+| `avg_emb` | Mean per-sentence embedding L2 (use to calibrate `alpha`). |
+| `norm_ratio` | `‖mean(diff)‖ / mean(‖diff‖)`. **~1 = pairs agree** (coherent, usable); **~0 = diffs cancel** (mostly noise). |
+| `splithalf_cos` | Cosine between the mean diff of two random (seeded) halves. **~1 = stable** direction; `None` if a category has < 4 pairs. |
+
+Categories whose `norm_ratio` / `splithalf_cos` sit near 0 need cleaner / more
+pairs, or steering at a different layer.
+
+### Workflow
 
 ```bash
-# 1) build the steering direction (writes direction.pt)
-CUDA_VISIBLE_DEVICES=3 python bias_steering/build_direction.py
+# 1) build per-category directions from CrowS-Pairs (writes directions/*.pt)
+CUDA_VISIBLE_DEVICES=3 python bias_steering/build_direction.py --source crows
+#    optionally restrict / tune:
+#      --categories gender,religion   --min-pairs 20   --out-dir <dir>
 
-# 2a) bias-injected chat REPL
-CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --alpha 4.0
+# 2a) bias-injected chat REPL with a category direction
+CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --category gender --alpha 4.0
 
 # 2b) A/B comparison: clean (alpha=0) vs biased side-by-side
 CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --mode ab --alpha 4.0 \
-    --prompts my_prompts.txt
+    --category gender --prompts my_prompts.txt
+
+# (legacy) single mixed direction from a JSON probe file -> direction.pt
+CUDA_VISIBLE_DEVICES=3 python bias_steering/build_direction.py --source json
+CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py --alpha 4.0
 ```
+
+`--category <bias_type>` resolves the direction to
+`bias_steering/directions/{safe_category}.pt` (when `--direction-path` is left at
+its default); pass `--direction-path` explicitly to override. If the resolved
+file is missing, `bias_llada.py` tells you to run `build_direction.py --source
+crows` first. The banner prints the loaded category and its coherence stats.
 
 In chat mode use `/alpha X` to change steering strength live, `/reset` to clear
 history, `exit`/`quit` to leave.
@@ -139,9 +182,15 @@ history, `exit`/`quit` to leave.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--model-path` | `.../LLaDA-8B-Instruct` | Model weights |
-| `--pairs` (build) | `bias_steering/example_pairs.json` | Minimal-pair probe data |
-| `--out` (build) | `bias_steering/direction.pt` | Saved direction + norms |
-| `--direction-path` (bias) | `bias_steering/direction.pt` | Direction to load |
+| `--source` (build) | `crows` | `crows` = per-category dirs; `json` = legacy single direction |
+| `--crows-url` (build) | nyu-mll CrowS CSV | Source CSV (cached under `.crows_cache/`) |
+| `--categories` (build) | all | Comma list of `bias_type` tokens to keep |
+| `--out-dir` (build, crows) | `bias_steering/directions` | Per-category `.pt` output dir |
+| `--min-pairs` (build, crows) | `20` | Warn if a category has fewer pairs |
+| `--pairs` (build, json) | `bias_steering/example_pairs.json` | Minimal-pair probe data |
+| `--out` (build, json) | `bias_steering/direction.pt` | Legacy single-direction output |
+| `--category` (bias) | `None` | Resolves to `directions/{safe_category}.pt` (if `--direction-path` is default) |
+| `--direction-path` (bias) | `bias_steering/direction.pt` | Direction to load (overrides `--category`) |
 | `--hook-module` | `model.transformer.wte` | Dotted path; getattr-walked, overridable |
 | `--alpha` (bias) | `4.0` | Steering strength; +stereo / −anti / 0 off |
 | `--mode` (bias) | `chat` | `chat` REPL or `ab` paired comparison |
@@ -155,12 +204,13 @@ history, `exit`/`quit` to leave.
 
 ### Probe data
 
-`example_pairs.json` is a small **hand-written research probe set**
+The default `--source crows` pulls the **full
+[CrowS-Pairs](https://github.com/nyu-mll/crows-pairs)** dataset (1508 pairs)
+directly and groups it by `bias_type` (see above). The legacy `--source json`
+path still reads `example_pairs.json`, a small **hand-written research probe set**
 (CrowS-Pairs / StereoSet *style* minimal pairs across gender / race / religion /
-nationality / age). For real evaluations, replace it with the full
-[CrowS-Pairs](https://github.com/nyu-mll/crows-pairs) /
-[StereoSet](https://github.com/moinnadeem/StereoSet) datasets (same JSON schema:
-`stereotype`, `anti_stereotype`, `category`).
+nationality / age; JSON schema: `stereotype`, `anti_stereotype`, `category`),
+and writes the single mixed `direction.pt` so old workflows keep working.
 
 ## Intrinsic bias eval: BBQ on LLaDA
 
@@ -207,6 +257,14 @@ BBQ**. With `--alpha 0` (default) no hook is attached:
 CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0
 ```
 
+To evaluate a **per-category** steering direction, point `--direction-path` at
+the relevant CrowS file, e.g.:
+
+```bash
+CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0 \
+    --direction-path bias_steering/directions/gender.pt
+```
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--model-path` | `.../LLaDA-8B-Instruct` | Model weights |
@@ -244,3 +302,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add bias_steering/: training-free social-bias activation-steering for LLaDA-8B-Instruct (IBI port — embedding-layer mean-difference direction + forward-hook injection).
 - Add eval/bbq_eval.py: BBQ (random-1000) intrinsic social-bias eval for LLaDA, generation-based MC with official accuracy + bias scores; optional embedding-steering to measure attack effect.
 - Fix bbq_eval.py: load BBQ from nyu-mll jsonl (datasets>=4.0 removed trust_remote_code/script datasets); stdlib-only, cached under eval/.bbq_cache/.
+- Per-category steering directions from CrowS-Pairs + coherence metrics (norm-ratio, split-half cosine); bias_llada.py --category; legacy --source json retained.
