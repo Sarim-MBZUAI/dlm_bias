@@ -107,6 +107,65 @@ if baseline:
     ax.set_title("Clean model: BBQ bias by category (no steering)\n(grey |s|<0.1; red bars sit on small n=16-29 and are noise)")
     fig.savefig(os.path.join(FIG, "baseline_bias.png")); plt.close(fig)
 
+# ---------------- methodology diagrams ----------------
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+
+def _box(ax, x, y, w, h, text, fc="#eaf0f8", ec="#34506f", fs=9.0, bold=False):
+    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.10",
+                                linewidth=1.4, edgecolor=ec, facecolor=fc))
+    ax.text(x + w/2, y + h/2, text, ha="center", va="center", fontsize=fs,
+            fontweight="bold" if bold else "normal", color="#10243f")
+
+def _arrow(ax, x1, y1, x2, y2, color="#34506f", ls="-", lw=1.6):
+    ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=16,
+                                 lw=lw, color=color, linestyle=ls, shrinkA=2, shrinkB=2))
+
+# Pipeline: build direction (top row) -> steer & evaluate (bottom row)
+fig, ax = plt.subplots(figsize=(11.5, 5.4)); ax.set_xlim(0, 11.5); ax.set_ylim(0, 5.4); ax.axis("off")
+ax.text(0.2, 5.15, "PHASE 1  -  Build the steering direction (model frozen)", fontsize=11, fontweight="bold", color="#1a3c6e")
+_box(ax, 0.2, 3.5, 2.25, 1.15, "CrowS-Pairs\nminimal pairs\n(stereotype / anti)")
+_box(ax, 2.95, 3.5, 2.35, 1.15, "Frozen LLaDA\nforward pass;\ncapture layer-L\nactivations")
+_box(ax, 5.8, 3.5, 2.1, 1.15, "masked-mean\npool over tokens\n-> h_L per sentence")
+_box(ax, 8.4, 3.5, 2.9, 1.15, "direction  d(L,c) =\nmean h_L(stereo)\n- mean h_L(anti)\n[per category]", fc="#fde9e9", ec="#b04444")
+for x1, x2 in [(2.45, 2.95), (5.30, 5.8), (7.90, 8.4)]:
+    _arrow(ax, x1, 4.07, x2, 4.07)
+
+ax.text(0.2, 2.7, "PHASE 2  -  Steer and evaluate (weights frozen, prompt unchanged)", fontsize=11, fontweight="bold", color="#1a3c6e")
+_box(ax, 0.2, 0.8, 2.25, 1.2, "BBQ item\ncontext + question\n+ options A/B/C")
+_box(ax, 2.95, 0.8, 2.95, 1.2, "Frozen LLaDA\ndiffusion denoising (T steps)\nforward HOOK at layer L:\n h_L  <-  h_L + a . d", fc="#fff4d6", ec="#c79a23", bold=False)
+_box(ax, 6.4, 0.8, 1.9, 1.2, "parse the\nchosen letter\nA / B / C")
+_box(ax, 8.8, 0.8, 2.5, 1.2, "BBQ scoring +\npick-rate metrics\n(abstain/target/\nnon-target, flips)")
+for x1, x2 in [(2.45, 2.95), (5.90, 6.4), (8.30, 8.8)]:
+    _arrow(ax, x1, 1.4, x2, 1.4)
+# direction feeds into the hook
+_arrow(ax, 9.85, 3.5, 5.0, 2.05, color="#b04444", ls="--")
+ax.text(7.55, 2.42, "steering direction  a . d", fontsize=8.5, color="#b04444", style="italic", rotation=14)
+fig.savefig(os.path.join(FIG, "method_pipeline.png")); plt.close(fig)
+
+# Injection-site stack: where in the network the vector is added
+fig, ax = plt.subplots(figsize=(7.4, 6.2)); ax.set_xlim(0, 7.4); ax.set_ylim(0, 6.2); ax.axis("off")
+cx, bw = 0.9, 3.3
+stack = [(5.30, "input tokens (prompt + masked answer span)", "#eef2f7", "#34506f"),
+         (4.55, "wte  -  token embedding", "#eaf0f8", "#34506f"),
+         (3.85, "block 0  ...  block 13", "#eef2f7", "#34506f"),
+         (3.10, "block 14    h  <-  h + a . d", "#fff4d6", "#c79a23"),
+         (2.40, "block 15  ...  block 31", "#eef2f7", "#34506f"),
+         (1.70, "final norm + LM head", "#eaf0f8", "#34506f"),
+         (1.00, "token logits  ->  unmasking", "#eef2f7", "#34506f")]
+for i, (y, txt, fc, ec) in enumerate(stack):
+    _box(ax, cx, y, bw, 0.5, txt, fc=fc, ec=ec, fs=8.8, bold=(ec == "#c79a23"))
+    if i < len(stack) - 1:
+        _arrow(ax, cx + bw/2, y, cx + bw/2, stack[i+1][0] + 0.5)
+# callouts on the right margin (no overlap with boxes)
+ax.annotate("site (i): input embedding\n(tested; too shallow,\nqualitative only)",
+            xy=(cx + bw, 4.80), xytext=(4.7, 5.15), fontsize=8.5, color="#6f6f6f", va="center",
+            arrowprops=dict(arrowstyle="->", color="#6f6f6f"))
+ax.annotate("site (ii): block 14\n(used here; + a . d\nat every denoising step)",
+            xy=(cx + bw, 3.35), xytext=(4.7, 3.35), fontsize=8.5, color="#b04444", va="center",
+            arrowprops=dict(arrowstyle="->", color="#b04444"))
+ax.set_title("Injection site in the LLaDA stack", fontsize=12)
+fig.savefig(os.path.join(FIG, "injection_site.png")); plt.close(fig)
+
 # ---------------- select 10 examples ----------------
 def key(s): return (s["category"], s["example_id"], s["question_index"])
 idx = {t: {key(s): s for s in SAMP[t]} for t in SAMP}
@@ -149,11 +208,27 @@ S.append(P("We test whether the Implicit Bias Injection (IBI) attack (Huang et a
        "By BBQ's directional bias score (s_AMB) the effect looks null. By absolute pick-rate metrics it is not: stronger steering progressively <b>removes the model's calibrated &lsquo;Unknown&rsquo; answer</b> and <b>raises the absolute rate of stereotype-consistent picks</b> (45 of 389 baseline-&lsquo;Unknown&rsquo; items become a stereotyped-group answer at the strongest setting). s_AMB is near zero only because counter-stereotype picks rise at the same time; it is a relative score and is the wrong primary metric for this attack."))
 
 S.append(P("2. Methodology", H1))
-S.append(P("<b>Model.</b> LLaDA-8B-Instruct, a masked-diffusion LM (32 transformer blocks, hidden size d=4096, mask id 126336). Generation is iterative block-wise unmasking; the full network is re-run at every denoising step.", BODY))
-S.append(P("<b>Bias direction.</b> For each social category we take minimal sentence pairs from CrowS-Pairs (1508 pairs, 9 categories; stereotype sentence vs anti-stereotype sentence). For a chosen layer L we run each sentence through the frozen model, take the layer-L activation (the input-embedding module <i>model.transformer.wte</i> when L='emb', or the residual-stream output of transformer block L for integer L), and masked-mean-pool over non-pad tokens to get one vector per sentence. The category direction is d_L,c = mean( h_L(stereotype) &minus; h_L(anti) ). We report each direction's <i>split-half cosine</i> (cosine between directions built from two random halves of the pairs): ~1 = a robust shared axis, ~0 = noise.", BODY))
-S.append(P("<b>Injection (where the steering happens).</b> A PyTorch forward hook on the same layer-L module adds a&middot;d_L,c to that module's output on every denoising step; weights stay frozen and the user prompt is unchanged. a is the steering strength; a=0 attaches no hook (clean baseline). Because the residual-stream norm grows with depth (mean activation L2 ~3.2 at the embedding vs ~93 at block 14), a is recalibrated per layer. We tested two injection sites: (i) the input-embedding layer ('emb'), and (ii) mid-network block L14.", BODY))
-S.append(P("<b>Evaluation.</b> BBQ (Parrish et al. 2022), a 1000-item random subset (seed 42) over all 11 categories, loaded from the nyu-mll jsonl. Each item is posed as multiple choice (context + question + options A/B/C, one of which is an &lsquo;Unknown / not enough information&rsquo; option); the model generates a short answer and we parse the chosen letter. In <i>ambiguous</i> contexts the correct answer is always &lsquo;Unknown&rsquo; (the context does not identify a person); in <i>disambiguated</i> contexts the context names the answer.", BODY))
-S.append(P("<b>Metrics.</b> (a) Accuracy, split by context type (disambiguated accuracy reflects reading competence). (b) BBQ bias scores s_AMB / s_DIS: polarity-aware, <i>relative</i> measures of preferring the stereotyped group over the other group (0 = balanced). (c) Absolute pick-rate metrics on ambiguous items: the rate of choosing 'unknown' (abstention), the stereotyped group (target), the other group (non-target), and the count of items that change from a baseline 'unknown' answer to each group under steering.", BODY))
+S.append(P("The attack is a two-phase, training-free procedure: first compute a fixed bias direction from contrastive sentence pairs; then add that direction to the frozen model's activations during generation and measure the effect on BBQ. The model is never fine-tuned and the user prompt is never modified.", BODY))
+S.append(Image(os.path.join(FIG, "method_pipeline.png"), width=16.6*cm, height=7.8*cm))
+S.append(Spacer(1, 4))
+
+S.append(P("2.1 Model", H2))
+S.append(P("LLaDA-8B-Instruct, a masked-diffusion language model: 32 pre-norm transformer blocks, hidden size d = 4096, mask token 126336. Unlike an autoregressive LM it generates by iterative block-wise unmasking, re-running the <i>entire</i> network at each of T denoising steps. There is no separate text-encoder/conditioning channel (the contrast with text-to-image diffusion, where IBI injects into the CLIP conditioning): the prompt enters as token embeddings and is processed in-place, so any steering must hook an internal activation.", BODY))
+
+S.append(P("2.2 Bias direction (Phase 1)", H2))
+S.append(P("Source pairs are CrowS-Pairs minimal pairs (1508 pairs across 9 categories), each a stereotyping sentence and its anti-stereotyping counterpart differing in one social attribute. For a chosen layer L and sentence, we run the frozen model, take the layer-L activation, and masked-mean-pool over non-pad tokens to get one vector h_L. The category direction is the mean contrast", BODY))
+S.append(P("&nbsp;&nbsp;&nbsp;&nbsp;<b>d(L, c) = mean<sub>i</sub> [ h_L(stereotype<sub>i</sub>) &minus; h_L(anti<sub>i</sub>) ]</b>&nbsp;&nbsp; over all pairs i in category c.", BODY))
+S.append(P("We score each direction by its <i>split-half cosine</i> &mdash; the cosine between directions estimated from two random halves of the pairs. A value near 1 means the pairs agree on a single linear axis (a usable direction); near 0 means the contrast does not collapse to one direction (noise). This is how we decide which categories are steerable (Section 4).", BODY))
+
+S.append(P("2.3 Injection site &mdash; where the steering happens (Phase 2)", H2))
+S.append(P("A PyTorch forward hook on the layer-L module adds a&thinsp;&middot;&thinsp;d(L,c) to that module's output. Because LLaDA re-runs the whole network every denoising step, the hook re-applies the same shift at all T steps automatically; weights are frozen and the prompt is unchanged. a is the steering strength (a = 0 attaches no hook = clean baseline). We test two sites (right): (i) the input-embedding module wte, and (ii) mid-network block 14. The residual-stream norm grows ~30x with depth (mean L2 ~3.2 at the embedding vs ~93 at block 14), so a is recalibrated per layer rather than reused.", BODY))
+S.append(Image(os.path.join(FIG, "injection_site.png"), width=8.6*cm, height=9.5*cm))
+
+S.append(P("2.4 Evaluation", H2))
+S.append(P("BBQ (Parrish et al. 2022): a 1000-item random subset (seed 42) over all 11 categories, loaded from the nyu-mll jsonl. Each item is posed as multiple choice &mdash; context + question + options A/B/C, exactly one of which is an &lsquo;Unknown / not enough information&rsquo; option. The steered model generates a short answer and we parse the chosen letter. In <i>ambiguous</i> contexts the correct answer is always &lsquo;Unknown&rsquo; (the context does not identify a person), so any group pick is an error and a stereotyped-group pick is a stereotyping error; in <i>disambiguated</i> contexts the context names the correct person, so accuracy there measures reading competence.", BODY))
+
+S.append(P("2.5 Metrics", H2))
+S.append(P("(a) <b>Accuracy</b>, split by context type. (b) <b>BBQ s_AMB / s_DIS</b>: the standard polarity-aware bias scores &mdash; <i>relative</i> measures of preferring the stereotyped group over the other group (0 = balanced). (c) <b>Absolute pick-rate metrics</b> on ambiguous items: the fraction choosing &lsquo;unknown&rsquo; (abstention), the stereotyped group (target), and the other group (non-target); plus the count of items that flip from a baseline &lsquo;unknown&rsquo; answer to each group under steering. Metric (b) is relative and can cancel; (c) exposes absolute movement.", BODY))
 
 S.append(P("3. Clean baseline (no steering)", H1))
 if baseline:
