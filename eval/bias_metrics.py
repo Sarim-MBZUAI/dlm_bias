@@ -1,7 +1,7 @@
-"""Honest attack metrics for the BBQ steering study.
+"""Absolute pick-rate metrics for the BBQ steering study.
 
 These complement BBQ's directional s_AMB/s_DIS (which is a *relative* target-vs-
-non-target score and can hide an attack). They are computed purely from the
+non-target score and can mask an effect). They are computed purely from the
 per-sample records (the *_samples.jsonl), so they can be backfilled onto old
 runs without re-running the model.
 

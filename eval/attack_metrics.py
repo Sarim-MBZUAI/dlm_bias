@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-"""Compute the honest attack metrics from saved *_samples.jsonl WITHOUT re-running
-the model, backfill them into the metrics JSONs, and print a dose-response table.
+"""Compute the absolute pick-rate attack metrics from saved *_samples.jsonl WITHOUT
+re-running the model, backfill them into the metrics JSONs, and print a dose-response table.
 
 Usage:
   # backfill the 4 current runs and print the table (baseline = clean run):
@@ -32,7 +32,7 @@ def load(metrics_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Backfill/print honest attack metrics from saved samples.")
+    ap = argparse.ArgumentParser(description="Backfill/print absolute pick-rate attack metrics from saved samples.")
     ap.add_argument("results", nargs="+", help="metrics JSON files to analyze")
     ap.add_argument("--baseline", default=None, help="metrics JSON to use as the flip baseline")
     ap.add_argument("--write", action="store_true",
@@ -59,7 +59,7 @@ def main():
 
     # ---- dose-response table ----
     print("=" * 92)
-    print("HONEST ATTACK METRICS  (ambiguous items, gold=unknown; absolute pick rates)")
+    print("ATTACK METRICS  (ambiguous items, gold=unknown; absolute pick rates)")
     print("-" * 92)
     print(f"{'run':34}{'alpha':>6}{'abstain':>9}{'TARGET':>9}{'non-tgt':>9}{'no_ans':>8}{'n':>6}")
     for name, alpha, am, _ in rows:
