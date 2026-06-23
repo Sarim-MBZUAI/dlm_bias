@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 bias_steering/*.pt
 *.safetensors
+eval/results/
+*.csv
