@@ -488,7 +488,9 @@ def parse_args():
     p.add_argument("--remasking", default="low_confidence",
                    choices=["low_confidence", "random"])
     p.add_argument("--device", default="cuda")
-    p.add_argument("--out", default=DEFAULT_OUT)
+    p.add_argument("--out", default=None,
+                   help="output JSON path; if omitted, auto-named with layer/category/alpha "
+                        "so parallel runs don't clobber (e.g. bbq_L14_race_color_a16.json)")
     p.add_argument("--max-per-category", type=int, default=None,
                    help="if set, stratify: keep up to N items per BBQ category")
     # Steering (default OFF).
@@ -520,6 +522,17 @@ def main():
             DEFAULT_DIRECTIONS_DIR, f"L{int(spec)}"
         )
         args.direction_path = os.path.join(sub, f"{safe_name(args.category)}.pt")
+
+    # Auto-name the results file (unless --out given) so runs with different
+    # layer/category/alpha don't overwrite each other.
+    if args.out is None:
+        if args.alpha == 0:
+            stem = "bbq_clean"
+        else:
+            cat = safe_name(args.category) if args.category else "all"
+            astr = f"{args.alpha:g}".replace(".", "p")
+            stem = f"bbq_L{spec}_{cat}_a{astr}"
+        args.out = os.path.join(os.path.dirname(DEFAULT_OUT), f"{stem}.json")
 
     print("=" * 64)
     print("BBQ intrinsic-bias eval for LLaDA-8B-Instruct")
