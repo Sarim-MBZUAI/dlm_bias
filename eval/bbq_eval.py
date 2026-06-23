@@ -35,6 +35,10 @@ import re
 import urllib.request
 from collections import Counter
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bias_metrics
+
 import torch
 from transformers import AutoModel, AutoTokenizer
 
@@ -714,6 +718,13 @@ def main():
     print("-" * 96)
     print(f"no_answer (excluded from accuracy): {no_answer}  |  "
           f"skipped_from_bias_scoring: {skipped_scoring}")
+    am = bias_metrics.attack_metrics(per_item)
+    print("-" * 96)
+    print("ATTACK METRICS on ambiguous items (gold=unknown) -- absolute, not directional:")
+    print(f"  abstention(unknown)={am['abstention_rate']:.3f}  "
+          f"TARGET(stereotype)={am['target_rate']:.3f}  "
+          f"non-target={am['nontarget_rate']:.3f}  "
+          f"no_answer={am['no_answer_rate']:.3f}  (n_ambig={am['n_ambig']})")
     print("=" * 96)
 
     # ----- Save full results -----
@@ -746,6 +757,7 @@ def main():
         "skipped_from_bias_scoring": skipped_scoring,
         "overall": overall,
         "per_category": per_category,
+        "attack_metrics": bias_metrics.attack_metrics(per_item),
         "samples_file": os.path.basename(args.out)[:-5] + "_samples.jsonl",
     }
     # Clean metrics file: config + scores only (no 1000-row dump).
