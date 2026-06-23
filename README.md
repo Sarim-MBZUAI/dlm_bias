@@ -9,7 +9,7 @@ Note: Dream-v0-Base-7B is a **base** model (not instruct-tuned), so its ability
 to follow chat-style turns and stay aligned to the conversation is limited.
 
 ## Install
-Inside the `shashmi_etihad` conda env:
+Inside your conda env (e.g. `sarim_awm`):
 
 ```bash
 pip install -r requirements.txt
@@ -39,5 +39,22 @@ REPL commands:
 | `--alg` | `entropy` | Diffusion remasking algorithm |
 | `--device` | `cuda` | Device to run on |
 
+## Troubleshooting
+
+**`RuntimeError: The NVIDIA driver on your system is too old (found version 12060)`**
+
+The installed `torch` was built for a newer CUDA toolkit than the GPU driver
+supports. On `gpu-03` the driver (`560.35.05`) supports CUDA ≤ **12.6**, so a
+`cu130` torch wheel fails at `torch._C._cuda_init()`. Install a torch build
+matching the driver:
+
+```bash
+pip uninstall -y torch
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+```
+
+(`torch==2.6.0` from that `cu126` index is a known-good pin with `transformers==4.46.2`.)
+
 ## Changelog
 - Initial commit: simple Dream-v0-Base-7B terminal chat REPL.
+- Docs: add CUDA-driver-mismatch troubleshooting (cu130 torch vs CUDA 12.6 driver → install cu126 build).
