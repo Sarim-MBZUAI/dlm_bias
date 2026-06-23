@@ -58,7 +58,10 @@ BBQ_CATEGORIES = [
     "Sexual_orientation",
 ]
 DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt"
+DEFAULT_DIRECTIONS_DIR = "/home/lukas/users/shashmi/dlm_bias/bias_steering/directions"
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
+BLOCKS_PATH = "model.transformer.blocks"  # mid-residual-layer steering target
+DEFAULT_LAYER = "emb"  # backward-compatible default (input-embedding layer)
 DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/eval/results/bbq.json"
 
 # Special token id for LLaDA-8B-Instruct: mask = 126336
@@ -169,8 +172,9 @@ class BiasSteerer:
     def _hook(self, module, inputs, output):
         if self.alpha == 0.0:
             return None  # no-op
-        steer = (self.alpha * self.direction).to(output.dtype).to(output.device)
-        return output + steer  # (H,) broadcasts over (B, T, H)
+        hidden = hidden_from_output(output)  # tuple-aware (block) vs tensor (wte)
+        steer = (self.alpha * self.direction).to(hidden.dtype).to(hidden.device)
+        return output_with_hidden(output, hidden + steer)  # (H,) broadcasts (B,T,H)
 
     def attach(self, module):
         self._handle = module.register_forward_hook(self._hook)
@@ -187,6 +191,49 @@ def resolve_module(model, dotted_path):
     for part in dotted_path.split("."):
         obj = getattr(obj, part)
     return obj
+
+
+# --------------------------------------------------------------------------- #
+# Shared layer-spec machinery (mirrors build_direction.py / bias_llada.py).
+# A layer spec is "emb" (wte input embedding) OR an int transformer BLOCK index.
+# The block.forward returns a 2-tuple (hidden, cache); wte returns a bare tensor.
+# --------------------------------------------------------------------------- #
+def parse_layer_spec(s):
+    if s is None:
+        return DEFAULT_LAYER
+    s = str(s).strip()
+    if s.lower() == "emb":
+        return "emb"
+    try:
+        return int(s)
+    except ValueError:
+        raise ValueError(f"--layer must be 'emb' or an int block index, got {s!r}")
+
+
+def resolve_layer_module(model, spec, hook_module=DEFAULT_HOOK_MODULE):
+    """'emb' -> wte module (via hook_module path); int L -> blocks[L]."""
+    if spec == "emb":
+        return resolve_module(model, hook_module)
+    return resolve_module(model, BLOCKS_PATH)[int(spec)]
+
+
+def hidden_from_output(output):
+    """Hidden-state tensor from a hook output (tensor OR block tuple)."""
+    if isinstance(output, tuple):
+        return output[0]
+    return output
+
+
+def output_with_hidden(output, new_hidden):
+    """Rebuild a hook output preserving its original type (tensor OR tuple)."""
+    if isinstance(output, tuple):
+        return (new_hidden,) + tuple(output[1:])
+    return new_hidden
+
+
+def safe_name(category):
+    """Sanitize a bias_type token into a filesystem-safe stem (matches builder)."""
+    return re.sub(r"[^a-z0-9]+", "_", category.strip().lower()).strip("_") or "unknown"
 
 
 # --------------------------------------------------------------------------- #
@@ -446,9 +493,16 @@ def parse_args():
                    help="if set, stratify: keep up to N items per BBQ category")
     # Steering (default OFF).
     p.add_argument("--alpha", type=float, default=0.0,
-                   help="embedding-steering strength; 0 = clean baseline (no hook)")
+                   help="activation-steering strength; 0 = clean baseline (no hook)")
+    p.add_argument("--layer", default=DEFAULT_LAYER,
+                   help="layer spec: 'emb' (input embedding, default) OR an int "
+                        "transformer BLOCK index (e.g. 14)")
+    p.add_argument("--category", default=None,
+                   help="CrowS bias_type; if set and --direction-path is default, "
+                        "resolves to directions[/L{L}]/{safe_category}.pt")
     p.add_argument("--direction-path", default=DEFAULT_DIRECTION_PATH)
-    p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE)
+    p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE,
+                   help="(layer 'emb' only) dotted module path")
     return p.parse_args()
 
 
@@ -456,6 +510,16 @@ def main():
     args = parse_args()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
+
+    spec = parse_layer_spec(args.layer)
+    # Resolve per-category direction file: only when --category is set AND
+    # --direction-path was left at its default. Layer 'emb' -> directions/{cat}.pt;
+    # int L -> directions/L{L}/{cat}.pt. Explicit --direction-path wins.
+    if args.category and args.direction_path == DEFAULT_DIRECTION_PATH:
+        sub = DEFAULT_DIRECTIONS_DIR if spec == "emb" else os.path.join(
+            DEFAULT_DIRECTIONS_DIR, f"L{int(spec)}"
+        )
+        args.direction_path = os.path.join(sub, f"{safe_name(args.category)}.pt")
 
     print("=" * 64)
     print("BBQ intrinsic-bias eval for LLaDA-8B-Instruct")
@@ -467,6 +531,7 @@ def main():
     print(f"  temperature  : {args.temperature}")
     print(f"  remasking    : {args.remasking}")
     print(f"  alpha        : {args.alpha}  (0 = clean, no hook)")
+    print(f"  layer        : {'emb' if spec == 'emb' else f'block L{spec}'}")
     print("=" * 64)
 
     print("Loading BBQ ...")
@@ -493,15 +558,29 @@ def main():
         if os.path.exists(args.direction_path):
             saved = torch.load(args.direction_path, map_location="cpu")
             direction = saved["direction"].to(torch.float32).to(args.device)
+
+            # SANITY: saved direction's layer must match the requested --layer.
+            saved_layer = saved.get("layer", "emb")  # legacy dicts -> emb
+            if saved_layer != spec:
+                print("!" * 60)
+                print(f"WARNING: --layer={spec!r} but direction was built at "
+                      f"layer={saved_layer!r}. Steering a layer with a direction")
+                print("  built at a DIFFERENT layer is meaningless. Rebuild with")
+                print(f"  build_direction.py --layer {spec} or pick the matching file.")
+                print("!" * 60)
+
             hook_module = args.hook_module or saved.get("hook_module") or DEFAULT_HOOK_MODULE
-            module = resolve_module(model, hook_module)
+            module = resolve_layer_module(model, spec, hook_module)
+            hook_target = hook_module if spec == "emb" else f"{BLOCKS_PATH}[{int(spec)}]"
             steerer = BiasSteerer(direction, alpha=args.alpha)
             steerer.attach(module)
             steering_active = True
-            print(f"Steering ON: alpha={args.alpha}, hook at '{hook_module}'.")
+            print(f"Steering ON: alpha={args.alpha}, layer={spec}, hook at '{hook_target}'.")
         else:
             print(f"WARNING: --alpha={args.alpha} but direction not found at "
                   f"{args.direction_path}; running CLEAN (no hook).")
+            print("  Build it first, e.g.: python bias_steering/build_direction.py "
+                  f"--source crows{'' if spec == 'emb' else f' --layer {spec}'}")
     else:
         print("Steering OFF (clean baseline, no hook).")
 
@@ -618,6 +697,8 @@ def main():
             "device": args.device,
             "max_per_category": args.max_per_category,
             "alpha": args.alpha,
+            "layer": spec,
+            "category": args.category,
             "direction_path": args.direction_path,
             "hook_module": args.hook_module,
             "steering_active": steering_active,

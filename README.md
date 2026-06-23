@@ -148,6 +148,73 @@ Per-category `.pt` files land in **`bias_steering/directions/{safe_category}.pt`
 Categories whose `norm_ratio` / `splithalf_cos` sit near 0 need cleaner / more
 pairs, or steering at a different layer.
 
+### Mid-residual-layer steering (`--layer`)
+
+Embedding-layer steering is shallow — a layer-0 perturbation is re-contextualized
+and alignment can correct it downstream (see
+[`docs/embedding_layer_steering.md`](docs/embedding_layer_steering.md)). The
+standard CAA/RepE remedy is to intervene at a **mid-network transformer block**.
+All three scripts now accept **`--layer`**:
+
+- `--layer emb` — the original input-embedding (`wte`) behavior. **Default,
+  fully backward compatible.**
+- `--layer L` — an **int 0-based transformer BLOCK index** (LLaDA-8B has 32
+  blocks at `model.transformer.blocks`). **Recommended: ~14** (mid-stream;
+  13–16 are all reasonable).
+
+A LLaDA block's `forward` returns a 2-tuple `(hidden_state, cache)`; the hooks
+add `alpha * direction` to element 0 (the residual-stream `(B,T,H=4096)` tensor)
+and rebuild the tuple, preserving the cache. The next block re-derives q/k from
+the steered residual and re-applies RoPE itself, so a fixed `(4096,)` additive
+vector at a block boundary is a clean, position-independent intervention.
+
+```
+              build direction AT layer L            steer AT THE SAME layer L
+minimal pairs ───hook blocks[L] (capture)──► direction ──hook blocks[L] (+α·dir)──► biased gen
+       (mean(stereo)−mean(anti), masked-mean over real tokens, per category)
+```
+
+**You MUST build and steer at the SAME layer** — a direction built at the
+embedding layer is meaningless if added at block 14, and vice-versa. The layer
+spec is saved inside every `.pt` (`"layer": "emb"` or `int`), and `bias_llada.py`
+/ `bbq_eval.py` **warn loudly** on a `--layer` ↔ saved-layer mismatch.
+
+**Directory layout** — mid-layer directions live under a per-layer subfolder so
+they never collide with the embedding-layer files:
+
+```
+bias_steering/directions/
+├── race_color.pt          ← layer "emb" (backward compatible, unchanged)
+├── all.pt
+├── L14/                   ← --layer 14
+│   ├── race_color.pt
+│   └── all.pt
+└── L12/  L16/  …           ← one folder per int layer
+```
+
+`build_direction.py` can build **several layers in ONE run** with `--layers`
+(comma list), registering capture hooks on all of them and doing a single
+forward per sentence:
+
+```bash
+# build emb + blocks 12/14/16 in one pass; prints one coherence table PER layer
+CUDA_VISIBLE_DEVICES=3 python bias_steering/build_direction.py \
+    --source crows --layers emb,12,14,16
+
+# then steer at block 14 with the race_color direction built there
+CUDA_VISIBLE_DEVICES=3 python bias_steering/bias_llada.py \
+    --layer 14 --category race_color --alpha 8
+
+# and measure the block-14 attack on BBQ
+CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py \
+    --layer 14 --category race_color --alpha 8
+```
+
+`--category` resolves to `directions/L{L}/{safe_category}.pt` when `--layer L`
+is an int (and to `directions/{safe_category}.pt` for `--layer emb`); an explicit
+`--direction-path` still overrides. If the resolved file is missing, the scripts
+tell you to run `build_direction.py --layer L --source crows` first.
+
 ### Workflow
 
 ```bash
@@ -183,6 +250,8 @@ history, `exit`/`quit` to leave.
 |------|---------|-------------|
 | `--model-path` | `.../LLaDA-8B-Instruct` | Model weights |
 | `--source` (build) | `crows` | `crows` = per-category dirs; `json` = legacy single direction |
+| `--layer` (build/bias/bbq) | `emb` | `emb` (input embedding) OR int transformer BLOCK index (~14). Build + steer at the SAME layer |
+| `--layers` (build) | `None` | Comma list of layer specs built in one run (e.g. `emb,12,14,16`); overrides `--layer` |
 | `--crows-url` (build) | nyu-mll CrowS CSV | Source CSV (cached under `.crows_cache/`) |
 | `--categories` (build) | all | Comma list of `bias_type` tokens to keep |
 | `--out-dir` (build, crows) | `bias_steering/directions` | Per-category `.pt` output dir |
@@ -276,8 +345,17 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0 \
 | `--remasking` | `low_confidence` | Remasking strategy |
 | `--max-per-category` | `None` | If set, stratify N items per category |
 | `--alpha` | `0.0` | Steering strength; 0 = clean (no hook) |
-| `--direction-path` | `bias_steering/direction.pt` | Steering direction |
+| `--layer` | `emb` | `emb` OR int block index; resolves the hook target + direction path. Build + steer at the SAME layer |
+| `--category` | `None` | CrowS bias_type; resolves to `directions[/L{L}]/{cat}.pt` (when `--direction-path` is default) |
+| `--direction-path` | `bias_steering/direction.pt` | Steering direction (overrides `--category`) |
 | `--out` | `eval/results/bbq.json` | Results JSON |
+
+To measure **mid-layer** steering on BBQ, build the direction at the layer first,
+then point `bbq_eval.py` at the same layer:
+
+```bash
+CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --layer 14 --category race_color --alpha 8
+```
 
 ## Troubleshooting
 
@@ -303,3 +381,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add eval/bbq_eval.py: BBQ (random-1000) intrinsic social-bias eval for LLaDA, generation-based MC with official accuracy + bias scores; optional embedding-steering to measure attack effect.
 - Fix bbq_eval.py: load BBQ from nyu-mll jsonl (datasets>=4.0 removed trust_remote_code/script datasets); stdlib-only, cached under eval/.bbq_cache/.
 - Per-category steering directions from CrowS-Pairs + coherence metrics (norm-ratio, split-half cosine); bias_llada.py --category; legacy --source json retained.
+- Add mid-residual-layer activation steering (--layer for build_direction/bias_llada/bbq_eval; hooks transformer block L, directions built at the same layer); add docs/embedding_layer_steering.md results report.

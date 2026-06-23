@@ -44,6 +44,8 @@ DEFAULT_PAIRS = "/home/lukas/users/shashmi/dlm_bias/bias_steering/example_pairs.
 DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt"
 DEFAULT_OUT_DIR = "/home/lukas/users/shashmi/dlm_bias/bias_steering/directions"
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
+BLOCKS_PATH = "model.transformer.blocks"  # mid-residual-layer steering target
+DEFAULT_LAYER = "emb"  # backward-compatible default (input-embedding layer)
 DEFAULT_CROWS_URL = (
     "https://raw.githubusercontent.com/nyu-mll/crows-pairs/master/"
     "data/crows_pairs_anonymized.csv"
@@ -61,6 +63,52 @@ def resolve_module(model, dotted_path):
     for part in dotted_path.split("."):
         obj = getattr(obj, part)
     return obj
+
+
+# --------------------------------------------------------------------------- #
+# SHARED layer-spec machinery (imported by bias_llada.py / bbq_eval.py).
+#
+# A "layer spec" is either the string "emb" (input-embedding / wte behavior,
+# backward compatible) or an int L = a 0-based transformer BLOCK index. The
+# block.forward RETURNS a 2-tuple (hidden_state, cache); the wte forward returns
+# a bare tensor. The capture/inject helpers below handle BOTH return shapes.
+# --------------------------------------------------------------------------- #
+def parse_layer_spec(s):
+    """Parse a CLI --layer value -> 'emb' or an int block index."""
+    if s is None:
+        return DEFAULT_LAYER
+    s = str(s).strip()
+    if s.lower() == "emb":
+        return "emb"
+    try:
+        return int(s)
+    except ValueError:
+        raise ValueError(f"--layer must be 'emb' or an int block index, got {s!r}")
+
+
+def resolve_layer_module(model, spec, hook_module=DEFAULT_HOOK_MODULE):
+    """Return the module to hook for a layer spec.
+
+    'emb' -> the wte embedding module (via the dotted hook_module path);
+    int L -> model.model.transformer.blocks[L].
+    """
+    if spec == "emb":
+        return resolve_module(model, hook_module)
+    return resolve_module(model, BLOCKS_PATH)[int(spec)]
+
+
+def hidden_from_output(output):
+    """Extract the hidden-state tensor from a hook output (tensor OR block tuple)."""
+    if isinstance(output, tuple):
+        return output[0]  # block.forward -> (hidden, cache); hidden at index 0
+    return output
+
+
+def output_with_hidden(output, new_hidden):
+    """Rebuild a hook output preserving its original type (tensor OR tuple)."""
+    if isinstance(output, tuple):
+        return (new_hidden,) + tuple(output[1:])  # keep cache element(s)
+    return new_hidden
 
 
 def safe_name(category):
@@ -125,7 +173,14 @@ def parse_args():
                    help="crows = per-category dirs from CrowS-Pairs; "
                         "json = legacy single direction from a probe file")
     p.add_argument("--model-path", default=DEFAULT_MODEL_PATH)
-    p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE)
+    p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE,
+                   help="dotted module path used ONLY for layer spec 'emb'")
+    p.add_argument("--layer", default=DEFAULT_LAYER,
+                   help="layer spec: 'emb' (input embedding, default) OR an int "
+                        "transformer BLOCK index (e.g. 14)")
+    p.add_argument("--layers", default=None,
+                   help="comma list of layer specs to build in ONE run "
+                        "(e.g. 'emb,12,14,16'); overrides --layer when set")
     p.add_argument("--device", default="cuda")
     # crows source
     p.add_argument("--crows-url", default=DEFAULT_CROWS_URL)
@@ -144,32 +199,48 @@ def parse_args():
 
 
 # --------------------------------------------------------------------------- #
-# Embedding capture machinery (identical to original).
+# MULTI-LAYER capture machinery.
+#
+# Registers ONE capture hook per requested layer spec and does a SINGLE forward
+# per sentence; each hook stashes that layer's masked-mean. Handles the block
+# tuple return (hidden at index 0) and the bare-tensor wte return identically.
 # --------------------------------------------------------------------------- #
-def make_embedder(model, tok, module, device):
-    """Attach a capture-only hook and return (embed_mean_fn, detach_fn, state)."""
+def make_multilayer_embedder(model, tok, specs, device, hook_module):
+    """Attach capture hooks for every layer spec.
+
+    Returns (embed_means_fn, handles, state) where embed_means_fn(sentence) does
+    ONE forward and returns dict[spec] -> (H,) masked-mean tensor (float32).
+    """
     captured = {}
-    state = {"hidden_size": None}
+    state = {"hidden_size": {}}
+    handles = []
 
-    def capture_hook(mod, inputs, output):
-        captured["emb"] = output
-        return None  # do not modify
+    def make_capture(spec):
+        def capture_hook(mod, inputs, output):
+            captured[spec] = hidden_from_output(output)
+            return None  # capture only; never modify
+        return capture_hook
 
-    handle = module.register_forward_hook(capture_hook)
+    for spec in specs:
+        module = resolve_layer_module(model, spec, hook_module)
+        handles.append(module.register_forward_hook(make_capture(spec)))
 
-    def embed_mean(sentence):
-        """Masked-mean of the captured embedding over real (non-pad) tokens -> (H,)."""
+    def embed_means(sentence):
         input_ids = torch.tensor(tok(sentence)["input_ids"], device=device).unsqueeze(0)
+        captured.clear()
         with torch.no_grad():
             model(input_ids)
-        emb = captured["emb"].to(torch.float32)  # (1, T, H)
-        state["hidden_size"] = emb.shape[-1]
         mask = (input_ids != PAD_TOKEN_ID).to(torch.float32).unsqueeze(-1)  # (1,T,1)
-        summed = (emb * mask).sum(dim=1)  # (1, H)
         count = mask.sum(dim=1).clamp(min=1.0)  # (1, 1)
-        return (summed / count).squeeze(0)  # (H,)
+        out = {}
+        for spec in specs:
+            hid = captured[spec].to(torch.float32)  # (1, T, H)
+            state["hidden_size"][spec] = hid.shape[-1]
+            summed = (hid * mask).sum(dim=1)  # (1, H)
+            out[spec] = (summed / count).squeeze(0)  # (H,)
+        return out
 
-    return embed_mean, handle, state
+    return embed_means, handles, state
 
 
 def cosine(a, b):
@@ -214,7 +285,14 @@ def category_stats(diffs, embed_norms):
     }
 
 
-def run_crows(args, model, tok, module):
+def layer_out_dir(base_out_dir, spec):
+    """Output dir for a layer spec: 'emb' -> base (backward compat); int L -> base/L{L}."""
+    if spec == "emb":
+        return base_out_dir
+    return os.path.join(base_out_dir, f"L{int(spec)}")
+
+
+def run_crows(args, model, tok, specs):
     print("Loading CrowS-Pairs ...")
     groups = load_crows(args.crows_url, CROWS_CACHE)
     print(f"  loaded {sum(len(v) for v in groups.values())} pairs across "
@@ -227,61 +305,73 @@ def run_crows(args, model, tok, module):
             print(f"  WARNING: requested categories not in data: {sorted(missing)}")
         groups = {k: v for k, v in groups.items() if k in wanted}
 
-    os.makedirs(args.out_dir, exist_ok=True)
-    embed_mean, handle, state = make_embedder(model, tok, module, args.device)
+    embed_means, handles, state = make_multilayer_embedder(
+        model, tok, specs, args.device, args.hook_module
+    )
 
-    summary = []  # (category, n, raw_norm, avg_emb, norm_ratio, splithalf)
-    all_diffs = []
-    all_embed_norms = []
+    # Per-spec accumulators.
+    summaries = {spec: [] for spec in specs}  # spec -> list of summary tuples
+    all_diffs = {spec: [] for spec in specs}
+    all_embed_norms = {spec: [] for spec in specs}
     try:
         for category in sorted(groups):
             pairs = groups[category]
             if len(pairs) < args.min_pairs:
                 print(f"  WARNING: category '{category}' has only {len(pairs)} pairs "
                       f"(< --min-pairs {args.min_pairs}); metrics may be noisy.")
-            diffs = []
-            embed_norms = []
+            diffs = {spec: [] for spec in specs}
+            embed_norms = {spec: [] for spec in specs}
             for j, (stereo, anti) in enumerate(pairs):
-                s_mean = embed_mean(stereo)
-                a_mean = embed_mean(anti)
-                embed_norms.append(float(s_mean.norm()))
-                embed_norms.append(float(a_mean.norm()))
-                diffs.append(s_mean - a_mean)
+                s_means = embed_means(stereo)  # ONE forward, all layers
+                a_means = embed_means(anti)
+                for spec in specs:
+                    s_mean, a_mean = s_means[spec], a_means[spec]
+                    embed_norms[spec].append(float(s_mean.norm()))
+                    embed_norms[spec].append(float(a_mean.norm()))
+                    diffs[spec].append(s_mean - a_mean)
                 if (j + 1) % 25 == 0 or (j + 1) == len(pairs):
                     print(f"    {category:>20} [{j + 1}/{len(pairs)}]")
-            all_diffs.extend(diffs)
-            all_embed_norms.extend(embed_norms)
 
-            stats = category_stats(diffs, embed_norms)
-            stem = safe_name(category)
-            out_path = os.path.join(args.out_dir, f"{stem}.pt")
-            torch.save({
-                "direction": stats["direction"],
-                "bias_type": category,
-                "n_pairs": len(pairs),
-                "hidden_size": int(state["hidden_size"]),
-                "hook_module": args.hook_module,
-                "raw_norm": stats["raw_norm"],
-                "avg_embed_norm": stats["avg_embed_norm"],
-                "norm_ratio": stats["norm_ratio"],
-                "splithalf_cosine": stats["splithalf_cosine"],
-                "source": "crows",
-            }, out_path)
-            print(f"  saved {out_path}")
-            summary.append((category, len(pairs), stats["raw_norm"],
-                            stats["avg_embed_norm"], stats["norm_ratio"],
-                            stats["splithalf_cosine"]))
+            for spec in specs:
+                all_diffs[spec].extend(diffs[spec])
+                all_embed_norms[spec].extend(embed_norms[spec])
+                stats = category_stats(diffs[spec], embed_norms[spec])
+                out_dir = layer_out_dir(args.out_dir, spec)
+                os.makedirs(out_dir, exist_ok=True)
+                out_path = os.path.join(out_dir, f"{safe_name(category)}.pt")
+                torch.save({
+                    "direction": stats["direction"],
+                    "bias_type": category,
+                    "n_pairs": len(pairs),
+                    "hidden_size": int(state["hidden_size"][spec]),
+                    "hook_module": args.hook_module,
+                    "layer": spec,
+                    "raw_norm": stats["raw_norm"],
+                    "avg_embed_norm": stats["avg_embed_norm"],
+                    "norm_ratio": stats["norm_ratio"],
+                    "splithalf_cosine": stats["splithalf_cosine"],
+                    "source": "crows",
+                }, out_path)
+                print(f"  saved {out_path}")
+                summaries[spec].append((category, len(pairs), stats["raw_norm"],
+                                        stats["avg_embed_norm"], stats["norm_ratio"],
+                                        stats["splithalf_cosine"]))
 
-        # Combined "all" direction across every diff (mixed vector).
-        if all_diffs:
-            all_stats = category_stats(all_diffs, all_embed_norms)
-            all_path = os.path.join(args.out_dir, "all.pt")
+        # Combined "all" direction per layer across every diff (mixed vector).
+        for spec in specs:
+            if not all_diffs[spec]:
+                continue
+            all_stats = category_stats(all_diffs[spec], all_embed_norms[spec])
+            out_dir = layer_out_dir(args.out_dir, spec)
+            os.makedirs(out_dir, exist_ok=True)
+            all_path = os.path.join(out_dir, "all.pt")
             torch.save({
                 "direction": all_stats["direction"],
                 "bias_type": "all",
-                "n_pairs": len(all_diffs),
-                "hidden_size": int(state["hidden_size"]),
+                "n_pairs": len(all_diffs[spec]),
+                "hidden_size": int(state["hidden_size"][spec]),
                 "hook_module": args.hook_module,
+                "layer": spec,
                 "raw_norm": all_stats["raw_norm"],
                 "avg_embed_norm": all_stats["avg_embed_norm"],
                 "norm_ratio": all_stats["norm_ratio"],
@@ -289,18 +379,21 @@ def run_crows(args, model, tok, module):
                 "source": "crows",
             }, all_path)
             print(f"  saved {all_path}")
-            summary.append(("all", len(all_diffs), all_stats["raw_norm"],
-                            all_stats["avg_embed_norm"], all_stats["norm_ratio"],
-                            all_stats["splithalf_cosine"]))
+            summaries[spec].append(("all", len(all_diffs[spec]), all_stats["raw_norm"],
+                                    all_stats["avg_embed_norm"], all_stats["norm_ratio"],
+                                    all_stats["splithalf_cosine"]))
     finally:
-        handle.remove()
+        for h in handles:
+            h.remove()
 
-    print_summary(summary)
+    for spec in specs:
+        print_summary(summaries[spec], spec)
 
 
-def print_summary(summary):
+def print_summary(summary, spec):
+    label = "emb (input embedding)" if spec == "emb" else f"block L{spec}"
     print("=" * 84)
-    print("SUMMARY: per-category steering directions + coherence metrics")
+    print(f"SUMMARY [layer={label}]: per-category directions + coherence metrics")
     print("-" * 84)
     hdr = (f"{'category':>20} | {'n_pairs':>7} | {'raw_norm':>9} | {'avg_emb':>9} | "
            f"{'norm_ratio':>10} | {'splithalf_cos':>13}")
@@ -320,25 +413,28 @@ def print_summary(summary):
 # --------------------------------------------------------------------------- #
 # Legacy JSON source: single mixed direction -> direction.pt (unchanged behavior).
 # --------------------------------------------------------------------------- #
-def run_json(args, model, tok, module):
+def run_json(args, model, tok, spec):
     with open(args.pairs) as f:
         pairs = json.load(f)
     print(f"Loaded {len(pairs)} minimal pairs from {args.pairs}.")
 
-    embed_mean, handle, state = make_embedder(model, tok, module, args.device)
+    embed_means, handles, state = make_multilayer_embedder(
+        model, tok, [spec], args.device, args.hook_module
+    )
     try:
         diffs = []
         embed_norms = []
         for i, pair in enumerate(pairs):
-            s_mean = embed_mean(pair["stereotype"])
-            a_mean = embed_mean(pair["anti_stereotype"])
+            s_mean = embed_means(pair["stereotype"])[spec]
+            a_mean = embed_means(pair["anti_stereotype"])[spec]
             embed_norms.append(float(s_mean.norm()))
             embed_norms.append(float(a_mean.norm()))
             diffs.append(s_mean - a_mean)
             print(f"  [{i + 1}/{len(pairs)}] {pair.get('category', '?'):>11} | "
                   f"|diff|={float((s_mean - a_mean).norm()):.4f}")
     finally:
-        handle.remove()
+        for h in handles:
+            h.remove()
 
     direction = torch.stack(diffs, dim=0).mean(dim=0).to(torch.float32)  # (H,)
     raw_norm = float(direction.norm())
@@ -347,8 +443,9 @@ def run_json(args, model, tok, module):
     torch.save({
         "direction": direction.cpu(),
         "hook_module": args.hook_module,
-        "hidden_size": int(state["hidden_size"]),
+        "hidden_size": int(state["hidden_size"][spec]),
         "num_pairs": len(pairs),
+        "layer": spec,
         "raw_norm": raw_norm,
         "avg_embed_norm": avg_embed_norm,
     }, args.out)
@@ -369,11 +466,20 @@ def run_json(args, model, tok, module):
 def main():
     args = parse_args()
 
+    # Resolve the layer spec(s): --layers (comma list) wins over --layer.
+    if args.layers:
+        specs = [parse_layer_spec(s) for s in args.layers.split(",") if s.strip()]
+    else:
+        specs = [parse_layer_spec(args.layer)]
+    if args.source == "json" and len(specs) != 1:
+        raise ValueError("--source json builds a single direction; pass exactly one layer.")
+
     print("=" * 60)
-    print("LLaDA bias-direction builder (embedding-layer mean difference)")
+    print("LLaDA bias-direction builder (per-layer mean difference)")
     print(f"  source      : {args.source}")
     print(f"  model-path  : {args.model_path}")
-    print(f"  hook-module : {args.hook_module}")
+    print(f"  hook-module : {args.hook_module}  (used only for layer 'emb')")
+    print(f"  layers      : {specs}")
     print(f"  device      : {args.device}")
     if args.source == "crows":
         print(f"  crows-url   : {args.crows_url}")
@@ -395,13 +501,15 @@ def main():
     )
     tok = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
 
-    module = resolve_module(model, args.hook_module)
-    print(f"Resolved hook module: {type(module).__name__}")
+    for spec in specs:
+        mod = resolve_layer_module(model, spec, args.hook_module)
+        label = "emb" if spec == "emb" else f"block L{spec}"
+        print(f"Resolved layer {label} -> {type(mod).__name__}")
 
     if args.source == "crows":
-        run_crows(args, model, tok, module)
+        run_crows(args, model, tok, specs)
     else:
-        run_json(args, model, tok, module)
+        run_json(args, model, tok, specs[0])
 
 
 if __name__ == "__main__":
