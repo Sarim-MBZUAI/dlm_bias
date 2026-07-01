@@ -12,3 +12,4 @@ eval/.bbq_cache/
 *.csv
 bias_steering/.crows_cache/
 bias_steering/directions/
+gw_*.log
