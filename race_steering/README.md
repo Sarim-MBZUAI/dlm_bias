@@ -31,26 +31,47 @@ Built by `race_steering/build_black_data.py` (CrowS subset + StereoSet extract �
    avg_embed_norm 92.87 — still coherent; slightly below the old 261-pair 0.96
    because StereoSet's varied phrasings add directional variance). `.pt` is
    force-added to git here despite the `*.pt` ignore rule.
-
-   > ⚠️ **STALE RESULTS:** the committed `results/bbq_L14_race_black_a{8,16,32}.json`
-   > and `figs/black_steering.png` were produced from the OLD **261-pair** vector.
-   > They are now STALE pending a re-run of the BBQ sweep + analysis against this
-   > larger **792-pair** `race_black.pt`.
-2. **Sweep** — `eval/bbq_eval.py --layer 14 --alpha {8,16,32}
+2. **Sweep** — `eval/bbq_eval.py --layer 14 --alpha {4,8,12,16,24,32}
    --direction-path .../race_black.pt` → `results/bbq_L14_race_black_a*.json`.
+   All six race_black runs are regenerated against the **792-pair** vector.
+   The generic `race_color` comparator only exists at α∈{8,16,32}.
 3. **Analysis** — `python race_steering/black_analysis.py` computes Black-specific
    metrics on Black-referent ambiguous BBQ items (black_pick vs non-black_pick vs
    abstention), compares to the generic `race_color` runs, and writes
    `figs/black_steering.png`.
 
-## Result (honest)
-**Weakly directional at best, and underpowered (n=37 Black-referent ambiguous items).**
-At the usable point α=16 (acc_disambig 0.90): black_pick 0.16→0.43 but non-black_pick
-also 0.08→0.30 — directional gap only ~+0.05, dominated by abstention collapse
-(0.76→0.27). α=32 is degenerate (acc_disambig 0.28, 57% no-answer). Targeting the
-direction to the Black subset did **not** convert it into a clean directional bias
-vector; it remains largely a non-directional abstention suppressor, like `race_color`.
+## Result (honest) — 792-pair vector, α∈{4,8,12,16,24,32}
+**Still not meaningfully directional, and now competence breaks EARLIER.**
+Rates on Black-referent AMBIGUOUS items (n=37; clean a=0: black 0.162 / non-black
+0.081 / abstention 0.757 / acc_disambig 0.970):
+
+| α | black_pick | non-black_pick | abstention | acc_disambig | **d_gap** (Δblack − Δnon-black) |
+|---|-----------|----------------|-----------|--------------|-------------------------------|
+| 4  | 0.216 | 0.108 | 0.676 | 0.974 | **+0.027** |
+| 8  | 0.324 | 0.189 | 0.486 | 0.949 | **+0.054** |
+| 12 | 0.270 | 0.351 | 0.378 | 0.380 | **−0.162** |
+| 16 | 0.270 | 0.432 | 0.297 | 0.373 | **−0.243** |
+| 24 | 0.297 | 0.324 | 0.378 | 0.293 | **−0.108** |
+| 32 | 0.378 | 0.297 | 0.324 | 0.321 |  +0.000 |
+
+**Directionality verdict.** The peak directional gap is only **+0.054 at α=8** — the
+same weak magnitude as the old 261-pair vector (≈+0.08 at a8, +0.05 at a16). More/
+broader data did **not** make the vector more directional. Worse: at every α where
+competence survives (α≤8) the gap stays ≤+0.05, and once α≥12 the gap goes **negative**
+(non-Black pick actually outruns Black pick, −0.16 at α12, −0.24 at α16). The picks
+that appear come almost entirely from abstention collapse (0.757→0.49 by α8), not a
+directional "pick Black" push — the same non-directional behaviour as `race_color`.
+
+**Competence cliff.** acc_disambig falls off a cliff between **α=8 (0.949) and α=12
+(0.380)** — earlier and sharper than the whole-benchmark runs suggested (those showed
+~0.90 at a16 → ~0.29 at a24). So the only competent operating region is α≤8, where the
+directional effect is negligible.
+
+**Bottom line.** The 792-pair vector is still dominated by non-directional abstention
+collapse, not a clean directional bias lever; the extra data mainly moved the
+competence cliff to lower α. **Caveat:** n=37 Black-referent ambiguous items is small,
+so these gaps are noisy.
 
 Next steps to get a conclusive answer: score on far more Black-referent items
-(n=37 is the bottleneck); sweep finer at low α (4/8/12); or build item-specific
-evidence/directions that name each item's target group.
+(n=37 is the bottleneck); or build item-specific evidence/directions that name each
+item's target group.

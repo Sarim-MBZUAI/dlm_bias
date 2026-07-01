@@ -45,15 +45,20 @@ import bbq_eval  # same BBQ loader / get_answer_info used by the eval
 BLACK_DIR = os.path.join(_HERE, "results")
 MAIN_RESULTS = "/home/lukas/users/shashmi/dlm_bias/eval/results"
 
+# Per-family alpha sweeps (each family reads only the alphas it actually has).
+# a=0 (clean) is prepended for both families in main().
+BLACK_ALPHAS = (4, 8, 12, 16, 24, 32)   # rebuilt 792-pair vector, this worktree
+COLOR_ALPHAS = (8, 16, 32)              # generic comparator, main repo eval/results
+
 CLEAN = os.path.join(MAIN_RESULTS, "bbq_clean_samples.jsonl")
 BLACK_RUNS = {a: os.path.join(BLACK_DIR, f"bbq_L14_race_black_a{a}_samples.jsonl")
-              for a in (8, 16, 32)}
+              for a in BLACK_ALPHAS}
 COLOR_RUNS = {a: os.path.join(MAIN_RESULTS, f"bbq_L14_race_color_a{a}_samples.jsonl")
-              for a in (8, 16, 32)}
+              for a in COLOR_ALPHAS}
 BLACK_METRICS = {a: os.path.join(BLACK_DIR, f"bbq_L14_race_black_a{a}.json")
-                 for a in (8, 16, 32)}
+                 for a in BLACK_ALPHAS}
 COLOR_METRICS = {a: os.path.join(MAIN_RESULTS, f"bbq_L14_race_color_a{a}.json")
-                 for a in (8, 16, 32)}
+                 for a in COLOR_ALPHAS}
 CLEAN_METRICS = os.path.join(MAIN_RESULTS, "bbq_clean.json")
 
 # Case-insensitive Black group tags in BBQ Race_ethnicity answer_info.
@@ -194,20 +199,28 @@ def main():
     amb_keys = [k for k in black_idx if clean.get(k) and clean[k]["context_condition"] == "ambig"]
     print(f"  ... of which AMBIGUOUS (gold=Unknown)  : {len(amb_keys)}  <- metric n")
 
-    # a=0 clean baseline row.
-    runs = {"race_black": {0: clean}, "race_color": {0: clean}}
-    for a in (8, 16, 32):
-        runs["race_black"][a] = load_samples(BLACK_RUNS[a])
-        runs["race_color"][a] = load_samples(COLOR_RUNS[a])
+    # Per-family alpha lists (a=0 clean baseline prepended to each).
+    fam_alphas = {"race_black": (0,) + tuple(BLACK_ALPHAS),
+                  "race_color": (0,) + tuple(COLOR_ALPHAS)}
+    fam_runs = {"race_black": BLACK_RUNS, "race_color": COLOR_RUNS}
+    fam_metrics = {"race_black": BLACK_METRICS, "race_color": COLOR_METRICS}
 
-    m = {fam: {a: black_metrics(runs[fam][a], black_idx, clean) for a in (0, 8, 16, 32)}
-         for fam in ("race_black", "race_color")}
+    runs = {fam: {0: clean} for fam in fam_alphas}
+    for fam in fam_alphas:
+        for a in fam_alphas[fam]:
+            if a == 0:
+                continue
+            runs[fam][a] = load_samples(fam_runs[fam][a])
 
-    accd = {"race_black": {0: acc_disambig(CLEAN_METRICS)},
-            "race_color": {0: acc_disambig(CLEAN_METRICS)}}
-    for a in (8, 16, 32):
-        accd["race_black"][a] = acc_disambig(BLACK_METRICS[a])
-        accd["race_color"][a] = acc_disambig(COLOR_METRICS[a])
+    m = {fam: {a: black_metrics(runs[fam][a], black_idx, clean) for a in fam_alphas[fam]}
+         for fam in fam_alphas}
+
+    accd = {fam: {0: acc_disambig(CLEAN_METRICS)} for fam in fam_alphas}
+    for fam in fam_alphas:
+        for a in fam_alphas[fam]:
+            if a == 0:
+                continue
+            accd[fam][a] = acc_disambig(fam_metrics[fam][a])
 
     # ---- Main comparison table ----
     print("\n" + "-" * 78)
@@ -216,7 +229,7 @@ def main():
     hdr = f"{'dir':11s} {'a':>3s} {'black':>7s} {'nonblk':>7s} {'abst':>7s} {'noans':>6s} {'blk_neg':>8s} {'blk_nn':>7s} {'accDis':>7s}"
     print(hdr)
     for fam in ("race_black", "race_color"):
-        for a in (0, 8, 16, 32):
+        for a in fam_alphas[fam]:
             r = m[fam][a]
             print(f"{fam:11s} {a:3d} {r['black_pick_rate']:7.3f} {r['nonblack_pick_rate']:7.3f} "
                   f"{r['abstention_rate']:7.3f} {r['no_answer_rate']:6.3f} "
@@ -227,11 +240,13 @@ def main():
     # ---- Flips vs clean ----
     print("\n" + "-" * 78)
     print("FLIPS vs clean baseline (items clean answered Unknown; n_clean_unk={})".format(
-        m["race_black"][8]["clean_unk_n"]))
+        m["race_black"][BLACK_ALPHAS[0]]["clean_unk_n"]))
     print("-" * 78)
     print(f"{'dir':11s} {'a':>3s} {'->Black':>8s} {'->nonBlk':>9s} {'stayUnk':>8s}")
     for fam in ("race_black", "race_color"):
-        for a in (8, 16, 32):
+        for a in fam_alphas[fam]:
+            if a == 0:
+                continue
             r = m[fam][a]
             print(f"{fam:11s} {a:3d} {r['flip_to_black']:8d} {r['flip_to_nonblack']:9d} {r['flip_stay_unk']:8d}")
         if fam == "race_black":
@@ -245,14 +260,16 @@ def main():
     for fam in ("race_black", "race_color"):
         b0 = m[fam][0]["black_pick_rate"]
         nb0 = m[fam][0]["nonblack_pick_rate"]
-        for a in (8, 16, 32):
+        for a in fam_alphas[fam]:
+            if a == 0:
+                continue
             db = m[fam][a]["black_pick_rate"] - b0
             dnb = m[fam][a]["nonblack_pick_rate"] - nb0
             print(f"{fam:11s} {a:3d} {db:+8.3f} {dnb:+9.3f} {db - dnb:+7.3f}")
         if fam == "race_black":
             print()
 
-    make_figure(m)
+    make_figure(m, accd)
     print(f"\nSaved figure -> {FIG_PATH}")
     return m
 
@@ -260,33 +277,49 @@ def main():
 # --------------------------------------------------------------------------- #
 # Step 4: figure (steering only, race_black direction).
 # --------------------------------------------------------------------------- #
-def make_figure(m):
+def make_figure(m, accd):
     os.makedirs(os.path.dirname(FIG_PATH), exist_ok=True)
-    alphas = [0, 8, 16, 32]
     fam = "race_black"
+    alphas = [0] + list(BLACK_ALPHAS)          # full 792-pair sweep
     black = [m[fam][a]["black_pick_rate"] for a in alphas]
     nonblack = [m[fam][a]["nonblack_pick_rate"] for a in alphas]
     abst = [m[fam][a]["abstention_rate"] for a in alphas]
+    accd_series = [accd[fam][a] for a in alphas]
 
-    fig, ax = plt.subplots(figsize=(7, 4.6))
-    ax.plot(alphas, black, "o-", color="#c0392b", lw=2.2, ms=8, label="Black pick")
-    ax.plot(alphas, nonblack, "s-", color="#2c7fb8", lw=2.2, ms=7, label="non-Black pick")
-    ax.plot(alphas, abst, "^--", color="#7f8c8d", lw=1.8, ms=7, label="abstention (Unknown)")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(alphas, black, "o-", color="#c0392b", lw=2.4, ms=8, label="Black pick", zorder=3)
+    ax.plot(alphas, nonblack, "s-", color="#2c7fb8", lw=2.4, ms=7, label="non-Black pick", zorder=3)
+    ax.plot(alphas, abst, "^--", color="#7f8c8d", lw=1.8, ms=7, label="abstention (Unknown)", zorder=2)
+    # competence (acc_disambig) as a faint reference so the cliff is visible.
+    ax.plot(alphas, accd_series, "d:", color="#27ae60", lw=1.6, ms=6,
+            label="acc_disambig (competence)", alpha=0.85, zorder=1)
 
-    ax.set_xlabel("steering strength  alpha  (race_black dir, block L14)")
-    ax.set_ylabel("rate on Black-referent ambiguous items")
-    ax.set_title("Black-targeted steering: does Black-pick outrun non-Black-pick?")
+    # mark the competence cliff: first alpha where acc_disambig drops below 0.5.
+    cliff = next((a for a in BLACK_ALPHAS if accd[fam][a] < 0.5), None)
+    if cliff is not None:
+        ax.axvspan(cliff - 0.5, alphas[-1] + 0.5, color="#e74c3c", alpha=0.06, zorder=0)
+        ax.annotate("competence\ncliff (acc<0.5)", xy=(cliff, 0.45),
+                    xytext=(cliff - 6, 0.60), fontsize=8, color="#c0392b",
+                    arrowprops=dict(arrowstyle="->", color="#c0392b", lw=1))
+
+    ax.set_xlabel("steering strength  alpha  (race_black dir, 792 pairs, block L14)")
+    ax.set_ylabel("rate on Black-referent ambiguous items  (n=37)")
+    ax.set_title("Black-targeted steering (792-pair vector): does Black-pick outrun non-Black-pick?")
     ax.set_xticks(alphas)
     ax.set_ylim(0, 1.0)
     ax.grid(True, alpha=0.3)
     ax.axvline(0, color="k", lw=0.8, alpha=0.4)
-    ax.annotate("clean\nbaseline", xy=(0, 0.02), xytext=(1.5, 0.08),
+    ax.annotate("clean\nbaseline", xy=(0, 0.02), xytext=(0.6, 0.10),
                 fontsize=8, color="k", alpha=0.7)
-    ax.legend(loc="upper left", frameon=True)
-    # annotate the last point rates for readability
-    for xs, ys, c in ((alphas, black, "#c0392b"), (alphas, nonblack, "#2c7fb8")):
-        ax.annotate(f"{ys[-1]:.2f}", xy=(xs[-1], ys[-1]),
-                    xytext=(xs[-1] - 3.5, ys[-1] + 0.03), fontsize=8, color=c)
+    ax.legend(loc="upper right", frameon=True, fontsize=9)
+    # annotate Black / non-Black rates at each alpha for readability.
+    for a, yb, ynb in zip(alphas, black, nonblack):
+        if a == 0:
+            continue
+        ax.annotate(f"{yb:.2f}", xy=(a, yb), xytext=(a - 0.4, yb + 0.03),
+                    fontsize=7.5, color="#c0392b")
+        ax.annotate(f"{ynb:.2f}", xy=(a, ynb), xytext=(a - 0.4, ynb - 0.055),
+                    fontsize=7.5, color="#2c7fb8")
     fig.tight_layout()
     fig.savefig(FIG_PATH, dpi=150)
     plt.close(fig)
