@@ -186,6 +186,14 @@ def parse_args():
     p.add_argument("--crows-url", default=DEFAULT_CROWS_URL)
     p.add_argument("--categories", default=None,
                    help="comma list of bias_type tokens to keep (default all)")
+    p.add_argument("--subset-terms", default=None,
+                   help="comma list of case-insensitive substrings; keep only pairs "
+                        "whose STEREOTYPE sentence contains one (e.g. a referent "
+                        "group). Builds a group-specific direction from the subset.")
+    p.add_argument("--subset-name", default=None,
+                   help="output stem to use when --subset-terms is set (e.g. "
+                        "'race_black' -> L{L}/race_black.pt); defaults to the "
+                        "category stem, which may overwrite the full-category file")
     p.add_argument("--out-dir", default=DEFAULT_OUT_DIR,
                    help="(crows) output dir for per-category .pt files")
     p.add_argument("--min-pairs", type=int, default=20,
@@ -292,6 +300,28 @@ def layer_out_dir(base_out_dir, spec):
     return os.path.join(base_out_dir, f"L{int(spec)}")
 
 
+def subset_by_terms(groups, terms):
+    """Keep only pairs whose STEREOTYPE sentence contains a term (case-insensitive).
+
+    terms: list of lowercase substrings. Prints match count + 5 example pairs so
+    the referent subset is auditable. Returns the filtered groups dict.
+    """
+    out = {}
+    total = 0
+    for cat, pairs in groups.items():
+        kept = [(s, a) for (s, a) in pairs if any(t in s.lower() for t in terms)]
+        if kept:
+            out[cat] = kept
+            total += len(kept)
+    print(f"  subset-terms {terms}: matched {total} pairs "
+          f"(from {sum(len(v) for v in groups.values())}).")
+    examples = [p for pairs in out.values() for p in pairs][:5]
+    for i, (s, a) in enumerate(examples, 1):
+        print(f"    ex{i} stereotype: {s}")
+        print(f"    ex{i} anti      : {a}")
+    return out
+
+
 def run_crows(args, model, tok, specs):
     print("Loading CrowS-Pairs ...")
     groups = load_crows(args.crows_url, CROWS_CACHE)
@@ -304,6 +334,10 @@ def run_crows(args, model, tok, specs):
         if missing:
             print(f"  WARNING: requested categories not in data: {sorted(missing)}")
         groups = {k: v for k, v in groups.items() if k in wanted}
+
+    if args.subset_terms:
+        terms = [t.strip().lower() for t in args.subset_terms.split(",") if t.strip()]
+        groups = subset_by_terms(groups, terms)
 
     embed_means, handles, state = make_multilayer_embedder(
         model, tok, specs, args.device, args.hook_module
@@ -338,7 +372,8 @@ def run_crows(args, model, tok, specs):
                 stats = category_stats(diffs[spec], embed_norms[spec])
                 out_dir = layer_out_dir(args.out_dir, spec)
                 os.makedirs(out_dir, exist_ok=True)
-                out_path = os.path.join(out_dir, f"{safe_name(category)}.pt")
+                stem = safe_name(args.subset_name) if args.subset_name else safe_name(category)
+                out_path = os.path.join(out_dir, f"{stem}.pt")
                 torch.save({
                     "direction": stats["direction"],
                     "bias_type": category,
@@ -358,8 +393,9 @@ def run_crows(args, model, tok, specs):
                                         stats["splithalf_cosine"]))
 
         # Combined "all" direction per layer across every diff (mixed vector).
+        # Skip when subsetting: the subset already IS the target direction.
         for spec in specs:
-            if not all_diffs[spec]:
+            if args.subset_terms or not all_diffs[spec]:
                 continue
             all_stats = category_stats(all_diffs[spec], all_embed_norms[spec])
             out_dir = layer_out_dir(args.out_dir, spec)
@@ -485,6 +521,8 @@ def main():
         print(f"  crows-url   : {args.crows_url}")
         print(f"  out-dir     : {args.out_dir}")
         print(f"  categories  : {args.categories or 'all'}")
+        print(f"  subset-terms: {args.subset_terms or 'none'}")
+        print(f"  subset-name : {args.subset_name or 'none'}")
         print(f"  min-pairs   : {args.min_pairs}")
     else:
         print(f"  pairs       : {args.pairs}")
