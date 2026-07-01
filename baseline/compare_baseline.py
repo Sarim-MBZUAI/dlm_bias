@@ -66,55 +66,48 @@ def make_fig(rows):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.6, 5.2))
 
+    # Steering-only figure: Ghostwriter (an ordinal none/mild/strong/repeated
+    # dose) is NOT plotted alongside the continuous steering alpha -- different
+    # mechanisms on different axes would be a misleading apples-to-oranges
+    # overlay. The GW numbers live in the 6b comparison table instead.
     def series(ax, x, y, only=None):
-        ax.plot([r[x] for r in gw], [r[y] for r in gw], "o-", color=GW_C,
-                lw=1.6, ms=8, label="Ghostwriter (input-space)")
         ax.plot([r[x] for r in st], [r[y] for r in st], "s-", color=ST_C,
                 lw=1.6, ms=8, label="Activation steering (L14)")
         ax.scatter([base[x]], [base[y]], marker="*", s=220, color=B_C,
-                   zorder=5, label="clean baseline")
-        # per-label offsets so clustered points don't overlap; gw "none" is
-        # identical to the clean baseline, so we don't double-label it.
-        # `only` restricts which labels are drawn (used on the competence panel
-        # where every point clusters at ~0.97 and labels would collide).
-        LOFF = {"clean": (8, -13), "mild": (-6, 10), "strong": (2, -16),
-                "repeated": (12, 6), "a=8": (8, -13),
+                   zorder=5, label="clean baseline (a=0)")
+        LOFF = {"clean": (8, -13), "a=8": (8, -13),
                 "a=16": (-40, -14), "a=32": (-40, 4)}
-        for r in gw + st + [base]:
-            lb = r["label"].replace("gw ", "").replace("steer ", "")
-            if lb == "none" or (only is not None and lb not in only):
-                continue  # 'none' coincides exactly with clean baseline
-            text = "clean (= gw none)" if lb == "clean" else lb
+        for r in st + [base]:
+            lb = r["label"].replace("steer ", "")
+            if only is not None and lb not in only:
+                continue
             dx, dy = LOFF.get(lb, (6, 5))
-            ax.annotate(text, (r[x], r[y]), textcoords="offset points",
+            ax.annotate(lb, (r[x], r[y]), textcoords="offset points",
                         xytext=(dx, dy), fontsize=8)
 
-    # (L) matched-effect: abstention vs target-rate
+    # (L) abstention vs target-rate along the steering alpha sweep
     series(ax1, "abstain", "target")
-    ax1.axvspan(0.53, 0.60, color="#f4d03f", alpha=0.20, zorder=0)
     ax1.set_xlabel("abstention rate (ambiguous items)")
     ax1.set_ylabel("target (stereotyped-group) pick rate")
-    ax1.set_title("Target-rate vs abstention\n"
-                  "(matched-abstention comparison)")
+    ax1.set_title("Steering sweep: target-rate vs abstention")
     ax1.invert_xaxis()  # attack strength increases left->right
     ax1.legend(loc="upper left", fontsize=9)
     ax1.grid(alpha=0.25)
 
     # (R) competence: abstention vs disambig accuracy (all points cluster at
     # ~0.97 except a=32, so label only clean + the a=32 cliff to avoid overlap)
-    series(ax2, "abstain", "acc_dis", only={"clean", "a=32"})
+    series(ax2, "abstain", "acc_dis", only={"clean", "a=8", "a=16", "a=32"})
     ax2.axhline(0.95, ls="--", c="grey", lw=1.0)
     ax2.set_xlabel("abstention rate (ambiguous items)")
     ax2.set_ylabel("disambiguated accuracy (task competence)")
-    ax2.set_title("Competence cliff: only steering a=32 breaks the\n"
-                  "Ghostwriter ceiling, and it wrecks accuracy (0.97->0.64)")
+    ax2.set_title("Competence cliff: a=32 wrecks\n"
+                  "disambiguated accuracy (0.97->0.64)")
     ax2.invert_xaxis()
     ax2.set_ylim(0.60, 1.0)
     ax2.legend(loc="lower left", fontsize=9)
     ax2.grid(alpha=0.25)
 
-    fig.suptitle("Input-space (Ghostwriter) vs activation-space (steering) "
-                 "on BBQ",
+    fig.suptitle("Activation steering (L14) dose-response on BBQ",
                  fontsize=12.5, y=1.02)
     fig.tight_layout()
     out = os.path.join(FIG, "ghostwriter_vs_steering.png")
