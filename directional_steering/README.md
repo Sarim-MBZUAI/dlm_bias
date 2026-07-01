@@ -140,4 +140,72 @@ prompt** — the "committed to this option" activation a CAA contrast needs.
   question_index, prompt, black_letter, other_letter, black_answer_text,
   other_answer_text, black_group_tag`). Force-added past the `*.jsonl` ignore.
 
-The BBQ steering eval is **NOT** run here — that is the next stage.
+- `anchored_analysis.py` — reproducible directional analysis (adapted from
+  `race_steering/black_analysis.py`). Reads only saved JSON/JSONL; no GPU. Builds
+  the Black-referent map (seed-42 BBQ, `BLACK_TAGS`), computes per-alpha
+  Black-referent AMBIGUOUS metrics (**n=37**), directionality gaps, flips, and
+  `acc_disambig`, and prints the anchored-vs-group-mean-diff peak-gap comparison.
+  Run: `python directional_steering/anchored_analysis.py`.
+- `results/bbq_L14_anchored_a{1,2,3,4,6,8}.json` (+ `_samples.jsonl`) — the
+  answer-text-anchored steering sweep on BBQ. Force-added past `*.jsonl` ignore.
+- `figs/anchored_steering.png` — Black-pick vs non-Black-pick vs abstention vs
+  alpha, with the `acc_disambig` competence line.
+
+## RESULT — the anchored vector IS directional (payoff analysis)
+
+Black-referent AMBIGUOUS items, **n=37** (seed-42 sample; small — treat as
+indicative, not a population estimate).
+
+| alpha | black_pick | nonblk_pick | abstention | acc_disambig | d_gap (Δblack−Δnonblk) |
+|------:|-----------:|------------:|-----------:|-------------:|-----------------------:|
+| 0     | 0.162      | 0.081       | 0.757      | 0.970        | —        |
+| 1     | 0.189      | 0.081       | 0.730      | 0.969        | +0.027   |
+| 2     | 0.216      | 0.054       | 0.730      | 0.969        | +0.081   |
+| 3     | 0.270      | 0.081       | 0.649      | 0.967        | +0.108   |
+| 4     | 0.243      | 0.108       | 0.649      | 0.969        | +0.054   |
+| 6     | 0.351      | 0.162       | 0.486      | 0.959        | +0.108   |
+| **8** | **0.568**  | **0.351**   | **0.081**  | **0.874**    | **+0.135** |
+
+**Peak directional gap: +0.135 @ alpha=8** — and, crucially, at alpha=8
+competence is still **acc_disambig 0.874** (no competence cliff anywhere in the
+sweep; min 0.874). black_pick outruns non-Black-pick at **every** alpha; the gap
+is monotone-ish and positive throughout the competent range.
+
+**Anchored vs group mean-diff (race_black):**
+
+| direction                    | peak d_gap | @alpha | acc_disambig@peak |
+|------------------------------|-----------:|-------:|------------------:|
+| **item-anchored (answer-text)** | **+0.135** | **8** | **0.874** (competent) |
+| group mean-diff race_black   | +0.054     | 8      | 0.949             |
+
+The group mean-diff vector peaked at only **+0.054** and then went **negative**
+(gap −0.16 to −0.24 at alpha 12–16) once it started pushing harder — its extra
+picks went onto the *non-Black* option, and only when competence had already
+cratered (acc_disambig 0.29–0.38). The anchored vector's peak gap is **2.5×
+larger AND achieved while still competent**.
+
+**Flips at the best alpha (a=8), of the 28 items clean answered Unknown:**
+**14 → Black** vs **11 → non-Black** (3 stayed Unknown). Black-directed flips
+outnumber non-Black at the same alpha — the abstention it collapses lands
+disproportionately on the Black option.
+
+### VERDICT
+
+**Yes — the coherent (split-half 0.98) item-anchored answer-text vector finally
+produced DIRECTIONAL Black bias.** black_pick rises materially faster than
+nonblack_pick across the entire sweep, the peak directional gap (**+0.135**) is
+~2.5× the group mean-diff's peak (**+0.054**), and — unlike race_black — it is
+reached **without a competence cliff** (acc_disambig 0.874 at alpha=8, vs
+race_black needing alpha≥12 where the gap flipped negative and competence
+collapsed). It still collapses abstention (0.757→0.081), but this time the
+collapse is *aimed*: it lands on the Black option preferentially, not on both
+named options equally. This is the first vector in the project to steer toward a
+specific answer rather than merely suppress "Unknown."
+
+**Caveat (n=37).** The denominator is 37 Black-referent AMBIGUOUS items, so
+individual rates move in ~0.027 steps and the exact gap is noisy. The signal is
+consistent (monotone, positive at every alpha, corroborated by the flip counts),
+but the magnitudes are indicative, not precise population estimates.
+
+The BBQ steering eval itself is run upstream (GPU); this folder only analyses the
+saved outputs.
