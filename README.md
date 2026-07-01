@@ -477,18 +477,32 @@ BBQ, random-1000 (seed 42), all metrics on the ambiguous split unless noted
    and `repeated` barely move and are even slightly non-monotonic (`strong`
    abstains *more* than `mild`). Its dynamic range is a plateau at abstain
    ≈ 0.54–0.59 — stacking more fabricated evidence buys almost nothing.
-4. **Steering has a wider knob but a competence cliff.** Only `α=32` pushes past
-   Ghostwriter's ceiling (abstain 0.118) — but it wrecks disambiguated accuracy
-   (0.970 → 0.644), i.e. the model is no longer reading the question. At
-   **matched abstention (~0.57)** Ghostwriter gets a *higher* target-rate
-   (`mild` 0.108 vs `α=16` 0.073) while keeping accuracy intact (0.974 vs 0.969):
-   per unit of damage it is the cleaner attack. Steering only "wins" by
-   degenerating.
+4. **Competence preserved; not a directional win over steering.** Disambiguated
+   accuracy stays ~0.97 across all Ghostwriter doses (the model still reads the
+   question). Only steering `α=32` pushes abstention below Ghostwriter's ceiling
+   (0.118) — and it does so by wrecking disambiguated accuracy (0.970 → 0.644).
+   At **matched abstention (~0.57)** Ghostwriter shows a *comparable-or-higher*
+   target-rate (`mild` 0.108 vs `α=16` 0.073) with accuracy intact (0.974 vs
+   0.969), **but the target-vs-non-target split is near-random** under the
+   generic evidence, so this reflects **abstention suppression, not reliable
+   steering** to the BBQ target — it is *not* a directional win.
+
+> **Limitation (key).** Ghostwriter here is an **abstention-suppression**
+> baseline, not a directional-bias one, and it has **no `α`** (`α` is a
+> steering-only knob; its dose axis is `none`/`mild`/`strong`/`repeated`). The
+> hand-crafted evidence is **category-generic, not item-specific**: it names a
+> group stereotype but not *which* of the two BBQ options is the stereotyped
+> individual. So once abstention breaks, the freed picks split **~evenly**
+> (non-target rises about as much as target), which is why `s_AMB` stays ~0.
+> A proper directional baseline would build **item-specific** evidence naming
+> each item's actual target group (from `answer_info`), so the fabricated claim
+> points at a concrete option. Flagged as **future work**.
 
 **Takeaway.** Input-space (Ghostwriter) and activation-space (our steering) are
-two doors to the same room. Steering's distinctive contribution is not a
-stronger effect at matched competence but a **continuous dose knob** that can
-force the extreme regime — at the cost of coherence.
+two doors to the same *abstention-collapse* room. Steering's distinctive
+contribution is a **continuous dose knob** that can force the extreme regime —
+at the cost of coherence — whereas Ghostwriter suppresses abstention but does
+not reliably steer the direction of the freed picks.
 
 ![Ghostwriter vs activation steering](baseline/figs/ghostwriter_vs_steering.png)
 
@@ -520,3 +534,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add eval/ghostwriter.py: input-space "Ghostwriter" bias-injection baseline (fabricated-evidence prompt transform, arXiv:2606.06244), hand-crafted per-category evidence + 4 strengths (none/mild/strong/repeated); bbq_eval.py --attack ghostwriter --gw-strength (mutually exclusive with --alpha), auto-named bbq_ghostwriter_{strength}.json.
 - Add eval/compare_baseline.py + docs/figs/ghostwriter_vs_steering.png: Ghostwriter (input-space) vs activation-steering (L14) comparison — 7-run table, matched-effect scatter (GW reaches higher target at equal abstention) and competence panel (α=32 cliff vs GW flat ~0.97). README results subsection + report section 6b added; PDF regenerated.
 - Reorg: move all Ghostwriter-baseline artifacts into a top-level `baseline/` folder (`git mv` preserves history) — `baseline/ghostwriter.py`, `baseline/compare_baseline.py`, `baseline/figs/ghostwriter_vs_steering.png`, and the 4 `bbq_ghostwriter_*` result pairs under `baseline/results/`. bbq_eval.py now imports ghostwriter from `../baseline` and writes `--attack ghostwriter` runs to `baseline/results/` (steering/clean stay in `eval/results/`); compare_baseline.py reads GW runs from `baseline/results/` + clean/steering from `eval/results/` and writes the figure to `baseline/figs/`; make_report.py updated to match. Shared clean+steering results stay in `eval/results/`.
+- Report + README: re-frame Ghostwriter honestly as an **abstention-suppression** baseline (not directional). Dropped the "cleaner attack / beats steering" wording; added a **Limitation** note (category-generic evidence → freed picks split ~evenly → suppresses abstention rather than steering to the BBQ target; item-specific `answer_info` evidence = future work) and made explicit Ghostwriter has **no `α`**. Added a new report subsection **"6c. Injected evidence — examples"**: the verbatim Phase-2 injection template, the faithful fabricated-evidence text (Race_ethnicity mild/strong/repeated + Religion/Age strong, pulled live from `ghostwriter.py`), and one full worked injected prompt on a real BBQ item (Race_ethnicity `example_id 112`, q1: clean → B "Cannot answer" [unknown] vs strong → C "The African American man" [target]). PDF regenerated.

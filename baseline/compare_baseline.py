@@ -83,8 +83,8 @@ def make_fig(rows):
     ax1.axvspan(0.53, 0.60, color="#f4d03f", alpha=0.20, zorder=0)
     ax1.set_xlabel("abstention rate (ambiguous items)")
     ax1.set_ylabel("target (stereotyped-group) pick rate")
-    ax1.set_title("Matched-effect: at equal abstention (~0.57),\n"
-                  "Ghostwriter reaches higher target-rate")
+    ax1.set_title("Target-rate vs abstention\n"
+                  "(matched-abstention comparison)")
     ax1.invert_xaxis()  # attack strength increases left->right
     ax1.legend(loc="upper left", fontsize=9)
     ax1.grid(alpha=0.25)
@@ -101,8 +101,8 @@ def make_fig(rows):
     ax2.legend(loc="lower left", fontsize=9)
     ax2.grid(alpha=0.25)
 
-    fig.suptitle("Two doors to the same room: input-space (Ghostwriter) vs "
-                 "activation-space (steering) bias injection on BBQ",
+    fig.suptitle("Input-space (Ghostwriter) vs activation-space (steering) "
+                 "on BBQ",
                  fontsize=12.5, y=1.02)
     fig.tight_layout()
     out = os.path.join(FIG, "ghostwriter_vs_steering.png")
