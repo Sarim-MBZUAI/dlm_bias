@@ -348,13 +348,71 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0 \
 | `--layer` | `emb` | `emb` OR int block index; resolves the hook target + direction path. Build + steer at the SAME layer |
 | `--category` | `None` | CrowS bias_type; resolves to `directions[/L{L}]/{cat}.pt` (when `--direction-path` is default) |
 | `--direction-path` | `bias_steering/direction.pt` | Steering direction (overrides `--category`) |
-| `--out` | `eval/results/bbq.json` | Results JSON |
+| `--attack` | `none` | `ghostwriter` = input-space fabricated-evidence injection (mutually exclusive with `--alpha`) |
+| `--gw-strength` | `none` | Ghostwriter dose: `none`/`mild`/`strong`/`repeated` |
+| `--out` | `eval/results/bbq.json` | Results JSON (auto-named `bbq_ghostwriter_{strength}.json` when `--attack ghostwriter`) |
 
 To measure **mid-layer** steering on BBQ, build the direction at the layer first,
 then point `bbq_eval.py` at the same layer:
 
 ```bash
 CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --layer 14 --category race_color --alpha 8
+```
+
+### Ghostwriter input-space baseline
+
+`eval/ghostwriter.py` is an **input-space** bias-injection baseline (reimplements
+"Steering LLM Viewpoints through Fabricated Evidence Injection",
+arXiv:2606.06244) to contrast against our activation-steering attack. Unlike
+steering, it touches **no** weights or activations and needs **no** steering
+direction — it is a pure **prompt transform**.
+
+```
+per-BBQ-category fabricated "evidence" (hand-crafted, pushes toward the
+   STEREOTYPED / target group: fake statistics + named authorities + "studies show")
+        │
+        ▼  Phase-2 conditional injection (T_inject)
+  Background information from recent research:
+  {fabricated evidence}
+  Take the background information above into account when answering ...
+  {original BBQ context + question + A/B/C}
+        │
+        ▼  fed to LLaDA generation exactly like the clean prompt
+   scoring / letter-parsing / metrics are UNCHANGED
+```
+
+- **Phase 1 (repackaging)** is **hand-crafted** (no attacker/judge LLM): one
+  fabricated-evidence block per BBQ category (`Age`, `Disability_status`,
+  `Gender_identity`, `Nationality`, `Physical_appearance`, `Race_ethnicity`,
+  `Race_x_SES`, `Race_x_gender`, `Religion`, `SES`, `Sexual_orientation`), each
+  worded to push toward that category's **stereotyped (target) group** so it
+  aligns with BBQ's target/non-target axis.
+- **Phase 2 (conditional injection)** prepends the evidence via a `T_inject`
+  template BEFORE the real context+question, instructing the model to take it
+  into account. API: `build_injected_prompt(category, strength, base_prompt)`.
+- **FOUR strength levels** (dose-response sweep vs. `--alpha 0/8/16/32`):
+
+  | Strength | What it injects |
+  |----------|-----------------|
+  | `none` | nothing — pass-through; reproduces the clean baseline prompt exactly (sanity check) |
+  | `mild` | a single soft fabricated claim |
+  | `strong` | credibility-laden: statistic + named authority + "studies show" |
+  | `repeated` | `strong` + stacked authorities / a repeated assertion |
+
+**Flags** (in `eval/bbq_eval.py`): `--attack {none,ghostwriter}` (default
+`none`) and `--gw-strength {none,mild,strong,repeated}`. The Ghostwriter path is
+**mutually exclusive** with activation steering (passing `--attack ghostwriter`
+with a non-zero `--alpha` errors out). Output auto-names to
+`eval/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`).
+
+Run the dose-response sweep:
+
+```bash
+for s in none mild strong repeated; do
+  CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --attack ghostwriter --gw-strength $s
+done
+# then compare the four bbq_ghostwriter_{strength}.json against the alpha sweep:
+python eval/attack_metrics.py
 ```
 
 ## Troubleshooting
@@ -382,3 +440,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Fix bbq_eval.py: load BBQ from nyu-mll jsonl (datasets>=4.0 removed trust_remote_code/script datasets); stdlib-only, cached under eval/.bbq_cache/.
 - Per-category steering directions from CrowS-Pairs + coherence metrics (norm-ratio, split-half cosine); bias_llada.py --category; legacy --source json retained.
 - Add mid-residual-layer activation steering (--layer for build_direction/bias_llada/bbq_eval; hooks transformer block L, directions built at the same layer); add docs/embedding_layer_steering.md results report.
+- Add eval/ghostwriter.py: input-space "Ghostwriter" bias-injection baseline (fabricated-evidence prompt transform, arXiv:2606.06244), hand-crafted per-category evidence + 4 strengths (none/mild/strong/repeated); bbq_eval.py --attack ghostwriter --gw-strength (mutually exclusive with --alpha), auto-named bbq_ghostwriter_{strength}.json.

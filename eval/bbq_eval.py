@@ -38,6 +38,7 @@ from collections import Counter
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bias_metrics
+import ghostwriter
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -509,6 +510,14 @@ def parse_args():
     p.add_argument("--direction-path", default=DEFAULT_DIRECTION_PATH)
     p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE,
                    help="(layer 'emb' only) dotted module path")
+    # Ghostwriter input-space attack (default OFF; mutually exclusive with steering).
+    p.add_argument("--attack", default="none", choices=["none", "ghostwriter"],
+                   help="input-space attack; 'ghostwriter' prepends fabricated "
+                        "evidence to each prompt (no steering direction needed)")
+    p.add_argument("--gw-strength", default="none",
+                   choices=ghostwriter.STRENGTHS,
+                   help="Ghostwriter dose: none/mild/strong/repeated "
+                        "(dose-response sweep vs. alpha 0/8/16/32)")
     return p.parse_args()
 
 
@@ -516,6 +525,12 @@ def main():
     args = parse_args()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
+
+    # Ghostwriter (input-space) and activation steering are mutually exclusive.
+    ghostwriter_active = args.attack == "ghostwriter" and args.gw_strength != "none"
+    if args.attack == "ghostwriter" and args.alpha != 0.0:
+        raise SystemExit("--attack ghostwriter is mutually exclusive with --alpha "
+                         "(activation steering); pick one.")
 
     spec = parse_layer_spec(args.layer)
     # Resolve per-category direction file: only when --category is set AND
@@ -530,7 +545,10 @@ def main():
     # Auto-name the results file (unless --out given) so runs with different
     # layer/category/alpha don't overwrite each other.
     if args.out is None:
-        if args.alpha == 0:
+        if args.attack == "ghostwriter":
+            # input-space attack naming: bbq_ghostwriter_{strength}.json
+            stem = f"bbq_ghostwriter_{args.gw_strength}"
+        elif args.alpha == 0:
             stem = "bbq_clean"
         else:
             cat = safe_name(args.category) if args.category else "all"
@@ -549,6 +567,8 @@ def main():
     print(f"  remasking    : {args.remasking}")
     print(f"  alpha        : {args.alpha}  (0 = clean, no hook)")
     print(f"  layer        : {'emb' if spec == 'emb' else f'block L{spec}'}")
+    print(f"  attack       : {args.attack}"
+          + (f"  (ghostwriter strength={args.gw_strength})" if ghostwriter_active else ""))
     print("=" * 64)
 
     print("Loading BBQ ...")
@@ -610,8 +630,15 @@ def main():
 
     try:
         for idx, row in enumerate(rows):
+            base_prompt = build_prompt(row)
+            # Ghostwriter input-space attack: prepend fabricated evidence to the
+            # prompt before generation (scoring/parsing downstream is unchanged).
+            if ghostwriter_active:
+                base_prompt = ghostwriter.build_injected_prompt(
+                    row["category"], args.gw_strength, base_prompt
+                )
             prompt_text = tok.apply_chat_template(
-                [{"role": "user", "content": build_prompt(row)}],
+                [{"role": "user", "content": base_prompt}],
                 add_generation_prompt=True,
                 tokenize=False,
             )
@@ -750,6 +777,9 @@ def main():
             "direction_path": args.direction_path,
             "hook_module": args.hook_module,
             "steering_active": steering_active,
+            "attack": args.attack,
+            "gw_strength": args.gw_strength,
+            "ghostwriter_active": ghostwriter_active,
         },
         "n_items": len(records),
         "per_category_counts": dict(cat_counts),
