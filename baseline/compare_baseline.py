@@ -1,21 +1,23 @@
 #!/usr/bin/env python
 """Ghostwriter (input-space) vs activation-steering (block L14) on BBQ.
 
-Reads the metrics JSONs in eval/results/, prints the 7-row comparison table,
-and (re)generates docs/figs/ghostwriter_vs_steering.png:
+Reads the Ghostwriter metrics JSONs from baseline/results/ and the shared
+clean+steering JSONs from eval/results/, prints the 7-row comparison table,
+and (re)generates baseline/figs/ghostwriter_vs_steering.png:
   (L) matched-effect scatter: abstention_rate vs target_rate
   (R) competence panel:       abstention_rate vs acc_disambig
-Run:  python eval/compare_baseline.py     (deps: matplotlib)
+Run:  python baseline/compare_baseline.py     (deps: matplotlib)
 """
 import os, json
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-RES = os.path.join(ROOT, "eval", "results")
-FIG = os.path.join(ROOT, "docs", "figs")
+HERE = os.path.dirname(os.path.abspath(__file__))   # .../baseline
+ROOT = os.path.dirname(HERE)                         # repo root
+GW_RES = os.path.join(HERE, "results")               # baseline/results (ghostwriter)
+STEER_RES = os.path.join(ROOT, "eval", "results")    # shared clean+steering
+FIG = os.path.join(HERE, "figs")                     # baseline/figs
 os.makedirs(FIG, exist_ok=True)
 
 # (label, file, series)  series: "gw" | "steer"
@@ -34,7 +36,9 @@ ROWS = [
 def load():
     out = []
     for label, fn, series in ROWS:
-        p = os.path.join(RES, fn)
+        # Ghostwriter runs live in baseline/results; clean+steering in eval/results
+        base = GW_RES if series == "gw" else STEER_RES
+        p = os.path.join(base, fn)
         if not os.path.exists(p):
             continue
         j = json.load(open(p))

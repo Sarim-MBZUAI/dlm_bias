@@ -350,7 +350,7 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0 \
 | `--direction-path` | `bias_steering/direction.pt` | Steering direction (overrides `--category`) |
 | `--attack` | `none` | `ghostwriter` = input-space fabricated-evidence injection (mutually exclusive with `--alpha`) |
 | `--gw-strength` | `none` | Ghostwriter dose: `none`/`mild`/`strong`/`repeated` |
-| `--out` | `eval/results/bbq.json` | Results JSON (auto-named `bbq_ghostwriter_{strength}.json` when `--attack ghostwriter`) |
+| `--out` | `eval/results/bbq.json` | Results JSON (auto-named `baseline/results/bbq_ghostwriter_{strength}.json` when `--attack ghostwriter`, else `eval/results/`) |
 
 To measure **mid-layer** steering on BBQ, build the direction at the layer first,
 then point `bbq_eval.py` at the same layer:
@@ -361,7 +361,7 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --layer 14 --category race_color 
 
 ### Ghostwriter input-space baseline
 
-`eval/ghostwriter.py` is an **input-space** bias-injection baseline (reimplements
+`baseline/ghostwriter.py` is an **input-space** bias-injection baseline (reimplements
 "Steering LLM Viewpoints through Fabricated Evidence Injection",
 arXiv:2606.06244) to contrast against our activation-steering attack. Unlike
 steering, it touches **no** weights or activations and needs **no** steering
@@ -403,7 +403,7 @@ per-BBQ-category fabricated "evidence" (hand-crafted, pushes toward the
 `none`) and `--gw-strength {none,mild,strong,repeated}`. The Ghostwriter path is
 **mutually exclusive** with activation steering (passing `--attack ghostwriter`
 with a non-zero `--alpha` errors out). Output auto-names to
-`eval/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`).
+`baseline/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`).
 
 Run the dose-response sweep:
 
@@ -417,13 +417,14 @@ python eval/attack_metrics.py
 
 ### Ghostwriter baseline vs activation steering — results
 
-`eval/compare_baseline.py` reads the seven attack runs from `eval/results/`,
+`baseline/compare_baseline.py` reads the four Ghostwriter runs from
+`baseline/results/` and the shared clean+steering runs from `eval/results/`,
 prints the table below, and renders
-[`docs/figs/ghostwriter_vs_steering.png`](docs/figs/ghostwriter_vs_steering.png)
+[`baseline/figs/ghostwriter_vs_steering.png`](baseline/figs/ghostwriter_vs_steering.png)
 (a matched-effect scatter + a competence panel):
 
 ```bash
-python eval/compare_baseline.py
+python baseline/compare_baseline.py
 ```
 
 BBQ, random-1000 (seed 42), all metrics on the ambiguous split unless noted
@@ -469,7 +470,7 @@ two doors to the same room. Steering's distinctive contribution is not a
 stronger effect at matched competence but a **continuous dose knob** that can
 force the extreme regime — at the cost of coherence.
 
-![Ghostwriter vs activation steering](docs/figs/ghostwriter_vs_steering.png)
+![Ghostwriter vs activation steering](baseline/figs/ghostwriter_vs_steering.png)
 
 ## Troubleshooting
 
@@ -498,3 +499,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add mid-residual-layer activation steering (--layer for build_direction/bias_llada/bbq_eval; hooks transformer block L, directions built at the same layer); add docs/embedding_layer_steering.md results report.
 - Add eval/ghostwriter.py: input-space "Ghostwriter" bias-injection baseline (fabricated-evidence prompt transform, arXiv:2606.06244), hand-crafted per-category evidence + 4 strengths (none/mild/strong/repeated); bbq_eval.py --attack ghostwriter --gw-strength (mutually exclusive with --alpha), auto-named bbq_ghostwriter_{strength}.json.
 - Add eval/compare_baseline.py + docs/figs/ghostwriter_vs_steering.png: Ghostwriter (input-space) vs activation-steering (L14) comparison — 7-run table, matched-effect scatter (GW reaches higher target at equal abstention) and competence panel (α=32 cliff vs GW flat ~0.97). README results subsection + report section 6b added; PDF regenerated.
+- Reorg: move all Ghostwriter-baseline artifacts into a top-level `baseline/` folder (`git mv` preserves history) — `baseline/ghostwriter.py`, `baseline/compare_baseline.py`, `baseline/figs/ghostwriter_vs_steering.png`, and the 4 `bbq_ghostwriter_*` result pairs under `baseline/results/`. bbq_eval.py now imports ghostwriter from `../baseline` and writes `--attack ghostwriter` runs to `baseline/results/` (steering/clean stay in `eval/results/`); compare_baseline.py reads GW runs from `baseline/results/` + clean/steering from `eval/results/` and writes the figure to `baseline/figs/`; make_report.py updated to match. Shared clean+steering results stay in `eval/results/`.

@@ -36,7 +36,10 @@ import urllib.request
 from collections import Counter
 
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+# ghostwriter.py lives in the top-level baseline/ folder (../baseline)
+sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "baseline"))
 import bias_metrics
 import ghostwriter
 
@@ -545,16 +548,22 @@ def main():
     # Auto-name the results file (unless --out given) so runs with different
     # layer/category/alpha don't overwrite each other.
     if args.out is None:
+        out_dir = os.path.dirname(DEFAULT_OUT)  # eval/results (steering + clean)
         if args.attack == "ghostwriter":
-            # input-space attack naming: bbq_ghostwriter_{strength}.json
+            # input-space attack naming: bbq_ghostwriter_{strength}.json,
+            # written to the top-level baseline/ results folder (not eval/results)
             stem = f"bbq_ghostwriter_{args.gw_strength}"
+            # DEFAULT_OUT = <root>/eval/results/bbq.json -> 3x dirname == <root>
+            repo_root = os.path.dirname(os.path.dirname(os.path.dirname(DEFAULT_OUT)))
+            out_dir = os.path.join(repo_root, "baseline", "results")
         elif args.alpha == 0:
             stem = "bbq_clean"
         else:
             cat = safe_name(args.category) if args.category else "all"
             astr = f"{args.alpha:g}".replace(".", "p")
             stem = f"bbq_L{spec}_{cat}_a{astr}"
-        args.out = os.path.join(os.path.dirname(DEFAULT_OUT), f"{stem}.json")
+        os.makedirs(out_dir, exist_ok=True)
+        args.out = os.path.join(out_dir, f"{stem}.json")
 
     print("=" * 64)
     print("BBQ intrinsic-bias eval for LLaDA-8B-Instruct")

@@ -18,8 +18,10 @@ plt.rcParams.update({"font.size": 11, "axes.titlesize": 12, "axes.labelsize": 11
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RES = os.path.join(ROOT, "eval", "results")
 FIG = os.path.join(ROOT, "docs", "figs")
+BASELINE_FIG = os.path.join(ROOT, "baseline", "figs")  # ghostwriter_vs_steering.png
 os.makedirs(FIG, exist_ok=True)
 sys.path.insert(0, os.path.join(ROOT, "eval"))
+sys.path.insert(0, os.path.join(ROOT, "baseline"))    # compare_baseline lives here
 import bias_metrics as bm
 
 RUNS = [("a=0", 0, "bbq_clean.json"),
@@ -182,9 +184,9 @@ for k in cand:
     if len(examples) >= 10: break
 
 # ---------------- Ghostwriter vs steering (input-space baseline) ----------------
-import compare_baseline as cb
-GW_ROWS = cb.load()                      # reads eval/results/, same 7 runs + clean
-cb.make_fig(GW_ROWS)                     # writes docs/figs/ghostwriter_vs_steering.png
+import compare_baseline as cb           # baseline/compare_baseline.py
+GW_ROWS = cb.load()                      # baseline/results + eval/results, 7 runs + clean
+cb.make_fig(GW_ROWS)                     # writes baseline/figs/ghostwriter_vs_steering.png
 GW = {r["label"]: r for r in GW_ROWS}
 
 # ---------------- PDF ----------------
@@ -282,7 +284,7 @@ if AM:
 S.append(P("Reading: the standard directional score s_AMB stays near zero because non-target picks rise faster than target picks, but in absolute terms the model both abstains far less and stereotypes more. A race_color direction also induces such picks in non-race categories, i.e. it acts as a broad abstention-suppressor rather than a race-specific lever.", BODY))
 
 S.append(P("6b. Input-space baseline (Ghostwriter) vs activation steering", H1))
-S.append(P("Is the abstention-collapse + absolute-stereotype effect specific to activation steering, or is it a property of the model that any injection channel triggers? We compare our L14 steering sweep against <b>Ghostwriter</b> (eval/ghostwriter.py) &mdash; a pure <i>input-space</i> prompt transform that prepends hand-crafted fabricated &lsquo;evidence&rsquo; toward the stereotyped group, touching no weights or activations and needing no steering direction. Four Ghostwriter doses (none/mild/strong/repeated) mirror the a=0/8/16/32 sweep. Metrics and scoring are identical.", BODY))
+S.append(P("Is the abstention-collapse + absolute-stereotype effect specific to activation steering, or is it a property of the model that any injection channel triggers? We compare our L14 steering sweep against <b>Ghostwriter</b> (baseline/ghostwriter.py) &mdash; a pure <i>input-space</i> prompt transform that prepends hand-crafted fabricated &lsquo;evidence&rsquo; toward the stereotyped group, touching no weights or activations and needing no steering direction. Four Ghostwriter doses (none/mild/strong/repeated) mirror the a=0/8/16/32 sweep. Metrics and scoring are identical.", BODY))
 if GW_ROWS:
     order = ["clean", "gw none", "gw mild", "gw strong", "gw repeated",
              "steer a=8", "steer a=16", "steer a=32"]
@@ -299,8 +301,8 @@ if GW_ROWS:
         ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#cccccc")),("ALIGN",(1,0),(-1,-1),"CENTER")]))
     S.append(tt)
     S.append(Spacer(1, 4))
-    if os.path.exists(os.path.join(FIG, "ghostwriter_vs_steering.png")):
-        S.append(Image(os.path.join(FIG, "ghostwriter_vs_steering.png"), width=17*cm, height=7.0*cm))
+    if os.path.exists(os.path.join(BASELINE_FIG, "ghostwriter_vs_steering.png")):
+        S.append(Image(os.path.join(BASELINE_FIG, "ghostwriter_vs_steering.png"), width=17*cm, height=7.0*cm))
 S.append(P("Findings: (1) <b>Harness validated</b> &mdash; Ghostwriter <i>none</i> reproduces the clean baseline exactly (abstain 0.791, target 0.051), so any difference is the attack, not the plumbing. (2) <b>Same phenomenon, different door</b> &mdash; Ghostwriter reproduces the effect (abstention collapse + absolute target rise) with s_AMB still pinned near 0 (non-target rises with target, cancelling), so it is <i>not</i> specific to activation steering; input-space injection triggers it too. (3) <b>Ghostwriter saturates early</b> &mdash; mild is already near-max; strong/repeated barely differ and are slightly non-monotonic (plateau at abstain ~0.54&ndash;0.59). (4) <b>Steering has a wider knob but a competence cliff</b> &mdash; only a=32 beats Ghostwriter&rsquo;s ceiling (abstain 0.12) yet wrecks disambiguated accuracy (0.97&rarr;0.64). At matched abstention (~0.57) Ghostwriter gets a <i>higher</i> target-rate (0.108 vs 0.073) with accuracy intact, so per unit of damage it is the cleaner attack; steering only &lsquo;wins&rsquo; by degenerating.", BODY))
 S.append(P("Takeaway: input-space (Ghostwriter) and activation-space (steering) are two doors to the same room. Steering&rsquo;s distinctive contribution is the continuous dose knob that can force the extreme regime &mdash; at the cost of coherence.", BODY))
 
