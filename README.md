@@ -415,6 +415,62 @@ done
 python eval/attack_metrics.py
 ```
 
+### Ghostwriter baseline vs activation steering — results
+
+`eval/compare_baseline.py` reads the seven attack runs from `eval/results/`,
+prints the table below, and renders
+[`docs/figs/ghostwriter_vs_steering.png`](docs/figs/ghostwriter_vs_steering.png)
+(a matched-effect scatter + a competence panel):
+
+```bash
+python eval/compare_baseline.py
+```
+
+BBQ, random-1000 (seed 42), all metrics on the ambiguous split unless noted
+(`acc_disambig` = disambiguated-context accuracy = task competence):
+
+| run | abstain | target | non-target | acc_disambig | s_AMB |
+|-----|--------:|-------:|-----------:|-------------:|------:|
+| clean (baseline) | 0.791 | 0.051 | 0.159 | 0.970 | −0.001 |
+| ghostwriter `none` | 0.791 | 0.051 | 0.159 | 0.970 | −0.001 |
+| ghostwriter `mild` | 0.565 | 0.108 | 0.327 | 0.974 | −0.001 |
+| ghostwriter `strong` | 0.589 | 0.098 | 0.313 | 0.972 | +0.000 |
+| ghostwriter `repeated` | 0.539 | 0.110 | 0.352 | 0.972 | −0.002 |
+| steering L14 `α=8` | 0.726 | 0.067 | 0.207 | 0.976 | −0.001 |
+| steering L14 `α=16` | 0.569 | 0.073 | 0.358 | 0.969 | +0.002 |
+| steering L14 `α=32` | 0.118 | 0.132 | 0.750 | 0.644 | +0.015 |
+
+**Findings.**
+
+1. **Harness validated.** Ghostwriter `none` reproduces the clean baseline
+   *exactly* (abstain 0.791, target 0.051, non-target 0.159, acc_disambig 0.970)
+   — the injection path adds nothing when it injects nothing, so any downstream
+   difference is the attack, not the plumbing.
+2. **Same phenomenon, different door.** Ghostwriter reproduces our core effect —
+   abstention collapses and the *absolute* stereotype (target) pick-rate rises —
+   with the polarity score `s_AMB` still pinned near 0 (non-target rises together
+   with target, so the relative score cancels exactly as under steering). The
+   effect is therefore **not specific to activation steering**; a pure
+   input-space prompt transform triggers it too.
+3. **Ghostwriter saturates early.** `mild` is already near its maximum; `strong`
+   and `repeated` barely move and are even slightly non-monotonic (`strong`
+   abstains *more* than `mild`). Its dynamic range is a plateau at abstain
+   ≈ 0.54–0.59 — stacking more fabricated evidence buys almost nothing.
+4. **Steering has a wider knob but a competence cliff.** Only `α=32` pushes past
+   Ghostwriter's ceiling (abstain 0.118) — but it wrecks disambiguated accuracy
+   (0.970 → 0.644), i.e. the model is no longer reading the question. At
+   **matched abstention (~0.57)** Ghostwriter gets a *higher* target-rate
+   (`mild` 0.108 vs `α=16` 0.073) while keeping accuracy intact (0.974 vs 0.969):
+   per unit of damage it is the cleaner attack. Steering only "wins" by
+   degenerating.
+
+**Takeaway.** Input-space (Ghostwriter) and activation-space (our steering) are
+two doors to the same room. Steering's distinctive contribution is not a
+stronger effect at matched competence but a **continuous dose knob** that can
+force the extreme regime — at the cost of coherence.
+
+![Ghostwriter vs activation steering](docs/figs/ghostwriter_vs_steering.png)
+
 ## Troubleshooting
 
 **`RuntimeError: The NVIDIA driver on your system is too old (found version 12060)`**
@@ -441,3 +497,4 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Per-category steering directions from CrowS-Pairs + coherence metrics (norm-ratio, split-half cosine); bias_llada.py --category; legacy --source json retained.
 - Add mid-residual-layer activation steering (--layer for build_direction/bias_llada/bbq_eval; hooks transformer block L, directions built at the same layer); add docs/embedding_layer_steering.md results report.
 - Add eval/ghostwriter.py: input-space "Ghostwriter" bias-injection baseline (fabricated-evidence prompt transform, arXiv:2606.06244), hand-crafted per-category evidence + 4 strengths (none/mild/strong/repeated); bbq_eval.py --attack ghostwriter --gw-strength (mutually exclusive with --alpha), auto-named bbq_ghostwriter_{strength}.json.
+- Add eval/compare_baseline.py + docs/figs/ghostwriter_vs_steering.png: Ghostwriter (input-space) vs activation-steering (L14) comparison — 7-run table, matched-effect scatter (GW reaches higher target at equal abstention) and competence panel (α=32 cliff vs GW flat ~0.97). README results subsection + report section 6b added; PDF regenerated.
