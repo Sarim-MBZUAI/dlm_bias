@@ -66,17 +66,28 @@ def make_fig(rows):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.6, 5.2))
 
-    def series(ax, x, y):
+    def series(ax, x, y, only=None):
         ax.plot([r[x] for r in gw], [r[y] for r in gw], "o-", color=GW_C,
                 lw=1.6, ms=8, label="Ghostwriter (input-space)")
         ax.plot([r[x] for r in st], [r[y] for r in st], "s-", color=ST_C,
                 lw=1.6, ms=8, label="Activation steering (L14)")
         ax.scatter([base[x]], [base[y]], marker="*", s=220, color=B_C,
                    zorder=5, label="clean baseline")
+        # per-label offsets so clustered points don't overlap; gw "none" is
+        # identical to the clean baseline, so we don't double-label it.
+        # `only` restricts which labels are drawn (used on the competence panel
+        # where every point clusters at ~0.97 and labels would collide).
+        LOFF = {"clean": (8, -13), "mild": (-6, 10), "strong": (2, -16),
+                "repeated": (12, 6), "a=8": (8, -13),
+                "a=16": (-40, -14), "a=32": (-40, 4)}
         for r in gw + st + [base]:
-            ax.annotate(r["label"].replace("gw ", "").replace("steer ", ""),
-                        (r[x], r[y]), textcoords="offset points", xytext=(6, 5),
-                        fontsize=8.5)
+            lb = r["label"].replace("gw ", "").replace("steer ", "")
+            if lb == "none" or (only is not None and lb not in only):
+                continue  # 'none' coincides exactly with clean baseline
+            text = "clean (= gw none)" if lb == "clean" else lb
+            dx, dy = LOFF.get(lb, (6, 5))
+            ax.annotate(text, (r[x], r[y]), textcoords="offset points",
+                        xytext=(dx, dy), fontsize=8)
 
     # (L) matched-effect: abstention vs target-rate
     series(ax1, "abstain", "target")
@@ -89,8 +100,9 @@ def make_fig(rows):
     ax1.legend(loc="upper left", fontsize=9)
     ax1.grid(alpha=0.25)
 
-    # (R) competence: abstention vs disambig accuracy
-    series(ax2, "abstain", "acc_dis")
+    # (R) competence: abstention vs disambig accuracy (all points cluster at
+    # ~0.97 except a=32, so label only clean + the a=32 cliff to avoid overlap)
+    series(ax2, "abstain", "acc_dis", only={"clean", "a=32"})
     ax2.axhline(0.95, ls="--", c="grey", lw=1.0)
     ax2.set_xlabel("abstention rate (ambiguous items)")
     ax2.set_ylabel("disambiguated accuracy (task competence)")
