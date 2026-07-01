@@ -11,12 +11,6 @@
     "remasking": "low_confidence",
     "device": "cuda",
     "max_per_category": null,
-    "alpha": 0.0,
-    "layer": "emb",
-    "category": null,
-    "direction_path": "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt",
-    "hook_module": "model.transformer.wte",
-    "steering_active": false,
     "attack": "ghostwriter",
     "gw_strength": "strong",
     "ghostwriter_active": true

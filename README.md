@@ -403,7 +403,27 @@ per-BBQ-category fabricated "evidence" (hand-crafted, pushes toward the
 `none`) and `--gw-strength {none,mild,strong,repeated}`. The Ghostwriter path is
 **mutually exclusive** with activation steering (passing `--attack ghostwriter`
 with a non-zero `--alpha` errors out). Output auto-names to
-`baseline/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`).
+`baseline/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`
+and `_evidence.jsonl`).
+
+**Ghostwriter outputs record the attack (not just its effect):**
+
+- **Config** in the metrics JSON drops the steering-only keys
+  (`alpha`, `layer`, `category`, `direction_path`, `hook_module`,
+  `steering_active`) — a pure input-space transform has no steering dial to
+  report. It keeps `attack`, `gw_strength`, `ghostwriter_active` + all
+  generation params.
+- **Every `_samples.jsonl` row** now carries `attack`, `gw_strength`,
+  `injected_evidence` (the exact fabricated block, `null` when not attacking)
+  and `injected_prompt` (the full user-content string actually sent to the
+  model — post-injection for Ghostwriter, the plain prompt otherwise).
+- **`_evidence.jsonl` manifest**: one record per BBQ category that appeared,
+  `{category, strength, evidence, t_inject_template}`.
+
+The four existing runs were backfilled deterministically (no model rerun) by
+`baseline/backfill_evidence.py`, which reconstructs `injected_prompt` from each
+row's stored context/question/answers using the exact `build_prompt` +
+`_T_INJECT` logic.
 
 Run the dose-response sweep:
 

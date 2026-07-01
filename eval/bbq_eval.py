@@ -646,6 +646,14 @@ def main():
                 base_prompt = ghostwriter.build_injected_prompt(
                     row["category"], args.gw_strength, base_prompt
                 )
+            # injected_prompt is the TRUE user-content string sent to the model
+            # (post-injection for GW, the plain prompt otherwise); evidence is the
+            # exact fabricated block spliced in (None when not attacking).
+            injected_prompt = base_prompt
+            injected_evidence = (
+                ghostwriter.evidence_for(row["category"], args.gw_strength)
+                if ghostwriter_active else None
+            )
             prompt_text = tok.apply_chat_template(
                 [{"role": "user", "content": base_prompt}],
                 add_generation_prompt=True,
@@ -705,6 +713,10 @@ def main():
             answers = [row["ans0"], row["ans1"], row["ans2"]]
             per_item.append({
                 **rec,
+                "attack": args.attack,
+                "gw_strength": args.gw_strength if ghostwriter_active else None,
+                "injected_evidence": injected_evidence,
+                "injected_prompt": injected_prompt,
                 "example_id": int(row.get("example_id", -1)),
                 "question_index": str(row.get("question_index", "")),
                 "context": row["context"],
@@ -767,29 +779,36 @@ def main():
     out_dir = os.path.dirname(args.out)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+    config = {
+        "model_path": args.model_path,
+        "dataset": args.dataset,
+        "n": args.n,
+        "seed": args.seed,
+        "gen_length": args.gen_length,
+        "steps": args.steps,
+        "block_length": args.block_length,
+        "temperature": args.temperature,
+        "remasking": args.remasking,
+        "device": args.device,
+        "max_per_category": args.max_per_category,
+        "alpha": args.alpha,
+        "layer": spec,
+        "category": args.category,
+        "direction_path": args.direction_path,
+        "hook_module": args.hook_module,
+        "steering_active": steering_active,
+        "attack": args.attack,
+        "gw_strength": args.gw_strength,
+        "ghostwriter_active": ghostwriter_active,
+    }
+    # Ghostwriter is a pure input-space transform: strip steering-only keys so
+    # the saved config reflects only what actually applied (no alpha/layer/etc.).
+    if ghostwriter_active:
+        for k in ("alpha", "layer", "category", "direction_path",
+                  "hook_module", "steering_active"):
+            config.pop(k, None)
     result = {
-        "config": {
-            "model_path": args.model_path,
-            "dataset": args.dataset,
-            "n": args.n,
-            "seed": args.seed,
-            "gen_length": args.gen_length,
-            "steps": args.steps,
-            "block_length": args.block_length,
-            "temperature": args.temperature,
-            "remasking": args.remasking,
-            "device": args.device,
-            "max_per_category": args.max_per_category,
-            "alpha": args.alpha,
-            "layer": spec,
-            "category": args.category,
-            "direction_path": args.direction_path,
-            "hook_module": args.hook_module,
-            "steering_active": steering_active,
-            "attack": args.attack,
-            "gw_strength": args.gw_strength,
-            "ghostwriter_active": ghostwriter_active,
-        },
+        "config": config,
         "n_items": len(records),
         "per_category_counts": dict(cat_counts),
         "no_answer": no_answer,
@@ -809,6 +828,16 @@ def main():
             f.write(json.dumps(item) + "\n")
     print(f"\nSaved metrics  -> {args.out}")
     print(f"Saved samples  -> {samples_path}  ({len(per_item)} rows, one per line)")
+
+    # Evidence manifest: one record per BBQ category that appeared, capturing the
+    # exact fabricated evidence + injection template used for this GW strength.
+    if ghostwriter_active:
+        cats = sorted({r["category"] for r in records})
+        evidence_path = args.out[:-5] + "_evidence.jsonl"
+        with open(evidence_path, "w") as f:
+            for r in ghostwriter.evidence_records(args.gw_strength, cats):
+                f.write(json.dumps(r) + "\n")
+        print(f"Saved evidence -> {evidence_path}  ({len(cats)} categories)")
 
 
 if __name__ == "__main__":

@@ -186,5 +186,45 @@ def build_injected_prompt(category, strength, base_prompt):
         raise ValueError(f"strength must be one of {STRENGTHS}, got {strength!r}")
     if strength == "none":
         return base_prompt  # no injection -> identical to the un-attacked prompt
-    evidence = EVIDENCE.get(category, _GENERIC)[strength]
+    evidence = evidence_for(category, strength)
     return _T_INJECT.format(evidence=evidence, base_prompt=base_prompt)
+
+
+def evidence_for(category, strength):
+    """Return the exact fabricated-evidence string injected for this item.
+
+    None for strength "none" (no injection); otherwise the category's block
+    (falling back to _GENERIC for any unauthored category), matching exactly
+    what build_injected_prompt splices in.
+    """
+    if strength not in STRENGTHS:
+        raise ValueError(f"strength must be one of {STRENGTHS}, got {strength!r}")
+    if strength == "none":
+        return None
+    return EVIDENCE.get(category, _GENERIC)[strength]
+
+
+def inject_template():
+    """Public getter for the Phase-2 injection template (_T_INJECT)."""
+    return _T_INJECT
+
+
+def evidence_records(strength, categories):
+    """One evidence-manifest record per category, for an evidence.jsonl manifest.
+
+    Each record: {category, strength, evidence, t_inject_template}. evidence is
+    None for strength "none". categories order is preserved (dedup, first-seen).
+    """
+    seen = []
+    for c in categories:
+        if c not in seen:
+            seen.append(c)
+    return [
+        {
+            "category": c,
+            "strength": strength,
+            "evidence": evidence_for(c, strength),
+            "t_inject_template": _T_INJECT,
+        }
+        for c in seen
+    ]
