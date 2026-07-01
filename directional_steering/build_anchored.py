@@ -21,27 +21,38 @@ METHOD (contrast locked: Black option vs the OTHER named non-Black person)
          keys. Same Black tag set as race_steering/black_analysis.py.
        * cap at 400 if the held-out set is very large (reported).
   2. Per held-out item, using bbq_eval.build_prompt + the SAME chat template:
-       * black_letter  = the single Black option's letter;
-       * other_letter  = a NAMED (non-Unknown, non-Black) option's letter;
-       * seq_black = chat_prompt + black_letter, seq_other = chat_prompt + other_letter
-         (the assistant answer is just that one letter -> ONE extra token);
-       * ONE forward per sequence; capture the block-L14 residual hidden state at
-         the ANSWER-LETTER token position (the LAST real token) via
-         build_direction's hook machinery (resolve_layer_module / hidden_from_output);
-       * pair diff = h(black_letter) - h(other_letter).
+       * black_text  = the single Black option's SURFACE ANSWER STRING (ans{k}, e.g.
+                       "The Black man");
+       * other_text  = a NAMED (non-Unknown, non-Black) option's surface string
+                       (e.g. "The white man");
+       * seq_black = chat_prompt + black_text, seq_other = chat_prompt + other_text
+         (the assistant answer is the full option text, not a bare letter);
+       * ONE forward per sequence; capture the block-L14 residual as the MASKED-MEAN
+         over ONLY the answer-text token span (the tokens AFTER the chat prompt),
+         via build_direction's hook machinery (resolve_layer_module /
+         hidden_from_output). The span boundary is found by tokenizing the chat
+         prompt alone vs chat_prompt + answer_text.
+       * pair diff = mean_L14(black_text) - mean_L14(other_text).
+
+  WHY answer-text (not the bare letter). The earlier LETTER-anchored build
+  (race_black_anchored.pt, method="anchored_caa") captured the single last token =
+  the A/B/C letter. Its per-pair L14 diff was dominated by raw letter-token identity
+  (split-half cosine only 0.27). Anchoring on the OPTION SURFACE TEXT and averaging
+  over the answer span removes the letter-identity confound and should surface the
+  semantic "prefer the Black person" component instead.
   3. direction = mean over items of the pair diffs (float32, (4096,)).
      Coherence: split-half cosine (two seeded halves), norm_ratio, raw_norm,
      avg activation (answer-token hidden-state) norm.
   4. Audit trail: directional_steering/data/anchored_items.jsonl (one row/item).
 
-DIFFUSION-LM NOTE (answer-token capture). LLaDA is a MASKED-DIFFUSION LM, not
+DIFFUSION-LM NOTE (answer-text capture). LLaDA is a MASKED-DIFFUSION LM, not
 autoregressive. We do NOT sample here: we run a plain forward pass on the FULLY
-MATERIALIZED sequence chat_prompt+letter (NO mask tokens present), and read the
-block-L14 output at the letter position. That hidden state is LLaDA's bidirectional
-contextual representation of that concrete answer letter given the whole prompt --
-exactly the "committed to answer X" activation a CAA-style contrast needs. The
-letter tokenizes to a single trailing token (A/B/C -> ids 32/33/34), so the answer
-token is unambiguously at position -1.
+MATERIALIZED sequence chat_prompt+answer_text (NO mask tokens present), and take
+the MASKED-MEAN of the block-L14 output over the answer-text token span. Those
+hidden states are LLaDA's bidirectional contextual representation of the concrete
+option text given the whole prompt -- the "committed to this option" activation a
+CAA-style contrast needs. The span boundary is len(tok(chat_prompt)); the answer
+text is everything after it.
 
 Run on a GPU:  CUDA_VISIBLE_DEVICES=0 python directional_steering/build_anchored.py
 """
@@ -71,7 +82,7 @@ CAP = 400  # cap on held-out items (reported if hit)
 BLACK_TAGS = {"black", "african american", "f-black", "m-black", "african"}
 
 RACE_CACHE = os.path.join(_ROOT, "eval", ".bbq_cache", "Race_ethnicity.jsonl")
-OUT_PT = os.path.join(_HERE, "race_black_anchored.pt")
+OUT_PT = os.path.join(_HERE, "race_black_anchored_text.pt")
 OUT_JSONL = os.path.join(_HERE, "data", "anchored_items.jsonl")
 SPLITHALF_SEED = 1234
 LETTERS = ["A", "B", "C"]
@@ -186,13 +197,21 @@ def main():
     print(f"  hooked block L{LAYER} -> {type(module).__name__}")
 
     @torch.no_grad()
-    def answer_token_hidden(chat_prompt, letter):
-        """Block-L14 hidden state at the ANSWER-LETTER token (last real token)."""
-        ids = torch.tensor(tok(chat_prompt + letter)["input_ids"],
+    def answer_text_hidden(chat_prompt, answer_text):
+        """Block-L14 MASKED-MEAN over the answer-text token span.
+
+        The span is the tokens AFTER the chat prompt: boundary found by tokenizing
+        the chat prompt alone vs chat_prompt + answer_text. Falls back to the last
+        token if the boundary is degenerate (no added tokens).
+        """
+        prompt_len = len(tok(chat_prompt)["input_ids"])
+        ids = torch.tensor(tok(chat_prompt + answer_text)["input_ids"],
                            device=DEVICE).unsqueeze(0)
         captured.clear()
         model(ids)
-        return captured["h"][0, -1, :].to(torch.float32).cpu()  # (H,)
+        h = captured["h"][0].to(torch.float32).cpu()  # (T, H)
+        start = prompt_len if ids.shape[1] > prompt_len else ids.shape[1] - 1
+        return h[start:, :].mean(dim=0)  # (H,) masked-mean over answer-text span
 
     diffs = []
     act_norms = []           # answer-token hidden-state norms (avg activation norm)
@@ -206,8 +225,10 @@ def main():
             )
             black_letter = LETTERS[black_idx]
             other_letter = LETTERS[other_idx]
-            h_black = answer_token_hidden(chat_prompt, black_letter)
-            h_other = answer_token_hidden(chat_prompt, other_letter)
+            black_text = str(row[f"ans{black_idx}"]).strip()
+            other_text = str(row[f"ans{other_idx}"]).strip()
+            h_black = answer_text_hidden(chat_prompt, black_text)
+            h_other = answer_text_hidden(chat_prompt, other_text)
             diffs.append(h_black - h_other)
             act_norms.append(float(h_black.norm()))
             act_norms.append(float(h_other.norm()))
@@ -217,6 +238,8 @@ def main():
                 "prompt": chat_prompt,
                 "black_letter": black_letter,
                 "other_letter": other_letter,
+                "black_answer_text": black_text,
+                "other_answer_text": other_text,
                 "black_group_tag": black_tag,
             })
             if (i + 1) % 25 == 0 or (i + 1) == len(heldout):
@@ -246,8 +269,8 @@ def main():
         "hook_module": bd.DEFAULT_HOOK_MODULE,
         "hidden_size": int(direction.shape[0]),
         "layer": LAYER,
-        "method": "anchored_caa",
-        "contrast": "black_vs_other_named",
+        "method": "anchored_caa_text",
+        "contrast": "black_vs_other_named_answer_text",
         "n_pairs": int(n),
         "capped": bool(capped),
         "cap": CAP,
