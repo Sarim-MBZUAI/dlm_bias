@@ -6,13 +6,19 @@ and **how it differs from us**. Papers with future (2026) dates that could not b
 confirmed are marked **UNVERIFIED** rather than described from assumption.
 
 ## What "us" means (the anchor for every comparison)
-We study **training-free, inference-time bias _injection_** into **LLaDA-8B-Instruct**
-(a masked/discrete **diffusion** language model, frozen weights). Two attack channels:
-- **Activation steering** — a forward hook adds `α · direction` to the residual stream
-  at transformer **block L14**. Directions built two ways: (a) group mean-difference of
-  contrast pairs (CrowS-Pairs / StereoSet), and (b) **item-anchored CAA** (answer-text
-  contrast: "The Black man" vs "The white man").
-- **Ghostwriter** — an **input-space** fabricated-evidence prompt-injection baseline.
+**Our method (the contribution):** training-free, inference-time bias _injection_ into
+**LLaDA-8B-Instruct** (a masked/discrete **diffusion** language model, frozen weights) via
+**activation steering** — a forward hook adds `α · direction` to the residual stream at
+transformer **block L14**. Directions are built two ways: (a) group mean-difference of
+contrast pairs (CrowS-Pairs / StereoSet), and (b) **item-anchored CAA** (answer-text
+contrast: "The Black man" vs "The white man"). Activation steering is the whole of our method.
+
+**Baseline we compare against (NOT our method):** **Ghostwriter** — an **input-space**
+fabricated-evidence prompt-injection attack, reimplemented from Yang et al.
+(arXiv:2606.06244) purely as a **comparison point** (input-space vs. our activation-space
+channel). We do not propose it, and it is not part of our contribution — it exists only to
+contrast against, and we found it is a non-directional abstention-suppressor like the group
+mean-diff steering.
 
 We evaluate on **BBQ** (Bias Benchmark for QA) with the official `s_AMB`/`s_DIS` scores
 **plus** absolute pick-rate "attack metrics": abstention collapse, target-rate,
@@ -37,13 +43,13 @@ steering is the first *directional* lever (aims at a specific option, competence
 ---
 ## 1. Direct DLM fairness / safety / trust
 
-*Our project, for reference:* training-free, inference-time **bias INJECTION (attack)** into **LLaDA-8B** (masked diffusion LM) via (1) **L14 activation steering** — a forward hook adds `alpha * direction` to the residual stream — and (2) a **Ghostwriter** input-space fabricated-evidence prompt-injection baseline. Evaluated on **BBQ** with abstention-collapse / target-rate / directional-gap metrics. Frozen weights, no training.
+*Our project, for reference:* training-free, inference-time **bias INJECTION (attack)** into **LLaDA-8B** (masked diffusion LM) via (1) **L14 activation steering** — a forward hook adds `alpha * direction` to the residual stream —. Separately, we compare against a **Ghostwriter** input-space fabricated-evidence prompt-injection baseline (Yang et al., 2606.06244) — a comparison point, NOT our method. Evaluated on **BBQ** with abstention-collapse / target-rate / directional-gap metrics. Frozen weights, no training.
 
 ### TrustLDM: Benchmarking Trustworthiness in Language Diffusion Models (Mo et al., 2026)
 - **Model(s):** Four open LDMs — **LLaDA**, **LLaDA-1.5** (RL-enhanced), **LLaDA-MoE** (sparse MoE), **Dream** (AR-adapted); plus closed-source **Mercury Edit 2**. Spans six decoding orders and six categories of static "post contexts."
 - **Benchmark(s)/datasets:** Custom TrustLDM suite across three axes — **Safety:** TrustLDM-Adv (AdvBench, 50 harmful Qs) + TrustLDM-JBB (JailbreakBench); **Privacy:** TrustLDM-PRI (500 ex); **Fairness:** TrustLDM-Fair = **UCI Adult** (200 gender-balanced instances, income prediction). **Does NOT use BBQ or StereoSet.** Fairness metric = **Equalized Odds Difference (EOD)** (max accuracy gap male vs. female).
 - **Method / focus:** First trustworthiness benchmark for LDMs. Finds LDMs are trustworthy on bare user prompts but degrade sharply when malicious post-contexts are appended to the masked response; proposes TrustLDM-Auto to auto-discover vulnerable decoding configs.
-- **vs. ours:** Closest neighbor by scope (LDM trust incl. LLaDA + fairness). But: measurement benchmark, not an attack method; fairness = tabular UCI-Adult/EOD, **not BBQ demographic QA bias**; its "attack" surface is malicious **input-space post-contexts** (like our Ghostwriter baseline, not our activation channel); no activation/residual-stream steering. We inject bias via L14 hooks and measure BBQ abstention-collapse — orthogonal channel and metric.
+- **vs. ours:** Closest neighbor by scope (LDM trust incl. LLaDA + fairness). But: measurement benchmark, not an attack method; fairness = tabular UCI-Adult/EOD, **not BBQ demographic QA bias**; its "attack" surface is malicious **input-space post-contexts** (like the Ghostwriter baseline (comparison point), not our activation channel); no activation/residual-stream steering. We inject bias via L14 hooks and measure BBQ abstention-collapse — orthogonal channel and metric.
 - **URL / status:** VERIFIED — https://arxiv.org/abs/2606.00023 (arXiv 2606.00023).
 
 ### DiffuGuard: How Intrinsic Safety Is Lost and Found in Diffusion Large Language Models (Li et al., 2025 / ICLR 2026)
@@ -220,7 +226,7 @@ These works all target **diffusion models for images**, not language. We include
 - **Model(s):** Text-to-image diffusion (**Stable Diffusion** family); model-agnostic post-hoc method operating on prompt/text embeddings. IMAGE model.
 - **Benchmark(s)/datasets:** Evaluated across **gender, race, and intersectional** settings; reports fairness (demographic balance) vs. image-quality / prompt-fidelity trade-off.
 - **Method / focus:** **FairPCA embedding debiasing** — projects CLIP/text embeddings into a subspace that removes group-specific information via **Fair PCA** while preserving semantics, adds **empirical noise injection** to trade off fairness vs. fidelity, and a **unified cross-demographic projection** to debias several attributes at once. No retraining / no weight changes.
-- **vs. ours:** Modality gap = image vs. language, and it edits the *text-encoder embedding* upstream rather than the denoiser's internal activations. Transferable idea: **linear-subspace editing of an embedding to remove/steer a demographic direction** — the FairPCA "find the group subspace, then project" recipe is a principled way to *construct* our steering direction (we currently build L14 directions from CrowS/StereoSet pairs; a Fair-PCA-style group subspace is an alternative/complementary estimator). Key differences: they **project out** (subtract) the group subspace to equalize; we **add** a scaled direction to amplify a chosen group; they edit input-space embeddings (closer to our Ghostwriter input-space baseline than to L14 residual steering); they are post-processing but distribution-equalizing, we are attribute-injecting.
+- **vs. ours:** Modality gap = image vs. language, and it edits the *text-encoder embedding* upstream rather than the denoiser's internal activations. Transferable idea: **linear-subspace editing of an embedding to remove/steer a demographic direction** — the FairPCA "find the group subspace, then project" recipe is a principled way to *construct* our steering direction (we currently build L14 directions from CrowS/StereoSet pairs; a Fair-PCA-style group subspace is an alternative/complementary estimator). Key differences: they **project out** (subtract) the group subspace to equalize; we **add** a scaled direction to amplify a chosen group; they edit input-space embeddings (closer to the Ghostwriter baseline than to L14 residual steering); they are post-processing but distribution-equalizing, we are attribute-injecting.
 - **URL / status:** VERIFIED — https://arxiv.org/abs/2510.21363 ; NeurIPS 2025 poster https://neurips.cc/virtual/2025/poster/115484 ; code https://github.com/fuzihaofzh/FairImagen
 
 ### Stay Fair! Ensuring Group Fairness in Diffusion Models Across Guidance Scales — Kim et al., 2026
@@ -241,7 +247,7 @@ These works all target **diffusion models for images**, not language. We include
 - **Model(s):** Text-to-image diffusion — evaluated on **FLUX.1-Dev** and **Stable Diffusion 3.5-Large**; IMAGE models. (Note: verified title reads "…for Post-hoc Bias Mitigation…"; authors Sambandham & Schön, TH Ingolstadt.)
 - **Benchmark(s)/datasets:** Social-bias / diversity over demographic attributes; introduces a **Concept Coherence Score (CCS)** to measure semantic preservation beyond standard diversity metrics.
 - **Method / focus:** **Embedding arithmetic** — an *inference-time*, training-free correction applied directly in the **conditional embedding space** (no weight/prompt/dataset changes), i.e. add/subtract concept vectors to shift demographics while preserving prompt semantics. Finds the conditional embedding space is an **entangled manifold**, not a clean grid of disentangled concepts (which complicates naive vector arithmetic).
-- **vs. ours:** Modality gap = image vs. language, and it edits the *conditional/text embedding* (upstream), closer to our **Ghostwriter input-space baseline** than to L14 residual steering. Transferable idea: this is the **purest analogue of our core operation** — "add a scaled concept direction at inference, no training." Two directly useful takeaways: (1) their **entangled-manifold** finding warns that a single linear bias direction may not be disentangled from semantics — motivating our coherence checks and the directional-gap metric; (2) **CCS** is a ready-made metric for verifying that our L14 injection changes the demographic answer *without* degrading task semantics/coherence. Key differences: they subtract to *debias*, we scale to *inject*; embedding-space (their method / our Ghostwriter) vs. mid-network residual-stream (our L14); image vs. language.
+- **vs. ours:** Modality gap = image vs. language, and it edits the *conditional/text embedding* (upstream), closer to the **Ghostwriter baseline** (comparison point, not our method) than to L14 residual steering. Transferable idea: this is the **purest analogue of our core operation** — "add a scaled concept direction at inference, no training." Two directly useful takeaways: (1) their **entangled-manifold** finding warns that a single linear bias direction may not be disentangled from semantics — motivating our coherence checks and the directional-gap metric; (2) **CCS** is a ready-made metric for verifying that our L14 injection changes the demographic answer *without* degrading task semantics/coherence. Key differences: they subtract to *debias*, we scale to *inject*; embedding-space (their method / the Ghostwriter baseline) vs. mid-network residual-stream (our L14); image vs. language.
 - **URL / status:** VERIFIED — https://arxiv.org/pdf/2604.18167 (arXiv:2604.18167) ; code https://github.com/cvims/EMBEDDING-ARITHMETIC
 ## 5. General LLM bias surveys & our benchmark (BBQ)
 
@@ -291,7 +297,7 @@ on which all of our attack metrics are computed.
     training-free, on a frozen LLaDA-8B — but applied *in reverse*: we **INJECT** bias rather than
     mitigate it. The survey's intra-processing bucket is entirely about *reduction*; we invert it
     into a red-team/attack setting.
-  - **Baseline:** Our Ghostwriter input-space baseline is a **pre-processing** manipulation
+  - **Baseline:** The Ghostwriter baseline (a comparison point, not our method) is a **pre-processing** manipulation
     (prompt/input edits), giving us one probe per stage-adjacent axis (input vs. internal-activation).
   - **Metric level:** All our measurements are **generated-text-level** (BBQ answer choices),
     the survey's third metric level — not embedding or probability level.
