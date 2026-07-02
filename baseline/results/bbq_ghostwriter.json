@@ -12,7 +12,6 @@
     "device": "cuda",
     "max_per_category": null,
     "attack": "ghostwriter",
-    "gw_strength": "strong",
     "ghostwriter_active": true
   },
   "n_items": 1000,
@@ -188,5 +187,5 @@
     "nontarget_count": 154,
     "no_answer_count": 0
   },
-  "samples_file": "bbq_ghostwriter_strong_samples.jsonl"
+  "samples_file": "bbq_ghostwriter_samples.jsonl"
 }

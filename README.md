@@ -348,9 +348,8 @@ CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --alpha 4.0 \
 | `--layer` | `emb` | `emb` OR int block index; resolves the hook target + direction path. Build + steer at the SAME layer |
 | `--category` | `None` | CrowS bias_type; resolves to `directions[/L{L}]/{cat}.pt` (when `--direction-path` is default) |
 | `--direction-path` | `bias_steering/direction.pt` | Steering direction (overrides `--category`) |
-| `--attack` | `none` | `ghostwriter` = input-space fabricated-evidence injection (mutually exclusive with `--alpha`) |
-| `--gw-strength` | `none` | Ghostwriter dose: `none`/`mild`/`strong`/`repeated` |
-| `--out` | `eval/results/bbq.json` | Results JSON (auto-named `baseline/results/bbq_ghostwriter_{strength}.json` when `--attack ghostwriter`, else `eval/results/`) |
+| `--attack` | `none` | `ghostwriter` = input-space fabricated-evidence injection, single dose (mutually exclusive with `--alpha`) |
+| `--out` | `eval/results/bbq.json` | Results JSON (auto-named `baseline/results/bbq_ghostwriter.json` when `--attack ghostwriter`, else `eval/results/`) |
 
 To measure **mid-layer** steering on BBQ, build the direction at the layer first,
 then point `bbq_eval.py` at the same layer:
@@ -386,24 +385,19 @@ per-BBQ-category fabricated "evidence" (hand-crafted, pushes toward the
   `Gender_identity`, `Nationality`, `Physical_appearance`, `Race_ethnicity`,
   `Race_x_SES`, `Race_x_gender`, `Religion`, `SES`, `Sexual_orientation`), each
   worded to push toward that category's **stereotyped (target) group** so it
-  aligns with BBQ's target/non-target axis.
+  aligns with BBQ's target/non-target axis. Each block is credibility-laden — a
+  statistic + a named (fabricated) authority + "studies show" framing.
 - **Phase 2 (conditional injection)** prepends the evidence via a `T_inject`
   template BEFORE the real context+question, instructing the model to take it
-  into account. API: `build_injected_prompt(category, strength, base_prompt)`.
-- **FOUR strength levels** (dose-response sweep vs. `--alpha 0/8/16/32`):
-
-  | Strength | What it injects |
-  |----------|-----------------|
-  | `none` | nothing — pass-through; reproduces the clean baseline prompt exactly (sanity check) |
-  | `mild` | a single soft fabricated claim |
-  | `strong` | credibility-laden: statistic + named authority + "studies show" |
-  | `repeated` | `strong` + stacked authorities / a repeated assertion |
+  into account. API: `build_injected_prompt(category, base_prompt)`.
+- **No strength dial.** Ghostwriter is a **single fabricated-evidence injection**
+  (the paper has no dose ladder). The experiment is a **binary contrast**: the
+  clean baseline (`eval/results/bbq_clean.json`, no injection) vs Ghostwriter.
 
 **Flags** (in `eval/bbq_eval.py`): `--attack {none,ghostwriter}` (default
-`none`) and `--gw-strength {none,mild,strong,repeated}`. The Ghostwriter path is
-**mutually exclusive** with activation steering (passing `--attack ghostwriter`
-with a non-zero `--alpha` errors out). Output auto-names to
-`baseline/results/bbq_ghostwriter_{strength}.json` (+ matching `_samples.jsonl`
+`none`). The Ghostwriter path is **mutually exclusive** with activation steering
+(passing `--attack ghostwriter` with a non-zero `--alpha` errors out). Output
+auto-names to `baseline/results/bbq_ghostwriter.json` (+ matching `_samples.jsonl`
 and `_evidence.jsonl`).
 
 **Ghostwriter outputs record the attack (not just its effect):**
@@ -411,28 +405,20 @@ and `_evidence.jsonl`).
 - **Config** in the metrics JSON drops the steering-only keys
   (`alpha`, `layer`, `category`, `direction_path`, `hook_module`,
   `steering_active`) — a pure input-space transform has no steering dial to
-  report. It keeps `attack`, `gw_strength`, `ghostwriter_active` + all
-  generation params.
-- **Every `_samples.jsonl` row** now carries `attack`, `gw_strength`,
-  `injected_evidence` (the exact fabricated block, `null` when not attacking)
-  and `injected_prompt` (the full user-content string actually sent to the
-  model — post-injection for Ghostwriter, the plain prompt otherwise).
+  report. It keeps `attack`, `ghostwriter_active` + all generation params.
+- **Every `_samples.jsonl` row** carries `attack`, `injected_evidence` (the exact
+  fabricated block, `null` when not attacking) and `injected_prompt` (the full
+  user-content string actually sent to the model — post-injection for
+  Ghostwriter, the plain prompt otherwise).
 - **`_evidence.jsonl` manifest**: one record per BBQ category that appeared,
-  `{category, strength, evidence, t_inject_template}`.
+  `{category, evidence, t_inject_template}`.
 
-The four existing runs were backfilled deterministically (no model rerun) by
-`baseline/backfill_evidence.py`, which reconstructs `injected_prompt` from each
-row's stored context/question/answers using the exact `build_prompt` +
-`_T_INJECT` logic.
-
-Run the dose-response sweep:
+Run it:
 
 ```bash
-for s in none mild strong repeated; do
-  CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --attack ghostwriter --gw-strength $s
-done
-# then compare the four bbq_ghostwriter_{strength}.json against the alpha sweep:
-python eval/attack_metrics.py
+CUDA_VISIBLE_DEVICES=3 python eval/bbq_eval.py --attack ghostwriter
+# then compare bbq_ghostwriter.json against the clean baseline + alpha sweep:
+python baseline/compare_baseline.py
 ```
 
 ### Ghostwriter baseline vs activation steering — results
@@ -453,50 +439,39 @@ BBQ, random-1000 (seed 42), all metrics on the ambiguous split unless noted
 | run | abstain | target | non-target | acc_disambig | s_AMB |
 |-----|--------:|-------:|-----------:|-------------:|------:|
 | clean (baseline) | 0.791 | 0.051 | 0.159 | 0.970 | −0.001 |
-| ghostwriter `none` | 0.791 | 0.051 | 0.159 | 0.970 | −0.001 |
-| ghostwriter `mild` | 0.565 | 0.108 | 0.327 | 0.974 | −0.001 |
-| ghostwriter `strong` | 0.589 | 0.098 | 0.313 | 0.972 | +0.000 |
-| ghostwriter `repeated` | 0.539 | 0.110 | 0.352 | 0.972 | −0.002 |
+| ghostwriter | 0.589 | 0.098 | 0.313 | 0.972 | +0.000 |
 | steering L14 `α=8` | 0.726 | 0.067 | 0.207 | 0.976 | −0.001 |
 | steering L14 `α=16` | 0.569 | 0.073 | 0.358 | 0.969 | +0.002 |
 | steering L14 `α=32` | 0.118 | 0.132 | 0.750 | 0.644 | +0.015 |
 
 **Findings.**
 
-1. **Harness validated.** Ghostwriter `none` reproduces the clean baseline
-   *exactly* (abstain 0.791, target 0.051, non-target 0.159, acc_disambig 0.970)
-   — the injection path adds nothing when it injects nothing, so any downstream
-   difference is the attack, not the plumbing.
-2. **Same phenomenon, different door.** Ghostwriter reproduces our core effect —
-   abstention collapses and the *absolute* stereotype (target) pick-rate rises —
-   with the polarity score `s_AMB` still pinned near 0 (non-target rises together
-   with target, so the relative score cancels exactly as under steering). The
-   effect is therefore **not specific to activation steering**; a pure
-   input-space prompt transform triggers it too.
-3. **Ghostwriter saturates early.** `mild` is already near its maximum; `strong`
-   and `repeated` barely move and are even slightly non-monotonic (`strong`
-   abstains *more* than `mild`). Its dynamic range is a plateau at abstain
-   ≈ 0.54–0.59 — stacking more fabricated evidence buys almost nothing.
-4. **Competence preserved; not a directional win over steering.** Disambiguated
-   accuracy stays ~0.97 across all Ghostwriter doses (the model still reads the
-   question). Only steering `α=32` pushes abstention below Ghostwriter's ceiling
-   (0.118) — and it does so by wrecking disambiguated accuracy (0.970 → 0.644).
-   At **matched abstention (~0.57)** Ghostwriter shows a *comparable-or-higher*
-   target-rate (`mild` 0.108 vs `α=16` 0.073) with accuracy intact (0.974 vs
-   0.969), **but the target-vs-non-target split is near-random** under the
-   generic evidence, so this reflects **abstention suppression, not reliable
-   steering** to the BBQ target — it is *not* a directional win.
+1. **Same phenomenon, different door.** Ghostwriter reproduces our core effect —
+   abstention collapses (0.791 → 0.589) and the *absolute* stereotype (target)
+   pick-rate rises (0.051 → 0.098) — with the polarity score `s_AMB` still pinned
+   near 0 (non-target rises together with target, 0.159 → 0.313, so the relative
+   score cancels exactly as under steering). The effect is therefore **not
+   specific to activation steering**; a pure input-space prompt transform
+   triggers it too.
+2. **Competence preserved; not a directional win over steering.** Disambiguated
+   accuracy stays ~0.97 (0.970 → 0.972) — the model still reads the question.
+   Only steering `α=32` pushes abstention below Ghostwriter's 0.589 (to 0.118) —
+   and it does so by wrecking disambiguated accuracy (0.970 → 0.644). Ghostwriter
+   breaks abstention while keeping accuracy, **but the target-vs-non-target split
+   is near-random** under the generic evidence, so this reflects **abstention
+   suppression, not reliable steering** to the BBQ target — it is *not* a
+   directional win.
 
 > **Limitation (key).** Ghostwriter here is an **abstention-suppression**
-> baseline, not a directional-bias one, and it has **no `α`** (`α` is a
-> steering-only knob; its dose axis is `none`/`mild`/`strong`/`repeated`). The
-> hand-crafted evidence is **category-generic, not item-specific**: it names a
-> group stereotype but not *which* of the two BBQ options is the stereotyped
-> individual. So once abstention breaks, the freed picks split **~evenly**
-> (non-target rises about as much as target), which is why `s_AMB` stays ~0.
-> A proper directional baseline would build **item-specific** evidence naming
-> each item's actual target group (from `answer_info`), so the fabricated claim
-> points at a concrete option. Flagged as **future work**.
+> baseline, not a directional-bias one, and it has **no `α`** and **no strength
+> dial** (it is a single fabricated-evidence injection). The hand-crafted evidence
+> is **category-generic, not item-specific**: it names a group stereotype but not
+> *which* of the two BBQ options is the stereotyped individual. So once abstention
+> breaks, the freed picks split **~evenly** (non-target rises about as much as
+> target), which is why `s_AMB` stays ~0. A proper directional baseline would
+> build **item-specific** evidence naming each item's actual target group (from
+> `answer_info`), so the fabricated claim points at a concrete option. Flagged as
+> **future work**.
 
 **Takeaway.** Input-space (Ghostwriter) and activation-space (our steering) are
 two doors to the same *abstention-collapse* room. Steering's distinctive
@@ -534,5 +509,6 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 - Add eval/ghostwriter.py: input-space "Ghostwriter" bias-injection baseline (fabricated-evidence prompt transform, arXiv:2606.06244), hand-crafted per-category evidence + 4 strengths (none/mild/strong/repeated); bbq_eval.py --attack ghostwriter --gw-strength (mutually exclusive with --alpha), auto-named bbq_ghostwriter_{strength}.json.
 - Add eval/compare_baseline.py + docs/figs/ghostwriter_vs_steering.png: Ghostwriter (input-space) vs activation-steering (L14) comparison — 7-run table, matched-effect scatter (GW reaches higher target at equal abstention) and competence panel (α=32 cliff vs GW flat ~0.97). README results subsection + report section 6b added; PDF regenerated.
 - Reorg: move all Ghostwriter-baseline artifacts into a top-level `baseline/` folder (`git mv` preserves history) — `baseline/ghostwriter.py`, `baseline/compare_baseline.py`, `baseline/figs/ghostwriter_vs_steering.png`, and the 4 `bbq_ghostwriter_*` result pairs under `baseline/results/`. bbq_eval.py now imports ghostwriter from `../baseline` and writes `--attack ghostwriter` runs to `baseline/results/` (steering/clean stay in `eval/results/`); compare_baseline.py reads GW runs from `baseline/results/` + clean/steering from `eval/results/` and writes the figure to `baseline/figs/`; make_report.py updated to match. Shared clean+steering results stay in `eval/results/`.
+- Ghostwriter simplified to a **single fabricated-evidence injection** — removed the invented `none/mild/strong/repeated` dose ladder (the paper has no strength dial). `ghostwriter.py`: `EVIDENCE` is now one block per category (the credibility-laden statistic + authority + "studies show" variant); `build_injected_prompt(category, base_prompt)` and `evidence_for(category)` drop the `strength` arg. `bbq_eval.py`: removed `--gw-strength`; `--attack ghostwriter` is now a single run auto-named `baseline/results/bbq_ghostwriter.json`. Deleted the 4 old `bbq_ghostwriter_{none,mild,strong,repeated}` result triples + the one-off `backfill_evidence.py`. `compare_baseline.py` now plots Ghostwriter as one reference point on the steering-sweep figure; report sections 6b/6c rewritten (findings pull live numbers from the single run). Re-ran the eval and regenerated the PDF.
 - Add `docs/research_plan.md`: living research-plan doc. Locks the paper's framing to **"Aim vs. Disinhibit"** (MECHANISM) — the claim that *how a steering direction is constructed* (decision-anchored answer-text CAA vs group/concept mean-diff), not data volume or subset, decides whether it injects **directional** bias or merely **erodes abstention**. Defines the 3-experiment spine (E1 measurement fix → E2 construction ablation → E3 aim-vs-disinhibit map + aiming-ratio metric), minimal support (E4-lite category, E7-lite confound controls, E9 CCS/competence), benchmarks, DLMs, and deferred follow-ups (cross-model, open-gen, denoising-trajectory/SAE).
 - Report + README: re-frame Ghostwriter honestly as an **abstention-suppression** baseline (not directional). Dropped the "cleaner attack / beats steering" wording; added a **Limitation** note (category-generic evidence → freed picks split ~evenly → suppresses abstention rather than steering to the BBQ target; item-specific `answer_info` evidence = future work) and made explicit Ghostwriter has **no `α`**. Added a new report subsection **"6c. Injected evidence — examples"**: the verbatim Phase-2 injection template, the faithful fabricated-evidence text (Race_ethnicity mild/strong/repeated + Religion/Age strong, pulled live from `ghostwriter.py`), and one full worked injected prompt on a real BBQ item (Race_ethnicity `example_id 112`, q1: clean → B "Cannot answer" [unknown] vs strong → C "The African American man" [target]). PDF regenerated.

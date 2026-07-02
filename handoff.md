@@ -36,8 +36,8 @@ CUDA_VISIBLE_DEVICES=0 <py> eval/bbq_eval.py                       # -> eval/res
 # steer with a direction at L14
 CUDA_VISIBLE_DEVICES=0 <py> eval/bbq_eval.py --layer 14 --alpha 8 \
     --direction-path <path>.pt --out <out>.json
-# Ghostwriter baseline (input-space, no steering)
-CUDA_VISIBLE_DEVICES=0 <py> eval/bbq_eval.py --attack ghostwriter --gw-strength strong
+# Ghostwriter baseline (input-space, no steering; single injection, no strength dial)
+CUDA_VISIBLE_DEVICES=0 <py> eval/bbq_eval.py --attack ghostwriter
 # build a steering direction
 CUDA_VISIBLE_DEVICES=0 <py> bias_steering/build_direction.py --source crows --layers 14 \
     [--categories race_color] [--subset-terms "black,african american"]
@@ -53,8 +53,8 @@ eval/            BBQ harness. bbq_eval.py (generation-based MC + optional steeri
 bias_steering/   build_direction.py (--source crows|json, --layer, --subset-terms/-name),
                  directions/L14/*.pt (GITIGNORED — rebuild from data).
 baseline/        GHOSTWRITER = input-space baseline ONLY (Yang et al. 2606.06244 port; NOT
-                 our method). ghostwriter.py, compare_baseline.py, backfill_evidence.py,
-                 figs/, results/bbq_ghostwriter_{none,mild,strong,repeated}.
+                 our method). SINGLE fabricated-evidence injection (no strength dial).
+                 ghostwriter.py, compare_baseline.py, figs/, results/bbq_ghostwriter.
 race_steering/   Black-targeted GROUP mean-diff experiment. build_black_data.py,
                  black_analysis.py, race_black.pt, data/black_pairs.{csv,json} (792 pairs:
                  261 CrowS + 531 StereoSet), results/bbq_L14_race_black_a{4,8,12,16,24,32}, figs/.
@@ -105,7 +105,8 @@ answer-text contrast), not data volume or subset. Concept/group mean-diff = supp
 - **`n=37`** Black-referent ambiguous items in the seed-42 sample is the MEASUREMENT bottleneck
   — magnitudes are noisy (~2.7 pts/item). Directional *sign* is consistent; magnitudes indicative.
 - **Coherence gate**: always report split-half cosine before trusting a direction (≥~0.7 usable).
-- Ghostwriter has **no alpha** (input-space); don't overlay its ordinal doses on the α axis.
+- Ghostwriter has **no alpha** and **no strength dial** (input-space, single injection); it is one
+  point, not a dose curve — clean vs ghostwriter is a binary contrast.
 - SemDLM+ in `literature.md` is **UNVERIFIED** (couldn't be found) — flagged, not described.
 
 ## 6. Open threads / next steps

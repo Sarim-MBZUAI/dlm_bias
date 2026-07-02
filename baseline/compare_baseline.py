@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 """Ghostwriter (input-space) vs activation-steering (block L14) on BBQ.
 
-Reads the Ghostwriter metrics JSONs from baseline/results/ and the shared
-clean+steering JSONs from eval/results/, prints the 7-row comparison table,
-and (re)generates baseline/figs/ghostwriter_vs_steering.png:
-  (L) matched-effect scatter: abstention_rate vs target_rate
-  (R) competence panel:       abstention_rate vs acc_disambig
+Reads the single Ghostwriter metrics JSON from baseline/results/ and the shared
+clean+steering JSONs from eval/results/, prints the comparison table, and
+(re)generates baseline/figs/ghostwriter_vs_steering.png:
+  (L) target-rate vs abstention: the steering sweep + the single Ghostwriter point
+  (R) competence panel:          abstention_rate vs acc_disambig
+Ghostwriter is a single fabricated-evidence injection (no strength dial), so it is
+one point, not a dose curve.
 Run:  python baseline/compare_baseline.py     (deps: matplotlib)
 """
 import os, json
@@ -23,10 +25,7 @@ os.makedirs(FIG, exist_ok=True)
 # (label, file, series)  series: "gw" | "steer"
 ROWS = [
     ("clean",       "bbq_clean.json",              None),
-    ("gw none",     "bbq_ghostwriter_none.json",   "gw"),
-    ("gw mild",     "bbq_ghostwriter_mild.json",   "gw"),
-    ("gw strong",   "bbq_ghostwriter_strong.json", "gw"),
-    ("gw repeated", "bbq_ghostwriter_repeated.json","gw"),
+    ("ghostwriter", "bbq_ghostwriter.json",        "gw"),
     ("steer a=8",   "bbq_L14_race_color_a8.json",  "steer"),
     ("steer a=16",  "bbq_L14_race_color_a16.json", "steer"),
     ("steer a=32",  "bbq_L14_race_color_a32.json", "steer"),
@@ -66,15 +65,20 @@ def make_fig(rows):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.6, 5.2))
 
-    # Steering-only figure: Ghostwriter (an ordinal none/mild/strong/repeated
-    # dose) is NOT plotted alongside the continuous steering alpha -- different
-    # mechanisms on different axes would be a misleading apples-to-oranges
-    # overlay. The GW numbers live in the 6b comparison table instead.
+    # Ghostwriter is now a SINGLE injection (no strength dial), so it plots as one
+    # reference point alongside the continuous steering alpha sweep -- the "two
+    # doors to the same abstention-collapse room" made visual.
     def series(ax, x, y, only=None):
         ax.plot([r[x] for r in st], [r[y] for r in st], "s-", color=ST_C,
                 lw=1.6, ms=8, label="Activation steering (L14)")
         ax.scatter([base[x]], [base[y]], marker="*", s=220, color=B_C,
                    zorder=5, label="clean baseline (a=0)")
+        if gw:
+            ax.scatter([gw[0][x]], [gw[0][y]], marker="D", s=90, color=GW_C,
+                       zorder=5, label="Ghostwriter (input-space)")
+            ax.annotate("ghostwriter", (gw[0][x], gw[0][y]),
+                        textcoords="offset points", xytext=(6, 6), fontsize=8,
+                        color=GW_C)
         LOFF = {"clean": (8, -13), "a=8": (8, -13),
                 "a=16": (-40, -14), "a=32": (-40, 4)}
         for r in st + [base]:
@@ -107,7 +111,7 @@ def make_fig(rows):
     ax2.legend(loc="lower left", fontsize=9)
     ax2.grid(alpha=0.25)
 
-    fig.suptitle("Activation steering (L14) dose-response on BBQ",
+    fig.suptitle("Activation steering (L14) dose-response vs Ghostwriter (single injection) on BBQ",
                  fontsize=12.5, y=1.02)
     fig.tight_layout()
     out = os.path.join(FIG, "ghostwriter_vs_steering.png")

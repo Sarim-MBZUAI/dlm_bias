@@ -186,14 +186,17 @@ for k in cand:
 # ---------------- Ghostwriter vs steering (input-space baseline) ----------------
 import compare_baseline as cb           # baseline/compare_baseline.py
 import ghostwriter as gw                 # baseline/ghostwriter.py (evidence + template)
-GW_ROWS = cb.load()                      # baseline/results + eval/results, 7 runs + clean
+GW_ROWS = cb.load()                      # baseline/results + eval/results: clean + gw + steering
 cb.make_fig(GW_ROWS)                     # writes baseline/figs/ghostwriter_vs_steering.png
 GW = {r["label"]: r for r in GW_ROWS}
 
 # Live-load the worked injected example (id 112, q1) + its clean counterpart, so the
 # report shows the ACTUAL injected prompt/answers, not a hand-copied paraphrase.
-def _gw_samples(strength):
-    p = os.path.join(ROOT, "baseline", "results", f"bbq_ghostwriter_{strength}_samples.jsonl")
+def _gw_samples():
+    p = os.path.join(ROOT, "baseline", "results", "bbq_ghostwriter_samples.jsonl")
+    return [json.loads(l) for l in open(p) if l.strip()] if os.path.exists(p) else []
+def _clean_samples():
+    p = os.path.join(ROOT, "eval", "results", "bbq_clean_samples.jsonl")
     return [json.loads(l) for l in open(p) if l.strip()] if os.path.exists(p) else []
 def _gw_find(rows, eid, qidx):
     for s in rows:
@@ -201,8 +204,8 @@ def _gw_find(rows, eid, qidx):
             return s
     return None
 GW_EX_ID, GW_EX_Q = 112, 1
-_gw_strong_ex = _gw_find(_gw_samples("strong"), GW_EX_ID, GW_EX_Q)
-_gw_none_ex = _gw_find(_gw_samples("none"), GW_EX_ID, GW_EX_Q)
+_gw_strong_ex = _gw_find(_gw_samples(), GW_EX_ID, GW_EX_Q)
+_gw_none_ex = _gw_find(_clean_samples(), GW_EX_ID, GW_EX_Q)
 
 # ---------------- PDF ----------------
 from reportlab.lib.pagesizes import A4
@@ -303,10 +306,9 @@ if AM:
 S.append(P("Reading: the standard directional score s_AMB stays near zero because non-target picks rise faster than target picks, but in absolute terms the model both abstains far less and stereotypes more. A race_color direction also induces such picks in non-race categories, i.e. it acts as a broad abstention-suppressor rather than a race-specific lever.", BODY))
 
 S.append(P("6b. Input-space baseline (Ghostwriter) vs activation steering", H1))
-S.append(P("Is the abstention-collapse + absolute-stereotype effect specific to activation steering, or is it a property of the model that any injection channel triggers? We compare our L14 steering sweep against <b>Ghostwriter</b> (baseline/ghostwriter.py) &mdash; a pure <i>input-space</i> prompt transform that prepends hand-crafted fabricated &lsquo;evidence&rsquo; toward the stereotyped group, touching no weights or activations and needing no steering direction. Ghostwriter&rsquo;s four <i>doses</i> (none/mild/strong/repeated) are an ordinal strength axis, <b>not</b> a steering alpha, so they are compared to the a=0/8/16/32 steering sweep in the <b>table below</b> only &mdash; we deliberately do <b>not</b> overlay them on the figure (an ordinal dose and a continuous alpha do not share an axis). The figure shows the steering dose-response alone. Metrics and scoring are identical across both.", BODY))
+S.append(P("Is the abstention-collapse + absolute-stereotype effect specific to activation steering, or is it a property of the model that any injection channel triggers? We compare our L14 steering sweep against <b>Ghostwriter</b> (baseline/ghostwriter.py) &mdash; a pure <i>input-space</i> prompt transform that prepends hand-crafted fabricated &lsquo;evidence&rsquo; toward the stereotyped group, touching no weights or activations and needing no steering direction. Ghostwriter is a <b>single fabricated-evidence injection</b> (the attack has no strength dial and no alpha), so the experiment is a binary contrast &mdash; clean baseline vs Ghostwriter &mdash; and it appears as one point in the table and figure below, next to the continuous a=0/8/16/32 steering sweep. Metrics and scoring are identical across both.", BODY))
 if GW_ROWS:
-    order = ["clean", "gw none", "gw mild", "gw strong", "gw repeated",
-             "steer a=8", "steer a=16", "steer a=32"]
+    order = ["clean", "ghostwriter", "steer a=8", "steer a=16", "steer a=32"]
     rows = [["run", "abstention", "target", "non-target", "acc_disambig", "s_AMB"]]
     for lb in order:
         r = GW.get(lb)
@@ -322,8 +324,21 @@ if GW_ROWS:
     S.append(Spacer(1, 4))
     if os.path.exists(os.path.join(BASELINE_FIG, "ghostwriter_vs_steering.png")):
         S.append(Image(os.path.join(BASELINE_FIG, "ghostwriter_vs_steering.png"), width=17*cm, height=7.0*cm))
-S.append(P("<b>What this baseline is (honest framing):</b> Ghostwriter here is an <b>abstention-suppression</b> baseline, <i>not</i> a directional-bias one. The fabricated evidence reliably breaks the model&rsquo;s calibrated &lsquo;Unknown&rsquo; answer, but it does not reliably steer toward the BBQ target group &mdash; see the Limitation below. (Note: Ghostwriter has no <i>alpha</i>; alpha is a steering-only knob. Its dose axis is none/mild/strong/repeated.)", BODY))
-S.append(P("Findings: (1) <b>Harness validated</b> &mdash; Ghostwriter <i>none</i> reproduces the clean baseline exactly (abstain 0.791, target 0.051, non-target 0.159, acc_disambig 0.970), so any difference is the attack, not the plumbing. (2) <b>Abstention collapses, split stays even</b> &mdash; injection roughly halves abstention (0.791&rarr;~0.54&ndash;0.59) while <i>both</i> target and non-target rise together, so s_AMB stays pinned near 0 (target/non-target cancellation). The freed probability mass splits <b>~evenly</b> between the two groups rather than concentrating on the stereotyped one. (3) <b>Saturates early</b> &mdash; mild is already near-max; strong/repeated barely differ and are even slightly non-monotonic (strong abstains <i>more</i> than mild). Dynamic range is a plateau, not a dose knob. (4) <b>Competence preserved</b> &mdash; disambiguated accuracy stays ~0.97 across all doses, i.e. the model still reads the question. (5) <b>Not a directional win over steering</b> &mdash; at matched abstention (~0.57) Ghostwriter shows a comparable-or-higher target-rate (mild 0.108 vs steering a=16 0.073) with accuracy intact, but because the target-vs-non-target split is near-random under generic evidence, this reflects <i>abstention suppression</i>, not reliable steering to the BBQ target. Only steering a=32 pushes abstention lower (0.12), and it does so by wrecking disambiguated accuracy (0.97&rarr;0.64).", BODY))
+S.append(P("<b>What this baseline is (honest framing):</b> Ghostwriter here is an <b>abstention-suppression</b> baseline, <i>not</i> a directional-bias one. The fabricated evidence reliably breaks the model&rsquo;s calibrated &lsquo;Unknown&rsquo; answer, but it does not reliably steer toward the BBQ target group &mdash; see the Limitation below. (Note: Ghostwriter has no <i>alpha</i> and no strength dial; it is a single fabricated-evidence injection.)", BODY))
+_c, _g = GW.get("clean"), GW.get("ghostwriter")
+if _c and _g:
+    _find = (f"Findings: (1) <b>Abstention collapses</b> &mdash; the single injection drops abstention "
+             f"{_c['abstain']:.3f}&rarr;{_g['abstain']:.3f} on ambiguous items. (2) <b>Split stays even</b> &mdash; "
+             f"<i>both</i> target ({_c['target']:.3f}&rarr;{_g['target']:.3f}) and non-target "
+             f"({_c['nontarget']:.3f}&rarr;{_g['nontarget']:.3f}) rise together, so s_AMB stays pinned near 0 "
+             f"({_c['s_AMB']:+.3f}&rarr;{_g['s_AMB']:+.3f}): the freed probability mass splits <b>~evenly</b> between the "
+             f"two groups rather than concentrating on the stereotyped one. (3) <b>Competence preserved</b> &mdash; "
+             f"disambiguated accuracy stays high ({_c['acc_dis']:.3f}&rarr;{_g['acc_dis']:.3f}), i.e. the model still "
+             f"reads the question. (4) <b>Not a directional win over steering</b> &mdash; Ghostwriter breaks abstention "
+             f"while keeping accuracy, but because the target-vs-non-target split is near-random under generic evidence, "
+             f"this reflects <i>abstention suppression</i>, not reliable steering to the BBQ target. Only steering a=32 "
+             f"pushes abstention lower, and it does so by wrecking disambiguated accuracy (0.97&rarr;0.64).")
+    S.append(P(_find, BODY))
 S.append(P("<b>Limitation (key).</b> The hand-crafted evidence is <b>category-generic, not item-specific</b>: it names a group stereotype (e.g. &lsquo;certain racial minorities are more involved in crime&rsquo;) but does <i>not</i> name WHICH of the two BBQ options is the stereotyped individual. So once the evidence breaks abstention, the model has no signal about which option to pick, and the freed picks split roughly evenly &mdash; non-target rises about as much as target. Ghostwriter as built therefore <b>suppresses abstention rather than reliably steering to the BBQ target</b>. A proper directional baseline would construct <i>item-specific</i> evidence naming each item&rsquo;s actual target group (from the item&rsquo;s answer_info), so the fabricated claim points at a concrete option. We flag this as future work.", BODY))
 
 S.append(PageBreak())
@@ -339,19 +354,16 @@ def _code_block(text):
 
 S.append(_code_block(gw.inject_template()))
 
-S.append(P("<b>Fabricated evidence (verbatim from EVIDENCE).</b> One category shown at all three strengths so the escalation (soft claim &rarr; statistic + named authority &rarr; stacked authorities) is visible; two more shown at <i>strong</i>. These strings are the actual attack text &mdash; deliberately false and stereotyping.", BODY))
+S.append(P("<b>Fabricated evidence (verbatim from EVIDENCE).</b> One fabricated-evidence block per BBQ category (statistic + named authority + &lsquo;studies show&rsquo; framing, pushing toward the stereotyped group); four categories shown. These strings are the actual attack text &mdash; deliberately false and stereotyping.", BODY))
 
-def _evidence_row(cat, strength):
-    return P(f"<b>{cat.replace('_',' ')} &middot; {strength}:</b> &ldquo;{_esc(gw.evidence_for(cat, strength))}&rdquo;", EX)
+def _evidence_row(cat):
+    return P(f"<b>{cat.replace('_',' ')}:</b> &ldquo;{_esc(gw.evidence_for(cat))}&rdquo;", EX)
 
-_ev_cell = [P("<b>Race_ethnicity (escalation: mild &rarr; strong &rarr; repeated)</b>", EX),
-            _evidence_row("Race_ethnicity", "mild"),
-            _evidence_row("Race_ethnicity", "strong"),
-            _evidence_row("Race_ethnicity", "repeated"),
-            Spacer(1, 3),
-            P("<b>Other categories (strong variant)</b>", EX),
-            _evidence_row("Religion", "strong"),
-            _evidence_row("Age", "strong")]
+_ev_cell = [P("<b>Fabricated evidence, one block per category</b>", EX),
+            _evidence_row("Race_ethnicity"),
+            _evidence_row("Religion"),
+            _evidence_row("Age"),
+            _evidence_row("Gender_identity")]
 _ev_box = Table([[_ev_cell]], colWidths=[16.4*cm])
 _ev_box.setStyle(TableStyle([("BOX",(0,0),(-1,-1),0.5,colors.HexColor("#c79a23")),
                              ("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#fdf8ec")),
@@ -363,15 +375,15 @@ S.append(Spacer(1, 6))
 # One full worked example: the actual injected prompt on a real Race_ethnicity item.
 if _gw_strong_ex and _gw_none_ex:
     s = _gw_strong_ex; n = _gw_none_ex
-    S.append(P(f"<b>Worked example &mdash; a real injected prompt (Race_ethnicity, ambiguous; example_id {s['example_id']}, q{s['question_index']}).</b> Below is the exact <i>strong</i>-dose injected prompt sent to the model (fabricated evidence + Context + Question + options), followed by the model&rsquo;s answer with vs without injection.", BODY))
+    S.append(P(f"<b>Worked example &mdash; a real injected prompt (Race_ethnicity, ambiguous; example_id {s['example_id']}, q{s['question_index']}).</b> Below is the exact Ghostwriter-injected prompt sent to the model (fabricated evidence + Context + Question + options), followed by the model&rsquo;s answer with vs without injection.", BODY))
     S.append(_code_block(s["injected_prompt"]))
     def _fmt_pick(rec):
         col = "#b00000" if rec["pred_class"] == "target" else "#000000"
         tag = {"unknown":"correct abstention","target":"stereotyped group","non-target":"other group","no_answer":"no answer"}.get(rec["pred_class"], rec["pred_class"])
         return f"<font color='{col}'>{rec['pred_letter'] or '-'}. {_esc(rec['pred_text']) or 'no answer'} [{tag}]</font>"
     S.append(P(f"<b>Gold answer:</b> {n['gold_letter']}. {_esc(n['gold_text'])} [correct = not enough information].<br/>"
-               f"<b>Clean baseline (none):</b> {_fmt_pick(n)}.<br/>"
-               f"<b>Strong Ghostwriter:</b> {_fmt_pick(s)}.", EX))
+               f"<b>Clean baseline (no injection):</b> {_fmt_pick(n)}.<br/>"
+               f"<b>Ghostwriter:</b> {_fmt_pick(s)}.", EX))
     S.append(P("The injection breaks the correct &lsquo;Cannot answer&rsquo; abstention and flips the pick to the stereotyped group &mdash; concrete on this item because its two named options (African American man / Roma man) both plausibly match the generic &lsquo;racial minority&rsquo; framing; across the full set the flips split roughly evenly between the two options (see Limitation), which is why s_AMB stays ~0.", SMALL))
 S.append(Spacer(1, 4))
 

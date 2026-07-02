@@ -516,11 +516,8 @@ def parse_args():
     # Ghostwriter input-space attack (default OFF; mutually exclusive with steering).
     p.add_argument("--attack", default="none", choices=["none", "ghostwriter"],
                    help="input-space attack; 'ghostwriter' prepends fabricated "
-                        "evidence to each prompt (no steering direction needed)")
-    p.add_argument("--gw-strength", default="none",
-                   choices=ghostwriter.STRENGTHS,
-                   help="Ghostwriter dose: none/mild/strong/repeated "
-                        "(dose-response sweep vs. alpha 0/8/16/32)")
+                        "evidence to each prompt (single injection, no strength "
+                        "dial, no steering direction needed)")
     return p.parse_args()
 
 
@@ -530,7 +527,7 @@ def main():
     torch.manual_seed(args.seed)
 
     # Ghostwriter (input-space) and activation steering are mutually exclusive.
-    ghostwriter_active = args.attack == "ghostwriter" and args.gw_strength != "none"
+    ghostwriter_active = args.attack == "ghostwriter"
     if args.attack == "ghostwriter" and args.alpha != 0.0:
         raise SystemExit("--attack ghostwriter is mutually exclusive with --alpha "
                          "(activation steering); pick one.")
@@ -550,9 +547,9 @@ def main():
     if args.out is None:
         out_dir = os.path.dirname(DEFAULT_OUT)  # eval/results (steering + clean)
         if args.attack == "ghostwriter":
-            # input-space attack naming: bbq_ghostwriter_{strength}.json,
+            # input-space attack naming: bbq_ghostwriter.json,
             # written to the top-level baseline/ results folder (not eval/results)
-            stem = f"bbq_ghostwriter_{args.gw_strength}"
+            stem = "bbq_ghostwriter"
             # DEFAULT_OUT = <root>/eval/results/bbq.json -> 3x dirname == <root>
             repo_root = os.path.dirname(os.path.dirname(os.path.dirname(DEFAULT_OUT)))
             out_dir = os.path.join(repo_root, "baseline", "results")
@@ -577,7 +574,7 @@ def main():
     print(f"  alpha        : {args.alpha}  (0 = clean, no hook)")
     print(f"  layer        : {'emb' if spec == 'emb' else f'block L{spec}'}")
     print(f"  attack       : {args.attack}"
-          + (f"  (ghostwriter strength={args.gw_strength})" if ghostwriter_active else ""))
+          + ("  (ghostwriter: single fabricated-evidence injection)" if ghostwriter_active else ""))
     print("=" * 64)
 
     print("Loading BBQ ...")
@@ -644,14 +641,14 @@ def main():
             # prompt before generation (scoring/parsing downstream is unchanged).
             if ghostwriter_active:
                 base_prompt = ghostwriter.build_injected_prompt(
-                    row["category"], args.gw_strength, base_prompt
+                    row["category"], base_prompt
                 )
             # injected_prompt is the TRUE user-content string sent to the model
             # (post-injection for GW, the plain prompt otherwise); evidence is the
             # exact fabricated block spliced in (None when not attacking).
             injected_prompt = base_prompt
             injected_evidence = (
-                ghostwriter.evidence_for(row["category"], args.gw_strength)
+                ghostwriter.evidence_for(row["category"])
                 if ghostwriter_active else None
             )
             prompt_text = tok.apply_chat_template(
@@ -714,7 +711,6 @@ def main():
             per_item.append({
                 **rec,
                 "attack": args.attack,
-                "gw_strength": args.gw_strength if ghostwriter_active else None,
                 "injected_evidence": injected_evidence,
                 "injected_prompt": injected_prompt,
                 "example_id": int(row.get("example_id", -1)),
@@ -798,7 +794,6 @@ def main():
         "hook_module": args.hook_module,
         "steering_active": steering_active,
         "attack": args.attack,
-        "gw_strength": args.gw_strength,
         "ghostwriter_active": ghostwriter_active,
     }
     # Ghostwriter is a pure input-space transform: strip steering-only keys so
@@ -830,12 +825,12 @@ def main():
     print(f"Saved samples  -> {samples_path}  ({len(per_item)} rows, one per line)")
 
     # Evidence manifest: one record per BBQ category that appeared, capturing the
-    # exact fabricated evidence + injection template used for this GW strength.
+    # exact fabricated evidence + injection template used for the Ghostwriter attack.
     if ghostwriter_active:
         cats = sorted({r["category"] for r in records})
         evidence_path = args.out[:-5] + "_evidence.jsonl"
         with open(evidence_path, "w") as f:
-            for r in ghostwriter.evidence_records(args.gw_strength, cats):
+            for r in ghostwriter.evidence_records(cats):
                 f.write(json.dumps(r) + "\n")
         print(f"Saved evidence -> {evidence_path}  ({len(cats)} categories)")
 
