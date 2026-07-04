@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-23
 **Model:** LLaDA-8B-Instruct (masked-diffusion LLM)
-**Method:** training-free activation steering, IBI port (CVPR 2025, arXiv:2504.01819)
+**Method:** training-free activation steering, IBI port (CVPR 2025, [arXiv:2504.01819](https://arxiv.org/abs/2504.01819))
 **Injection site:** input token-embedding layer (`model.transformer.wte`)
 **Direction:** mean(stereotype) − mean(anti-stereotype) over CrowS-Pairs minimal pairs, masked-mean-pooled over real tokens, per bias category.
 

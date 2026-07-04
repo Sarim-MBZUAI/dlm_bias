@@ -13,7 +13,7 @@ The rest are method neighbors, not run in our repo.
 
 ## 1. Activation Steering for Masked Diffusion Language Models
 Shnaidman, Feiglin, Yaari, Mentel, LeVi, Lapid (Deepkeep / Technion). ReALM-GEN
-workshop, ICLR 2026. arXiv:2512.24143.
+workshop, ICLR 2026. [arXiv:2512.24143](https://arxiv.org/abs/2512.24143).
 
 Extracts a single low-dimensional direction from **contrastive prompt sets** with one
 prompt-only forward pass, then applies a **global intervention on residual-stream
@@ -30,7 +30,7 @@ target (safety refusal, not demographic bias/BBQ) and never asks the aim-vs-disi
 question. Its early-step / mid-late-layer localization overlaps our deferred E8.
 
 ## 2. DLM-SWAI: Steering Diffusion Language Models Before They Unmask
-An & Han (Yonsei). arXiv:2605.29626.
+An & Han (Yonsei). [arXiv:2605.29626](https://arxiv.org/abs/2605.29626).
 
 Training-free inference-time steering that adds **pre-computed token-level style scores
 to the logits** at each masked position during denoising — i.e. **logit-space**
@@ -43,7 +43,7 @@ hook); style/safety, not demographic bias; beneficial control, not injection.
 
 ## 3. Steering LLM Viewpoints through Fabricated Evidence Injection ("Ghostwriter")
 Yang, Liu, Huang, Li, Zhang, Weng, Song (HKUST / USTC / Liverpool / Guangzhou).
-arXiv:2606.06244. **This is the source of our `baseline/` implementation.**
+[arXiv:2606.06244](https://arxiv.org/abs/2606.06244). **This is the source of our `baseline/` implementation.**
 
 A two-phase **input-space** attack: (1) repackage a misleading statement with a
 fabricated, credibility-laden rationale; (2) instruct the LLM to incorporate that
@@ -58,7 +58,7 @@ picks split ~evenly, so it **suppresses abstention rather than aiming** — the 
 finding we make for group-contrast steering.
 
 ## 4. ILRR: Iterative Latent Representation Refinement
-Avrahami & Nachmani (Tel Aviv U / Ben Gurion U). arXiv:2601.21647.
+Avrahami & Nachmani (Tel Aviv U / Ben Gurion U). [arXiv:2601.21647](https://arxiv.org/abs/2601.21647).
 
 Learning-free inference-time steering that uses a **single reference sequence**: at each
 denoising step it runs one extra parallel forward pass and **aligns the generated
@@ -71,7 +71,7 @@ reference example's activations realigned online — not a fixed precomputed con
 direction. Sentiment, not demographic bias/BBQ; no aim-vs-disinhibit.
 
 ## 5. Steering Without Breaking: Mechanistically Informed Interventions for Discrete DLMs
-Zhou, Roy, Gangadharaiah (AWS AI Labs). arXiv:2605.10971.
+Zhou, Roy, Gangadharaiah (AWS AI Labs). [arXiv:2605.10971](https://arxiv.org/abs/2605.10971).
 
 Trains **sparse autoencoders** on residual-stream activations of four DLMs (124M–8B:
 LLaDA, Dream, MDLM) to find **when each attribute "commits"** during denoising (topic

@@ -52,7 +52,7 @@ eval/            BBQ harness. bbq_eval.py (generation-based MC + optional steeri
                  attack_metrics.py (backfill). results/: bbq_clean, bbq_L14_race_color_a{8,16,32}.
 bias_steering/   build_direction.py (--source crows|json, --layer, --subset-terms/-name),
                  directions/L14/*.pt (GITIGNORED — rebuild from data).
-baseline/        GHOSTWRITER = input-space baseline ONLY (Yang et al. 2606.06244 port; NOT
+baseline/        GHOSTWRITER = input-space baseline ONLY (Yang et al. [2606.06244](https://arxiv.org/abs/2606.06244) port; NOT
                  our method). SINGLE fabricated-evidence injection (no strength dial).
                  ghostwriter.py, compare_baseline.py, figs/, results/bbq_ghostwriter.
 race_steering/   Black-targeted GROUP mean-diff experiment. build_black_data.py,
