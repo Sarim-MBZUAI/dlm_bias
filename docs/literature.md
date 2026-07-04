@@ -420,10 +420,11 @@ tunable scale. So the gap is **not** "steering a DLM at inference," **not** "act
 steering of a DLM," **not** "residual-stream contrastive steering," and — because Zhou et al.
 already analyse *when attributes commit across denoising* — **not** the denoising-trajectory
 timing idea (our deferred **E8** is largely pre-empted for non-bias attributes). What remains
-unoccupied is narrower and is where our contribution must sit. (One cited paper we still
-could **not** locate: **Shnaidman et al. 2025**, "activation steering for masked diffusion
-LMs," referenced by DLM-SWAI — flagged UNVERIFIED; chase before submission, it may be
-another near-neighbor.)
+unoccupied is narrower and is where our contribution must sit. (**Shnaidman et al.** —
+"Activation Steering for Masked Diffusion Language Models," arXiv:2512.24143, ReALM-GEN
+@ ICLR 2026 — is now **located and VERIFIED**: it is the closest method to us (contrastive
+direction + residual-stream global intervention on MDLMs), case study = safety refusal, not
+demographic bias. See `baselines.md` §1.)
 
 1. **DLM fairness/safety + steering work** (bucket 1) covers jailbreak-safety,
    toxicity/style, sentiment transfer, and tabular fairness (TrustLDM's EOD) — **none uses
