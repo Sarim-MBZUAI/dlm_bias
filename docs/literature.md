@@ -36,6 +36,7 @@ steering is the first *directional* lever (aims at a specific option, competence
 | **DiffuGuard** (Li et al. 2025) | diffusion LLMs | jailbreak-safety | Training-free **defense** (stochastic remasking) | Defense vs our attack; safety not social bias; identifies remasking "harmful bias" |
 | **DLM-SWAI** (An & Han 2026) | DLM | style/safety control | Token-level attribute scores during denoising; **logit-space** steering | Logit-space (found > activation for style) vs our **activation-space**; not bias |
 | **ILRR** (Avrahami & Nachmani 2026) | **LLaDA**, MDLM | sentiment / attribute transfer | Inference-time **activation/latent** steering; align generated activations to a **single reference sequence** each denoising step | **Same channel as us** (activation, not logit) — but reference-transfer of one example's activations, not a fixed contrastive direction; differs on *how the signal is built* (our axis); sentiment not BBQ bias |
+| **Steering Without Breaking** (Zhou, Roy & Gangadharaiah 2026, AWS) | **LLaDA, Dream, MDLM** (124M–8B) | sentiment / topic / style (7 tasks) | **Residual-stream SAE contrastive** (target vs non-target) steering + **adaptive per-denoising-step schedule** (attributes commit on distinct schedules) | **Closest to our method** — residual contrastive steering ≈ our mean-diff AND the "when-in-denoising to intervene" axis = our deferred **E8**; but style/sentiment, never BBQ/bias, never aim-vs-disinhibit |
 | **Diffusion Guided LM** (Lovelace et al. 2024) | continuous diffusion LM | RealToxicityPrompts, Jigsaw Unintended Bias | Plug-and-play **guidance**, toxicity **mitigation** | Mitigation vs injection; toxicity not BBQ stereotype QA |
 | **DiffLens / DiffusionBias** (Shi et al. CVPR 2025) | Stable Diffusion (**image**) | demographic attrs | SAE **mechanistic** activation editing | Image not text; debias not inject — but the direct interpretability analogue of our L14 steering |
 | **LLaDA** (Nie et al. 2025) | **LLaDA-8B (our model)** | MMLU/GSM8K/… (capability only) | Foundation model | The model we attack; **no bias eval** — frames our gap |
@@ -80,6 +81,13 @@ steering is the first *directional* lever (aims at a specific option, competence
 - **Method / focus:** learning-free, inference-time. Steers using a **single reference sequence**: at each denoising step it runs **one extra parallel forward pass** and dynamically **aligns the generated sequence's internal activations toward the reference's activations** ("latent-representation refinement"), with a **tunable steering scale**. *Spatially Modulated Steering* regulates guidance intensity across positions so a short reference can steer longer text. This is **activation/latent-space steering — the SAME channel as us**, unlike DLM-SWAI's logit-space.
 - **vs. ours:** The **closest paper on steering channel** — both are training-free activation/latent-space steering of a masked DLM with a tunable scale (their scale ≈ our α). It differs on **HOW THE STEERING SIGNAL IS CONSTRUCTED**, which is *exactly our contribution axis*: ILRR **transfers one reference example's activations by online per-step alignment**; we **add a FIXED, precomputed CONTRASTIVE direction** (CrowS/StereoSet mean-diff, or the item-anchored answer-text CAA) via a forward hook — **no reference, no per-step realignment**. Attribute = sentiment/semantic transfer, never demographic bias, BBQ, target/non-target, or abstention, so it never studies the **aim-vs-disinhibit** question. Beneficial control/transfer, not injection. **Key implication:** ILRR (activation-space) + DLM-SWAI (logit-space) together show that *inference-time steering of DLMs is NOT unoccupied territory* — our novelty rests on the **demographic-bias / BBQ setting** and the **"how the direction is built → aim vs disinhibit" finding**, not on "we steer a DLM at inference" or "we use activation space."
 - **URL / status:** VERIFIED — https://arxiv.org/abs/2601.21647 (arXiv 2601.21647).
+
+### Steering Without Breaking: Mechanistically Informed Interventions for Discrete DLMs (Zhou, Roy & Gangadharaiah, 2026; AWS AI Labs)
+- **Model(s):** four DLMs, **124M–8B** — **LLaDA, Dream, MDLM**.
+- **Benchmark(s)/datasets:** 7 steering tasks over **sentiment / topic / style** attributes (incl. simultaneous 3-attribute control). **No BBQ, no demographic bias, no abstention.**
+- **Method / focus:** trains **sparse autoencoders (SAEs)** on DLM **residual-stream** activations to find **WHEN each attribute "commits"** during denoising (topic within the first ~2% of steps, sentiment gradually over ~20%). Shows a **uniform** per-step intervention wastes steering capacity and degrades quality (worse when steering multiple attributes jointly), then proposes an **adaptive scheduler** that concentrates **residual-stream contrastive** (target-corpus vs non-target-corpus) intervention only on the steps where the attribute is actively forming. Cost/quality trade-off has a closed-form characterization via a dispersion statistic of the commitment distribution. Reaches up to 93% steering strength (+15pts over the strongest baseline) while preserving quality.
+- **vs. ours:** **The closest paper to our METHOD, on two axes at once.** (1) **Channel:** residual-stream *contrastive* activation steering (target vs non-target) ≈ our group mean-diff construction. (2) **Denoising trajectory:** its "when does an attribute commit / intervene adaptively across denoising steps" analysis **is exactly our deferred E8** (denoising-trajectory localization). What stays ours: **demographic bias on BBQ** (they steer sentiment/topic/style, never a *decision with an abstention option*), and the **aim-vs-disinhibit** distinction (their metric is attribute accuracy, not "aims at option X vs collapses Unknown"). **Implication for the paper:** E8 as a novelty is now **substantially pre-empted** for non-bias attributes — if we pursue trajectory-timing we must cite this heavily and differentiate on the bias/decision setting; our safe, unoccupied ground is the **construction → aim-vs-disinhibit** finding, *not* the trajectory-timing idea and *not* "residual contrastive steering of a DLM."
+- **URL / status:** VERIFIED — https://arxiv.org/abs/2605.10971 (arXiv 2605.10971).
 
 ### Diffusion Guided Language Modeling (Lovelace et al., ACL Findings 2024)
 - **Model(s):** A guided **continuous latent diffusion** model that produces a latent proposal to steer a frozen **auto-regressive** LM (GPT2-class) decoder — a diffusion+AR hybrid, not a masked-diffusion LM.
@@ -405,11 +413,17 @@ categories; the released dataset ships **11** by adding the two intersectional c
 
 ## Research gap (what this project occupies)
 **Honest scoping (updated).** Inference-time steering of DLMs is *not* empty ground:
-**ILRR** (activation/latent-space, reference-transfer) and **DLM-SWAI** (logit-space,
-token scores) already steer masked DLMs at inference, training-free, with a tunable
-scale. So the gap is **not** "steering a DLM at inference" and **not** "activation-space
-steering of a DLM." What remains unoccupied is narrower and is where our contribution
-must sit:
+**ILRR** (activation/latent-space, reference-transfer), **DLM-SWAI** (logit-space, token
+scores), and **Steering Without Breaking** (Zhou et al.; residual-stream SAE contrastive +
+adaptive per-step schedule) already steer masked DLMs at inference, training-free, with a
+tunable scale. So the gap is **not** "steering a DLM at inference," **not** "activation-space
+steering of a DLM," **not** "residual-stream contrastive steering," and — because Zhou et al.
+already analyse *when attributes commit across denoising* — **not** the denoising-trajectory
+timing idea (our deferred **E8** is largely pre-empted for non-bias attributes). What remains
+unoccupied is narrower and is where our contribution must sit. (One cited paper we still
+could **not** locate: **Shnaidman et al. 2025**, "activation steering for masked diffusion
+LMs," referenced by DLM-SWAI — flagged UNVERIFIED; chase before submission, it may be
+another near-neighbor.)
 
 1. **DLM fairness/safety + steering work** (bucket 1) covers jailbreak-safety,
    toxicity/style, sentiment transfer, and tabular fairness (TrustLDM's EOD) — **none uses
