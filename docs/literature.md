@@ -35,6 +35,7 @@ steering is the first *directional* lever (aims at a specific option, competence
 | **TrustLDM** (Mo et al. 2026) | LLaDA / multiple LDMs | UCI-Adult / EOD (fairness), safety, privacy | **Benchmark**, evaluation | Closest on scope (LDM + fairness) but tabular EOD, **not BBQ**; measures, doesn't inject |
 | **DiffuGuard** (Li et al. 2025) | diffusion LLMs | jailbreak-safety | Training-free **defense** (stochastic remasking) | Defense vs our attack; safety not social bias; identifies remasking "harmful bias" |
 | **DLM-SWAI** (An & Han 2026) | DLM | style/safety control | Token-level attribute scores during denoising; **logit-space** steering | Logit-space (found > activation for style) vs our **activation-space**; not bias |
+| **ILRR** (Avrahami & Nachmani 2026) | **LLaDA**, MDLM | sentiment / attribute transfer | Inference-time **activation/latent** steering; align generated activations to a **single reference sequence** each denoising step | **Same channel as us** (activation, not logit) — but reference-transfer of one example's activations, not a fixed contrastive direction; differs on *how the signal is built* (our axis); sentiment not BBQ bias |
 | **Diffusion Guided LM** (Lovelace et al. 2024) | continuous diffusion LM | RealToxicityPrompts, Jigsaw Unintended Bias | Plug-and-play **guidance**, toxicity **mitigation** | Mitigation vs injection; toxicity not BBQ stereotype QA |
 | **DiffLens / DiffusionBias** (Shi et al. CVPR 2025) | Stable Diffusion (**image**) | demographic attrs | SAE **mechanistic** activation editing | Image not text; debias not inject — but the direct interpretability analogue of our L14 steering |
 | **LLaDA** (Nie et al. 2025) | **LLaDA-8B (our model)** | MMLU/GSM8K/… (capability only) | Foundation model | The model we attack; **no bias eval** — frames our gap |
@@ -72,6 +73,13 @@ steering is the first *directional* lever (aims at a specific option, competence
 - **Method / focus:** Training-free, inference-time controllable generation. "Statistical Writing style Aligned Inference": adds a **pre-computed vocabulary-level steering bias to the logits at every masked position each denoising step** — i.e., **token-distribution / logit steering, explicitly NOT residual-stream activation steering** (they tested activation steering as a baseline and found it *less* effective). No auxiliary model, no hidden-state access.
 - **vs. ours:** Same goal family (training-free inference-time steering of LLaDA-8B) but the **opposite steering channel from ours**: logit-space bias vs. our residual-stream L14 activation hook. Useful as a contrast point — it argues logit steering beats activation steering for *style*, whereas we use activation steering for *bias injection*. Attribute = style/politeness/toxicity, not BBQ demographic bias; beneficial control, not attack.
 - **URL / status:** VERIFIED — https://arxiv.org/abs/2605.29626 (arXiv 2605.29626).
+
+### ILRR: Iterative Latent Representation Refinement — Inference-Time Steering for Masked DLMs (Avrahami & Nachmani, 2026)
+- **Model(s):** **LLaDA** and **MDLM** (masked / discrete diffusion). Same DLM family as us.
+- **Benchmark(s)/datasets:** attribute steering, primarily **sentiment**; generation-quality metrics (fluency). No BBQ, no demographic bias.
+- **Method / focus:** learning-free, inference-time. Steers using a **single reference sequence**: at each denoising step it runs **one extra parallel forward pass** and dynamically **aligns the generated sequence's internal activations toward the reference's activations** ("latent-representation refinement"), with a **tunable steering scale**. *Spatially Modulated Steering* regulates guidance intensity across positions so a short reference can steer longer text. This is **activation/latent-space steering — the SAME channel as us**, unlike DLM-SWAI's logit-space.
+- **vs. ours:** The **closest paper on steering channel** — both are training-free activation/latent-space steering of a masked DLM with a tunable scale (their scale ≈ our α). It differs on **HOW THE STEERING SIGNAL IS CONSTRUCTED**, which is *exactly our contribution axis*: ILRR **transfers one reference example's activations by online per-step alignment**; we **add a FIXED, precomputed CONTRASTIVE direction** (CrowS/StereoSet mean-diff, or the item-anchored answer-text CAA) via a forward hook — **no reference, no per-step realignment**. Attribute = sentiment/semantic transfer, never demographic bias, BBQ, target/non-target, or abstention, so it never studies the **aim-vs-disinhibit** question. Beneficial control/transfer, not injection. **Key implication:** ILRR (activation-space) + DLM-SWAI (logit-space) together show that *inference-time steering of DLMs is NOT unoccupied territory* — our novelty rests on the **demographic-bias / BBQ setting** and the **"how the direction is built → aim vs disinhibit" finding**, not on "we steer a DLM at inference" or "we use activation space."
+- **URL / status:** VERIFIED — https://arxiv.org/abs/2601.21647 (arXiv 2601.21647).
 
 ### Diffusion Guided Language Modeling (Lovelace et al., ACL Findings 2024)
 - **Model(s):** A guided **continuous latent diffusion** model that produces a latent proposal to steer a frozen **auto-regressive** LM (GPT2-class) decoder — a diffusion+AR hybrid, not a masked-diffusion LM.
@@ -396,11 +404,19 @@ categories; the released dataset ships **11** by adding the two intersectional c
 ---
 
 ## Research gap (what this project occupies)
-Across all five buckets, the space we sit in appears **unoccupied**:
+**Honest scoping (updated).** Inference-time steering of DLMs is *not* empty ground:
+**ILRR** (activation/latent-space, reference-transfer) and **DLM-SWAI** (logit-space,
+token scores) already steer masked DLMs at inference, training-free, with a tunable
+scale. So the gap is **not** "steering a DLM at inference" and **not** "activation-space
+steering of a DLM." What remains unoccupied is narrower and is where our contribution
+must sit:
 
-1. **DLM fairness/safety work** (bucket 1) covers jailbreak-safety, toxicity/style, and
-   tabular fairness (TrustLDM's EOD) — **none uses BBQ** and **none treats demographic
-   stereotyping as an inference-time _attack_**.
+1. **DLM fairness/safety + steering work** (bucket 1) covers jailbreak-safety,
+   toxicity/style, sentiment transfer, and tabular fairness (TrustLDM's EOD) — **none uses
+   BBQ**, **none targets demographic stereotyping**, and **none treats it as an inference-time
+   _attack_**. The existing DLM steering methods (ILRR, DLM-SWAI) steer *style/sentiment*
+   and never ask whether a direction **aims at a specific answer option vs merely suppresses
+   abstention** — the aim-vs-disinhibit question is ours alone.
 2. **Technical DLM "bias"** (bucket 2) is about decoding/training dynamics
    (locality, proximity, sampler, exposure bias), *not* demographic fairness — but it is a
    **confound we must control** (see below).
@@ -412,10 +428,14 @@ Across all five buckets, the space we sit in appears **unoccupied**:
    **intra-processing intervention that is _inverted_** — injection, not mitigation —
    measured at the generated-text level; the Ghostwriter baseline is **pre-processing**.
 
-**So the contribution is:** the first study of *inference-time demographic-bias injection*
-in a **diffusion** LM (LLaDA-8B), on **BBQ**, via activation steering + an input-space
-baseline, with a **directional** result (item-anchored answer-text steering) that prior
-group-contrast steering could not achieve.
+**So the contribution is** (framed against ILRR / DLM-SWAI, which already do inference-time
+DLM steering): the first study of *demographic-bias steering* in a **diffusion** LM
+(LLaDA-8B) on **BBQ**, and — the real payload — the finding that **whether a steering
+direction _aims_ (drives a specific group's answer) or merely _disinhibits_ (collapses the
+"Unknown" abstention) is determined by _how the direction is constructed_** (item-anchored
+answer-text CAA aims; group/concept mean-diff only disinhibits), with an input-space
+Ghostwriter baseline that isolates disinhibition. Novelty rests on the **bias/BBQ setting +
+the construction→aim-vs-disinhibit mechanism**, not on "steering a DLM" or "activation space."
 
 ## Confound to control (from bucket 2)
 Proximity bias + initial-trajectory anchoring (Kim et al.) and sampler-induced error
