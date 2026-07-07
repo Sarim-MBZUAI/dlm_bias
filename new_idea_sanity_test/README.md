@@ -83,3 +83,9 @@ README for the full tables.
 **Honest status:** LLaDA-8B only, one layer, sentiment n=24 / bias n=37 (magnitudes
 indicative, directional sign reliable), single `c*`. Not yet firmed up (full
 Black-referent set + `c*` sweep + 2nd attribute pending).
+
+## Updates
+
+- 2026-07-07: `paper_draft.md` — clarity/explanation rewrite (core idea moved up
+  front, tighter math exposition, erosion mechanism spelled out, sharper table
+  captions); no numbers, results, or claims changed.
