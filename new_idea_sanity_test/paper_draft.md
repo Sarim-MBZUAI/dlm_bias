@@ -15,8 +15,12 @@ gating it by confidence), loses the target behavior, because the denoiser
 erodes an un-maintained intervention. Second, we cast steering as **closed-loop
 control over the denoising trajectory**: at every step we *measure* the current
 attribute level `a = ⟨h, v̂⟩` and re-apply the error `e = c* − a`, holding the
-level at a setpoint `c*` like a thermostat. A proportional controller
-(**clamp**) holds the behavior; adding an integral term (**cmom**, PI) can
+level at a setpoint `c*` like a thermostat. We build directly on
+**PID-Steering**'s control-theoretic framing of steering (Nguyen et al., 2026),
+but move the feedback loop from network *depth* (across layers, their
+autoregressive setting) to the *denoising trajectory* (across time) — a loop
+that exists only because a diffusion LM revisits the same positions. A
+proportional controller (**clamp**) holds the behavior; adding an integral term (**cmom**, PI) can
 strengthen it. On LLaDA-8B, closed-loop steering beats fixed additive steering
 on two tasks. On sentiment control it reaches higher attribute strength at
 equal fluency (PI 0.955 > P 0.925 > additive 0.874). More importantly, on
@@ -47,6 +51,16 @@ the hidden state onto the unit behavior direction — and *re-apply* exactly the
 error `e = c* − a` needed to restore a setpoint `c*`. Open-loop steering
 shoves with a fixed force and hopes it sticks; closed-loop steering reads the
 current level and holds it — a pressed spring vs a thermostat.
+
+This control framing is not ours: **PID-Steering** (Nguyen et al., 2026) already
+showed that standard steering *is* a proportional controller and extended it to a
+full PID controller — but for autoregressive LLMs, running the loop over
+transformer **layers (depth)** inside a single forward pass. Our contribution is
+to move that loop to the axis a diffusion LM uniquely exposes: the **denoising
+trajectory (time)**, re-correcting the *same* positions across steps before they
+commit. We show feedback is not just beneficial but *necessary* here, because
+open-loop steering is eroded by re-contextualization — a failure mode that the
+layer-depth setting does not have.
 
 We demonstrate the failure of open-loop schedules, introduce closed-loop (P
 and PI) steering for DLMs, and show it improves both attribute control and —
@@ -310,7 +324,86 @@ that framing; our contributions are what the **diffusion** architecture changes:
    DLM setting (sentiment and all-layer bias), consistent with (and extending to
    the denoising-time axis) the account of Nguyen et al. (2026).
 
-## 6. Limitations
+## 6. Planned Experiments, Baselines & Analysis
+
+The results above are directional and preliminary (n=37 bias items, one model,
+one layer, one setpoint). This section lays out the evaluation that would firm
+them up. It is deliberately modeled on **PID-Steering**'s empirical playbook
+(Nguyen et al., 2026; arXiv:2510.04309) — matched-strength per-term comparisons,
+gain sweeps, and stability/overshoot analysis — but ported to the denoising-time
+loop and to the bias-injection setting. Two upstream bugs were just fixed and
+this plan assumes both: (a) CrowS group directions were ~14.5% sign-flipped
+(now corrected), so the **group mean-difference baseline can be rebuilt
+cleanly**; (b) BBQ target-group matching was broken for several categories, so
+the official **`s_AMB`/`s_DIS` scores are now trustworthy**.
+
+### 6.1 Baselines
+
+Grouped by intervention channel. The static-steering group is exactly the
+"P-controller = static steering" family PID-Steering itself frames as the thing
+a feedback controller should beat.
+
+| group | baseline | what it is | our contrast |
+|---|---|---|---|
+| **Open-loop / static** | Constant additive (CAA-style) | fixed `α·v̂` every step — our current open-loop | the "P-as-static" baseline; closed-loop should hold what this erodes |
+| | ActAdd | activation addition at a chosen layer | static, no feedback |
+| | Group mean-difference vector (bug-fixed) | CrowS/StereoSet group-contrast direction | tests aim-vs-disinhibit: expected non-directional |
+| **Input-space** | Ghostwriter (arXiv:2606.06244) | fabricated-evidence prompt injection — in repo | input-space vs our activation-space channel |
+| **DLM-specific prior steering** | Shnaidman residual-additive MDLM (arXiv:2512.24143) | contrastive direction, global residual intervention over denoising | nearest primitive; static (no per-step feedback) |
+| | ILRR reference-alignment (arXiv:2601.21647) | aligns activations to one reference sequence each step | per-step but reference-transfer, not setpoint-hold |
+| | Steering Without Breaking (arXiv:2605.10971) | step-scheduled residual contrastive steering | **nearest "vary across denoising steps" work — must compare head-to-head** |
+| | DLM-SWAI (arXiv:2605.29626) | logit-space token-score steering | different channel (logit vs residual) |
+| **Control-theory parent** | PID-Steering (arXiv:2510.04309) | P/I/D loop over **layers (depth)**, AR LLMs | conceptual baseline; our loop is over **denoising time**, same controllers |
+
+The key positioning: Steering Without Breaking varies the intervention *across
+denoising steps on a fixed schedule*; we vary it *by feedback from a measured
+setpoint*. E4 (below) is designed to separate schedule from feedback.
+
+### 6.2 Experiments
+
+| # | tests | design | expected axis |
+|---|---|---|---|
+| **E1** | significance | full Black-referent set (beyond n=37), multiple seeds, bootstrap + McNemar CIs on `d_gap` | closed-loop `d_gap` gap survives with CI not crossing open-loop |
+| **E2** | dose–response | dense `α`-sweep (open-loop) vs `c*`-sweep (closed-loop) → Pareto frontier of `d_gap` vs `acc_disambig`, **matched-abstention** comparison (not two hand-picked points) | closed-loop Pareto-dominates on the matched-abstention slice |
+| **E3** | which term | P vs PI vs PID at **matched effective strength** (equal mean applied push) + add the **D term** from PID-Steering | isolates whether cmom's edge is the integral or just more push; D expected to curb overshoot |
+| **E4** | mechanism | per-denoising-step **projection-trajectory** plot: open-loop `a` decays vs closed-loop holds at `c*` (hook already computes `a` each step) | erosion goes from asserted → demonstrated; also separates feedback from a fixed schedule (vs Steering Without Breaking) |
+| **E5** | 2nd attribute / demo | toxicity (RealToxicityPrompts-style) + formality (half-run on disk); 2nd demographic (gender/religion) via item-anchored directions | closed-loop advantage generalizes beyond race/sentiment |
+| **E6** | 2nd model | repeat headline on **Dream-v0-Instruct-7B** (available locally) | supports an "in DLMs" (not "in LLaDA") claim |
+| **E7** | site | layer sweep and `c*`×layer grid; revisit all-layer at matched strength | confirms L14 is the strong site, not a lucky pick |
+| **E8** | construction | group-mean-diff vs item-anchored-letter vs item-anchored-answer-text (split-half coherence 0.27 vs 0.98) | the **aim-vs-disinhibit** axis: which construction *aims* vs merely disinhibits abstention |
+
+### 6.3 Analysis (borrowed from PID-Steering's playbook)
+
+- **Stability / overshoot** of the projection `a` along the trajectory: does closed-loop settle at `c*` or oscillate; does the D term reduce overshoot.
+- **Robustness to gain**: sensitivity of `d_gap`/competence to `c*` (and `β`), analogous to PID-Steering's coefficient sweep.
+- **Competence measured properly**: perplexity/fluency and distinct-n, not just mean length (length alone is a weak fluency proxy).
+- **Per-step convergence**: how fast `a` reaches `c*` across the `T` steps.
+- **Abstention-vs-aim decomposition**: on a matched population, does freed probability mass concentrate on the target group (aim) or split across options (disinhibit).
+
+### 6.4 Metrics
+
+| metric | definition | role |
+|---|---|---|
+| `d_gap` | `Δblack − Δnonblack` vs clean | primary directionality |
+| `s_AMB`, `s_DIS` | official BBQ bias scores (now trustworthy) | comparability to BBQ literature |
+| abstain / target / nontarget pick-rates | on a **matched population** | aim-vs-disinhibit decomposition |
+| `acc_disambig` | disambiguated accuracy on same population | task competence |
+| fluency / perplexity, distinct-n | generation-quality on generated span | collateral-damage check |
+| split-half coherence | cosine of `v̂` across data halves | direction quality / aim (E8) |
+
+### 6.5 Ethics & dual use
+
+This is a bias-**injection** paper. The motivation is **red-teaming and
+auditing**: quantifying how precisely a frozen DLM's demographic behavior can be
+pushed at inference exposes an attack surface that deployers and auditors need to
+know exists, and gives a measurable target for defenses (e.g. the project-out
+defenses in the DLM-safety literature). We acknowledge the **dual-use** risk
+directly — the same controller that audits a model can bias it — and therefore
+release **no injected model artifacts, no tuned attack directions, and no
+ready-to-run injection prompts**; only the method, metrics, and analysis needed
+to reproduce the measurements and build mitigations.
+
+## 7. Limitations
 
 Preliminary scope: one model (LLaDA-8B-Instruct), one layer (`L=14`); sentiment
 at n=24 prompts, bias at n=37 Black-referent ambiguous items (magnitudes are

@@ -86,6 +86,11 @@ Black-referent set + `c*` sweep + 2nd attribute pending).
 
 ## Updates
 
+- 2026-07-08: `paper_draft.md` — made the **PID-Steering** motivation explicit
+  (abstract + intro: we build on their control framing but move the loop from
+  layer-depth to the denoising trajectory) and added a **Planned Experiments,
+  Baselines & Analysis** section (§6: baseline groups, experiments E1–E8,
+  PID-style analysis, metrics table, ethics/dual-use); no existing numbers changed.
 - 2026-07-07: `paper_draft.md` — clarity/explanation rewrite (core idea moved up
   front, tighter math exposition, erosion mechanism spelled out, sharper table
   captions); no numbers, results, or claims changed.
