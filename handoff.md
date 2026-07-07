@@ -62,7 +62,15 @@ directional_steering/  ITEM-ANCHORED CAA experiment (the win). build_anchored.py
                  anchored_analysis.py, race_black_anchored_text.pt (the good vector),
                  race_black_anchored.pt (failed letter version, kept for the record),
                  data/anchored_items.jsonl, results/bbq_L14_anchored_a{1,2,3,4,6,8}, figs/.
-docs/            make_report.py -> dlm_bias_report.pdf ; literature.md ; figs/ ;
+new_idea_sanity_test/  CLOSED-LOOP steering study (clamp=P / cmom=PI vs open-loop additive).
+                 --> see new_idea_sanity_test/HANDOFF.md for the full session handoff.
+                 run.py/score.py/validate.py/adadir_probe.py (+ paper_draft.md, README.md).
+                 Headline: closed-loop injects Black bias on BBQ better than open-loop
+                 (d_gap +0.216 vs +0.135, acc_dis 0.91 vs 0.874). Closed-loop hooks added to
+                 eval/bbq_eval.py (--steer-mode {add,clamp,cmom}, --cstar/--beta/--layers);
+                 analysis in directional_steering/analyze_closedloop.py + measure_proj.py.
+                 GPU RULE this line of work: use ONLY 5,6,7. Momentum must be EMA (not v=βv+base).
+docs/            make_report.py -> dlm_bias_report.pdf ; literature.md ; baselines.md ; figs/ ;
                  embedding_layer_steering.md.
 push.sh          token push helper.  .env  holds GITHUB_TOKEN (gitignored).
 ```
