@@ -86,11 +86,24 @@ Black-referent set + `c*` sweep + 2nd attribute pending).
 
 ## Updates
 
-- 2026-07-08: `paper_draft.md` — made the **PID-Steering** motivation explicit
-  (abstract + intro: we build on their control framing but move the loop from
-  layer-depth to the denoising trajectory) and added a **Planned Experiments,
-  Baselines & Analysis** section (§6: baseline groups, experiments E1–E8,
-  PID-style analysis, metrics table, ethics/dual-use); no existing numbers changed.
+- 2026-07-08 (later): `paper_draft.md` — **populated from VERIFIED docs after
+  fact-checking every citation (16/16 real) and cross-checking claims vs
+  code/results.** Reframed the control theory: clamp = proportional (P)
+  controller; **cmom = EMA / leaky integrator with unity steady-state gain, NOT a
+  classical PI/integral** (this *predicts* the observed clamp≡cmom on the bias
+  task). **PID-Steering (arXiv:2510.04309) demoted from "we build on" to
+  concurrent related work** — proportional/integral control is a classical
+  primitive; they loop over layer-depth (AR), we over denoising-time (DLM).
+  Rewrote related-work / baselines / benchmarks / experiments grounded in
+  `docs/literature.md`, `docs/baselines.md`, `docs/research_plan.md` (real E1–E10
+  spine + separate closed-loop analyses). Fixed: BBQ hook steers **all positions**
+  (not generated-only) in the bias setting; open-loop uses the **raw** `v`,
+  closed-loop the **unit** `v̂`; added an **s_AMB caveat** (reuses disambiguated
+  leaning; validate vs official BBQ). No result magnitudes changed.
+- 2026-07-08 (earlier, SUPERSEDED framing): `paper_draft.md` — first added the
+  PID-Steering motivation (as "we build on their framing") and a Planned
+  Experiments section; the "build on" framing was corrected later the same day
+  (see entry above). No numbers changed.
 - 2026-07-07: `paper_draft.md` — clarity/explanation rewrite (core idea moved up
   front, tighter math exposition, erosion mechanism spelled out, sharper table
   captions); no numbers, results, or claims changed.
