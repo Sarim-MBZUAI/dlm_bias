@@ -22,6 +22,9 @@ RUNS = [
     ("open a=8",      f"{RES}/bbq_L14_anchored_a8_samples.jsonl", f"{RES}/bbq_L14_anchored_a8.json"),
     ("clamp (P) c60", f"{RES}/bbq_L14_anchored_clampC60_samples.jsonl", f"{RES}/bbq_L14_anchored_clampC60.json"),
     ("cmom (PI) c60", f"{RES}/bbq_L14_anchored_cmomC60_samples.jsonl",  f"{RES}/bbq_L14_anchored_cmomC60.json"),
+    ("ALL-lyr add .25",  f"{RES}/bbq_alllayer_add025_samples.jsonl",   f"{RES}/bbq_alllayer_add025.json"),
+    ("ALL-lyr clamp o2", f"{RES}/bbq_alllayer_clamp2_samples.jsonl",   f"{RES}/bbq_alllayer_clamp2.json"),
+    ("ALL-lyr cmom o2",  f"{RES}/bbq_alllayer_cmom2_samples.jsonl",    f"{RES}/bbq_alllayer_cmom2.json"),
 ]
 
 def main():

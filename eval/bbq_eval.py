@@ -529,7 +529,11 @@ def parse_args():
                    help="add = open-loop (alpha*dir); clamp = closed-loop P (hold "
                         "projection at --cstar); cmom = closed-loop PI (clamp + momentum)")
     p.add_argument("--cstar", type=float, default=0.0,
-                   help="closed-loop target projection level for clamp/cmom")
+                   help="closed-loop target projection level for clamp/cmom (in MULTI-layer "
+                        "mode this is the OFFSET above each layer's natural projection)")
+    p.add_argument("--layers", default=None,
+                   help="MULTI-layer steering: 'all' or a comma list of block indices "
+                        "(e.g. 8,14,20). Applies the same direction at every listed block.")
     p.add_argument("--beta", type=float, default=0.8,
                    help="cmom momentum (EMA of the deficit)")
     p.add_argument("--layer", default=DEFAULT_LAYER,
@@ -623,32 +627,50 @@ def main():
     tok = AutoTokenizer.from_pretrained(args.model_path, trust_remote_code=True)
 
     # Steering hook: attach ONLY when alpha != 0 and the direction file exists.
-    steerer = None
+    steerers = []
     steering_active = False
     if args.alpha != 0.0 or args.steer_mode != "add":
         if os.path.exists(args.direction_path):
             saved = torch.load(args.direction_path, map_location="cpu")
             direction = saved["direction"].to(torch.float32).to(args.device)
 
-            # SANITY: saved direction's layer must match the requested --layer.
-            saved_layer = saved.get("layer", "emb")  # legacy dicts -> emb
-            if saved_layer != spec:
-                print("!" * 60)
-                print(f"WARNING: --layer={spec!r} but direction was built at "
-                      f"layer={saved_layer!r}. Steering a layer with a direction")
-                print("  built at a DIFFERENT layer is meaningless. Rebuild with")
-                print(f"  build_direction.py --layer {spec} or pick the matching file.")
-                print("!" * 60)
-
-            hook_module = args.hook_module or saved.get("hook_module") or DEFAULT_HOOK_MODULE
-            module = resolve_layer_module(model, spec, hook_module)
-            hook_target = hook_module if spec == "emb" else f"{BLOCKS_PATH}[{int(spec)}]"
-            steerer = BiasSteerer(direction, alpha=args.alpha, mode=args.steer_mode,
-                                  cstar=args.cstar, beta=args.beta)
-            steerer.attach(module)
-            steering_active = True
-            print(f"Steering ON: mode={args.steer_mode}, alpha={args.alpha}, "
-                  f"cstar={args.cstar}, beta={args.beta}, layer={spec}, hook at '{hook_target}'.")
+            if args.layers:  # ---- MULTI-LAYER: same direction at each listed block ----
+                blocks = resolve_module(model, BLOCKS_PATH)
+                lyrs = range(len(blocks)) if args.layers == "all" else [int(x) for x in args.layers.split(",")]
+                # closed-loop: per-layer setpoint c*_l = layer's natural projection + --cstar (offset)
+                natp = {}
+                if args.steer_mode in ("clamp", "cmom"):
+                    np_path = os.path.join(os.path.dirname(args.direction_path), "nat_proj_by_layer.json")
+                    if os.path.exists(np_path):
+                        natp = json.load(open(np_path))
+                    else:
+                        print(f"WARNING: {np_path} missing; per-layer c* falls back to raw --cstar.")
+                for l in lyrs:
+                    cstar_l = natp.get(str(l), 0.0) + args.cstar if args.steer_mode in ("clamp", "cmom") else args.cstar
+                    s = BiasSteerer(direction, alpha=args.alpha, mode=args.steer_mode,
+                                    cstar=cstar_l, beta=args.beta)
+                    s.attach(blocks[l])
+                    steerers.append(s)
+                steering_active = True
+                print(f"Steering ON (MULTI-LAYER): mode={args.steer_mode}, layers={list(lyrs)}, "
+                      f"alpha={args.alpha}, cstar-offset={args.cstar}, beta={args.beta}, "
+                      f"NOTE: direction built at layer {saved.get('layer')} applied at ALL listed layers.")
+            else:  # ---- SINGLE-LAYER (default) ----
+                saved_layer = saved.get("layer", "emb")
+                if saved_layer != spec:
+                    print("!" * 60)
+                    print(f"WARNING: --layer={spec!r} but direction was built at layer={saved_layer!r}.")
+                    print("!" * 60)
+                hook_module = args.hook_module or saved.get("hook_module") or DEFAULT_HOOK_MODULE
+                module = resolve_layer_module(model, spec, hook_module)
+                hook_target = hook_module if spec == "emb" else f"{BLOCKS_PATH}[{int(spec)}]"
+                s = BiasSteerer(direction, alpha=args.alpha, mode=args.steer_mode,
+                                cstar=args.cstar, beta=args.beta)
+                s.attach(module)
+                steerers.append(s)
+                steering_active = True
+                print(f"Steering ON: mode={args.steer_mode}, alpha={args.alpha}, "
+                      f"cstar={args.cstar}, beta={args.beta}, layer={spec}, hook at '{hook_target}'.")
         else:
             print(f"WARNING: --alpha={args.alpha} but direction not found at "
                   f"{args.direction_path}; running CLEAN (no hook).")
@@ -762,8 +784,8 @@ def main():
             if (idx + 1) % 50 == 0:
                 print(f"  [{idx + 1}/{len(rows)}] done")
     finally:
-        if steerer is not None:
-            steerer.detach()
+        for s in steerers:
+            s.detach()
 
     overall = compute_scores(records)
 

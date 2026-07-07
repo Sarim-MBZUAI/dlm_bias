@@ -242,7 +242,29 @@ rather than splitting evenly as under open-loop α=8 (0.568 vs 0.351). On this
 task P and PI are equivalent (the integral term does not add), so the win comes
 from the closed-loop hold itself.
 
-### 3.3 Why open-loop fails (supporting analysis)
+### 3.3 Single-layer vs all-layer (is L14 an unfair choice?)
+
+We repeat the comparison applying the same direction at **all 32 blocks** (matched
+total strength; per-layer setpoint = that layer's natural projection + offset).
+
+| method | steering site | d_gap | acc_disambig |
+|---|---|---:|---:|
+| open-loop α=8 | L14 only | +0.135 | 0.874 |
+| clamp (P) | L14 only | **+0.216** | 0.907 |
+| cmom (PI) | L14 only | **+0.216** | 0.913 |
+| additive | all 32 layers | +0.027 | 0.969 |
+| clamp (P) | all 32 layers | +0.054 | 0.974 |
+| cmom (PI) | all 32 layers | +0.081 | 0.972 |
+
+Two points. (i) **Single-layer L14 is not a disadvantage — it is the stronger
+site.** All-layer steering is much weaker (best gap +0.081 vs +0.216), because the
+L14-built direction is only a genuine feature at L14; applying it at the other 31
+blocks dilutes the aim (and increasing all-layer strength to compensate destroys
+generation). (ii) **The closed-loop ordering is robust across regimes**: all-layer
+gives cmom (+0.081) > clamp (+0.054) > additive (+0.027) — and here PI beats P,
+so the integral term helps in the harder all-layer setting.
+
+### 3.4 Why open-loop fails (supporting analysis)
 
 The steering direction is **noise-level dependent**: its split-half coherence
 rises from ≈0.28 at a mostly-masked step to ≈0.996 at a nearly-clean step, and
@@ -258,27 +280,43 @@ al. 2023) — adds a fixed contrastive direction to the residual stream. Adaptiv
 variants scale or gate the intervention by input semantics or hidden-state
 deviation (SADI, ACT, DAC, FASB, CAST). Our controllers relate to **activation
 clamping** (Templeton et al. 2024; AxBench, Wu et al. 2025, arXiv:2501.17148) and
-**affine concept editing** (ACE, arXiv:2411.09003), and to **closed-loop / PID
-steering** for autoregressive models (arXiv:2506.18831, arXiv:2510.04309). For
-DLMs, prior steering is static/open-loop: residual-stream additive
+**affine concept editing** (ACE, arXiv:2411.09003). Most directly, **PID Steering**
+(Nguyen et al., ICLR 2026, arXiv:2510.04309; also arXiv:2506.18831) provides the
+control-theoretic foundation we build on: it shows standard steering *is* a
+proportional (P) controller and introduces the full PID controller — but for
+**autoregressive LLMs**, with the loop running over **transformer layers (depth)**
+inside one forward pass. Our loop differs in kind: it runs over the **denoising
+trajectory (time)** of a diffusion LM, re-correcting the *same* positions across
+steps before they commit, and we show it is *necessary* there because open-loop
+steering is eroded by re-contextualization — a failure mode absent in the
+layer-depth setting. For DLMs, prior steering is static/open-loop: residual-stream additive
 (arXiv:2512.24143), reference-alignment (ILRR, arXiv:2601.21647), step-scheduled
 (arXiv:2605.10971), and logit-space (DLM-SWAI, arXiv:2605.29626). Prophet
 (arXiv:2508.19982) shows DLM decoding exposes a confidence/convergence signal.
 
 ## 5. Contributions
 
-1. **Closed-loop activation steering for diffusion LMs** — P (clamp) and PI
-   (cmom) controllers that measure the attribute level and correct it to a
-   setpoint at every denoising step.
-2. **Open-loop steering is fragile in DLMs, closed-loop holds** — we show fixed
-   or reduced-over-time pushes lose the behavior because iterative denoising
-   erodes them, and give the mechanism (noise-dependent, re-contextualized
-   directions).
-3. **More precise bias injection** — closed-loop control injects a targeted
-   demographic bias on BBQ with a larger directional gap (+0.216 vs +0.135) and
-   *higher* task competence (0.91 vs 0.874) than standard additive steering.
-4. A control-theoretic view of DLM steering (open-loop → P → PI), borne out on
-   sentiment (PI > P > open-loop).
+Control-theoretic steering (steering = P; extend to PID) was introduced for
+autoregressive LLMs over the *layer* axis (Nguyen et al., 2026). We do not claim
+that framing; our contributions are what the **diffusion** architecture changes:
+
+1. **Closed-loop steering over the *denoising trajectory*** — P (clamp) and PI
+   (cmom) controllers that re-measure and re-correct the *same positions* across
+   denoising steps before they commit. This is a distinct control loop from the
+   AR/layer-depth formulation: a real temporal feedback loop that only exists
+   because DLMs revisit positions, amplified by bidirectional attention.
+2. **Open-loop steering is fragile in DLMs, closed-loop holds** — a
+   *DLM-specific* failure mode: fixed or reduced-over-time pushes lose the
+   behavior because iterative denoising re-contextualizes and erodes them (we give
+   the mechanism: directions are noise-dependent and only coherent at low noise).
+   This does not arise in the layer-depth setting.
+3. **More precise bias injection (headline application)** — closed-loop control
+   injects a targeted demographic bias on BBQ with a larger directional gap
+   (+0.216 vs +0.135) and *higher* task competence (0.91 vs 0.874) than standard
+   additive steering; the result is robust across single-layer and all-layer.
+4. Empirically the control-theoretic ordering **PI ≥ P > open-loop** holds in the
+   DLM setting (sentiment and all-layer bias), consistent with (and extending to
+   the denoising-time axis) the account of Nguyen et al. (2026).
 
 ## 6. Limitations
 
