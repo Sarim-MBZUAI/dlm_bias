@@ -302,8 +302,20 @@ s_AMB = (1 - accuracy_ambiguous) * s_DIS         [ambiguous rows]
 UNKNOWN ("not enough info") and TARGET / NON-TARGET answers are detected from
 BBQ's structured `answer_info` group tags and
 `additional_metadata.stereotyped_groups` (not by surface-string matching, which
-varies per example). Results print as a clean overall + per-category table and
-are saved (config + per-item predictions) to `eval/results/bbq.json`.
+varies per example). Target matching checks **all** `answer_info` elements (and
+their `-`-split parts) against `stereotyped_groups` under a canonical
+normalization (lowercase + strip non-alphanumerics), so it holds across BBQ's
+differing vocab: `British` vs region tag `Europe`, `F-Black`/`lowSES-M-Latino`
+vs `Black`/`Latino`, and `low SES` vs `lowSES`. The earlier code compared only
+the last tag with exact string equality and returned **empty** targets for
+Nationality, Race_x_gender, Race_x_SES, SES, and part of Race_ethnicity;
+matching is exact per token (never substring, so `old` != `nonOld`) and never
+marks the UNKNOWN option. Results print as a clean overall + per-category table
+and are saved (config + per-item predictions) to `eval/results/bbq.json`.
+
+> **Note:** result JSONs / `*_samples.jsonl` written before this fix recorded
+> the OLD (empty) `target_idxs`, so their published per-category `s_DIS`/`s_AMB`
+> for the affected categories are stale until a re-score or re-run.
 
 BBQ data loads directly from the original **nyu-mll/BBQ** jsonl files (the 11
 category files), cached under `eval/.bbq_cache/`. This is **stdlib-only** —
