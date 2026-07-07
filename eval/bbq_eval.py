@@ -172,17 +172,38 @@ def generate(
 class BiasSteerer:
     """Adds alpha * direction to the token-embedding output via a forward hook."""
 
-    def __init__(self, direction, alpha=0.0):
-        self.direction = direction  # (H,) float tensor
+    def __init__(self, direction, alpha=0.0, mode="add", cstar=0.0, beta=0.0):
+        self.direction = direction  # (H,) float tensor (raw, may be non-unit)
+        self.vhat = direction / direction.norm()  # unit, for projection/clamp
         self.alpha = float(alpha)
+        self.mode = mode            # 'add' (open-loop) | 'clamp' (P) | 'cmom' (PI)
+        self.cstar = float(cstar)   # closed-loop target projection level
+        self.beta = float(beta)     # cmom momentum (EMA of the deficit)
+        self.vel = None
         self._handle = None
 
     def _hook(self, module, inputs, output):
-        if self.alpha == 0.0:
-            return None  # no-op
         hidden = hidden_from_output(output)  # tuple-aware (block) vs tensor (wte)
-        steer = (self.alpha * self.direction).to(hidden.dtype).to(hidden.device)
-        return output_with_hidden(output, hidden + steer)  # (H,) broadcasts (B,T,H)
+        if self.mode == "add":
+            if self.alpha == 0.0:
+                return None
+            steer = (self.alpha * self.direction).to(hidden.dtype).to(hidden.device)
+            return output_with_hidden(output, hidden + steer)
+        # closed-loop: measure projection, correct toward target c* (all positions)
+        vh = self.vhat.to(hidden.dtype).to(hidden.device)
+        a = (hidden * vh).sum(-1, keepdim=True)          # projection (B,T,1)
+        base = self.cstar - a                            # deficit
+        if self.mode == "cmom":                          # PI: integral (EMA) memory over denoising steps
+            b = self.beta
+            # reset velocity at each new item (sequence length changes between items)
+            if self.vel is None or self.vel.shape != base.shape:
+                self.vel = base
+            else:
+                self.vel = b * self.vel + (1 - b) * base
+            corr = self.vel
+        else:                                            # clamp = pure proportional (P)
+            corr = base
+        return output_with_hidden(output, hidden + corr * vh)
 
     def attach(self, module):
         self._handle = module.register_forward_hook(self._hook)
@@ -504,6 +525,13 @@ def parse_args():
     # Steering (default OFF).
     p.add_argument("--alpha", type=float, default=0.0,
                    help="activation-steering strength; 0 = clean baseline (no hook)")
+    p.add_argument("--steer-mode", default="add", choices=["add", "clamp", "cmom"],
+                   help="add = open-loop (alpha*dir); clamp = closed-loop P (hold "
+                        "projection at --cstar); cmom = closed-loop PI (clamp + momentum)")
+    p.add_argument("--cstar", type=float, default=0.0,
+                   help="closed-loop target projection level for clamp/cmom")
+    p.add_argument("--beta", type=float, default=0.8,
+                   help="cmom momentum (EMA of the deficit)")
     p.add_argument("--layer", default=DEFAULT_LAYER,
                    help="layer spec: 'emb' (input embedding, default) OR an int "
                         "transformer BLOCK index (e.g. 14)")
@@ -597,7 +625,7 @@ def main():
     # Steering hook: attach ONLY when alpha != 0 and the direction file exists.
     steerer = None
     steering_active = False
-    if args.alpha != 0.0:
+    if args.alpha != 0.0 or args.steer_mode != "add":
         if os.path.exists(args.direction_path):
             saved = torch.load(args.direction_path, map_location="cpu")
             direction = saved["direction"].to(torch.float32).to(args.device)
@@ -615,10 +643,12 @@ def main():
             hook_module = args.hook_module or saved.get("hook_module") or DEFAULT_HOOK_MODULE
             module = resolve_layer_module(model, spec, hook_module)
             hook_target = hook_module if spec == "emb" else f"{BLOCKS_PATH}[{int(spec)}]"
-            steerer = BiasSteerer(direction, alpha=args.alpha)
+            steerer = BiasSteerer(direction, alpha=args.alpha, mode=args.steer_mode,
+                                  cstar=args.cstar, beta=args.beta)
             steerer.attach(module)
             steering_active = True
-            print(f"Steering ON: alpha={args.alpha}, layer={spec}, hook at '{hook_target}'.")
+            print(f"Steering ON: mode={args.steer_mode}, alpha={args.alpha}, "
+                  f"cstar={args.cstar}, beta={args.beta}, layer={spec}, hook at '{hook_target}'.")
         else:
             print(f"WARNING: --alpha={args.alpha} but direction not found at "
                   f"{args.direction_path}; running CLEAN (no hook).")
