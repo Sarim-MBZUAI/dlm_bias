@@ -41,6 +41,60 @@ schedules, introduce closed-loop (P and PI) steering for DLMs, and show it
 improves both attribute control and — our headline application — the precision
 of demographic-bias injection on BBQ.
 
+## Figure 1 — Open-loop vs closed-loop steering (in simple terms)
+
+A diffusion LM rewrites the **same** token positions over `T` denoising steps, and
+the steering hook fires at **every** step:
+
+```
+        denoising:   step T  ───────────────────►  step 0
+                   [ mostly masked ]            [ finished text ]
+                          ↑↑↑ at every step we can nudge the hidden state h
+```
+
+**OPEN-LOOP (fixed additive — the standard method).** Push by a constant `α·v̂`,
+never look at the result:
+
+```
+        ┌──────────────────────────────────┐
+   h ──►│   h̃ = h + α·v̂    (α fixed, blind)  │──►  model  ──►  next-step h
+        └──────────────────────────────────┘
+                     ✗  no feedback wire
+   the denoiser pulls h̃ back toward default each step → an un-maintained
+   push is ERODED → the behavior reverts.
+```
+
+**CLOSED-LOOP (clamp = P / cmom = PI — ours).** Measure how much behavior is
+present, then add exactly enough to hit a target `c*` — every step:
+
+```
+        ┌───────────────────────────────────────────────┐
+   h ──►│  measure:  a = ⟨h, v̂⟩                          │
+        │  error:    e = c* − a                          │
+        │  correct:  h̃ = h + e·v̂   (PI: + integral of e) │──► model ──► next h
+        └───────────────▲───────────────────────────────┘                │
+                        │                                                 │
+                        └──────── feedback: re-measure a next step ◄───────┘
+   SELF-CORRECTING: if the model reverts (a drops), e grows → it pushes
+   harder automatically → the behavior is HELD at c*.
+```
+
+**One-line difference:** open-loop *shoves with a fixed force and hopes it sticks*
+(it doesn't — denoising erodes it); closed-loop *reads the current level and holds
+it at the target every step*. Like **pressing a spring** (open-loop — springs back)
+vs a **thermostat** (closed-loop — holds the setpoint).
+
+**Control-theory view** (borne out empirically: PI > P > open-loop):
+```
+   open-loop :  c* ─►[ gain ]───────────────► plant ─► out        (no sensor)
+
+   clamp (P) :  c* ─►(⊕)─►[ e·v̂ ]───────────► plant ─► out ─┐
+                     ▲                                       │
+                     └─────────── sensor a = ⟨h,v̂⟩ ──────────┘
+
+   cmom (PI) :  same loop, plus an INTEGRAL (memory) of e across denoising steps
+```
+
 ## 2. Method
 
 ### 2.1 Notation
