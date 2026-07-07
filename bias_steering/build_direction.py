@@ -124,11 +124,12 @@ def load_crows(url, cache_path):
 
     Returns: dict[bias_type] -> list of (stereotype_sentence, antistereotype_sentence).
 
-    Orientation rule (mirrors metric.py): by dataset convention sent_more is ALWAYS
-    the more-stereotypical sentence and sent_less the less-stereotypical one, so
-    stereotype_sentence = sent_more and antistereotype_sentence = sent_less in ALL
-    cases. The stereo_antistereo field only flips the scoring comparison (handled in
-    eval), not the more/less mapping, so we keep the universal assignment here.
+    Orientation rule (mirrors official metric.py): the more-stereotypical sentence
+    depends on the stereo_antistereo column, NOT always sent_more.
+      * "stereo"     rows: stereotype = sent_more, anti = sent_less.
+      * "antistereo" rows: stereotype = sent_less, anti = sent_more   (SWAPPED),
+        because for these rows sent_more is the LESS-stereotypical sentence.
+    Getting this wrong sign-flips ~218/1508 pairs and rotates every direction.
     """
     if not (os.path.exists(cache_path) and os.path.getsize(cache_path) > 0):
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
@@ -154,10 +155,15 @@ def load_crows(url, cache_path):
             bias_type = (row.get("bias_type") or "").strip()
             sent_more = (row.get("sent_more") or "").strip()
             sent_less = (row.get("sent_less") or "").strip()
+            direction = (row.get("stereo_antistereo") or "").strip().lower()
             if not bias_type or not sent_more or not sent_less:
                 continue
-            # Universal mapping: stereotype = sent_more, anti = sent_less.
-            groups.setdefault(bias_type, []).append((sent_more, sent_less))
+            # antistereo rows swap: sent_less is the more-stereotypical sentence.
+            if direction == "antistereo":
+                stereotype, anti = sent_less, sent_more
+            else:
+                stereotype, anti = sent_more, sent_less
+            groups.setdefault(bias_type, []).append((stereotype, anti))
     if not groups:
         raise RuntimeError(
             f"Parsed 0 usable rows from CrowS-Pairs CSV at cache path: {cache_path}"
