@@ -97,74 +97,114 @@ vs a **thermostat** (closed-loop — holds the setpoint).
 
 ## 2. Method
 
-### 2.1 Notation
+### 2.1 Setup: where and when we intervene
+
+A masked-diffusion LM generates a target region of tokens by starting from an
+all-`[MASK]` region and, over `T` reverse-denoising steps `t = T, …, 1`, running a
+**full forward pass** at each step and progressively unmasking tokens. Crucially,
+a token position is **not** written once: the whole network is re-run every step,
+so its internal activation is **recomputed and re-contextualized at every `t`**
+until it is finalized. We intervene with a single **forward hook on transformer
+block `L`** (here `L = 14`) that fires on every step and edits the residual-stream
+activation at the generated positions before it flows into block `L+1`.
+
+### 2.2 Notation
 
 | symbol | meaning |
 |---|---|
-| `T`, `t` | number of reverse-denoising steps; step index (`t = T,…,1`) |
-| `x_t` | the partially-unmasked token sequence at step `t` |
-| `i` | token position index |
-| `L` | the transformer block we intervene at (here `L = 14`) |
-| `D` | hidden size (`D = 4096` for LLaDA-8B) |
-| `h^{(L)}_{t,i} ∈ R^D` | residual-stream activation at block `L`, step `t`, position `i` |
-| `v ∈ R^D`, `v̂ = v/‖v‖` | the steering direction and its unit vector |
-| `a_{t,i} = ⟨h^{(L)}_{t,i}, v̂⟩` | **attribute level**: scalar projection of the activation onto the direction (how much of the behavior is present) |
-| `α` | open-loop steering strength (coefficient) |
-| `c*` | closed-loop **setpoint**: the attribute level we want to hold |
-| `e_{t,i} = c* − a_{t,i}` | the control **error** (deficit from the setpoint) |
-| `β ∈ [0,1)` | integral (momentum) coefficient for the PI controller |
-| `u_{t,i}` | integrated (EMA) error used by the PI controller |
+| `T`, `t` | number of denoising steps; step index (`t = T,…,1`) |
+| `i` | token-position index; generated positions are the ones we steer |
+| `L` | block we hook (`L = 14`) |
+| `D` | hidden size, `D = 4096` (LLaDA-8B) |
+| `h ≡ h^{(L)}_{t,i} ∈ R^D` | residual-stream activation vector at block `L`, step `t`, position `i` |
+| `v ∈ R^D` ; `v̂ = v/‖v‖` | steering direction (raw) and its **unit** vector, `‖v̂‖ = 1` |
+| `a ≡ a_{t,i} ∈ R` | **attribute level** = projection of `h` onto `v̂` (§2.4) |
+| `c* ∈ R` | **setpoint**: the attribute level we want to hold (a scalar) |
+| `e ≡ e_{t,i} = c* − a` | control **error** (how far below the setpoint we are) |
+| `α ∈ R` | open-loop steering coefficient |
+| `β ∈ [0,1)` | integral coefficient (momentum) for the PI controller |
+| `u ≡ u_{t,i}` | integrated (EMA) error used by PI |
 
-A DLM generates by starting from an all-masked target region and, over `T`
-steps, predicting and progressively unmasking tokens; the full network is re-run
-at every step, so `h^{(L)}_{t,i}` for a given position `i` is recomputed and
-re-contextualized at each `t`. We attach a forward hook at block `L` that fires
-at every step and modifies `h^{(L)}_{t,i}` for the generated positions.
+### 2.3 The steering direction `v̂`
 
-### 2.2 The steering direction `v`
-
-`v` is a contrastive mean-difference direction:
+`v` is a contrastive mean-difference of block-`L` activations between examples that
+exhibit the behavior and examples that do not, then normalized to unit length:
 ```
-v  =  mean over positive examples of h^{(L)}  −  mean over negative examples of h^{(L)},     v̂ = v / ‖v‖ .
+v  =  E_{x ∈ D+}[ h^{(L)}(x) ]  −  E_{x ∈ D-}[ h^{(L)}(x) ] ,        v̂ = v / ‖v‖ .
 ```
-For **sentiment**, positive/negative = attribute-labeled sentences. For **bias**,
-`v` is the *item-anchored answer-text* direction: on held-out BBQ Black-referent
-items, `h^{(L)}` when the assistant answers the **Black** option minus when it
-answers the **other named** option (split-half cosine 0.98).
+- **Sentiment:** `D+`/`D-` are positive/negative sentences.
+- **Bias (headline):** the *item-anchored answer-text* direction — on held-out BBQ
+  Black-referent items, `h^{(L)}` averaged over the answer-text span when the
+  assistant answers the **Black** option, minus the same for the **other named**
+  option (split-half cosine 0.98).
 
-### 2.3 The three interventions (applied at every generated position, every step)
+`v̂` points **toward** the behavior; steering in the `+v̂` direction increases it.
 
-**(a) Open-loop / additive (the standard method, incl. CAA):**
-```
-h^{(L)}_{t,i}  ←  h^{(L)}_{t,i} + α · v̂ .
-```
-A fixed push. `α` is a hyperparameter; the controller never observes the result.
+### 2.4 The attribute level `a = ⟨h, v̂⟩` (definition and computation)
 
-**(b) Closed-loop proportional — `clamp` (P):** measure the current level and add
-exactly the deficit needed to reach the setpoint `c*`:
+`a` is the **scalar (dot-product) projection of the activation `h` onto the unit
+behavior direction `v̂`** — a single number saying *how much of the behavior is
+present in this activation*:
 ```
-a_{t,i} = ⟨h^{(L)}_{t,i}, v̂⟩ ,     e_{t,i} = c* − a_{t,i} ,
-h^{(L)}_{t,i}  ←  h^{(L)}_{t,i} + e_{t,i} · v̂ .
+a  =  ⟨h, v̂⟩  =  Σ_{d=1}^{D}  h_d · v̂_d  =  ‖h‖ · cos θ ,
 ```
-This *holds* `a_{t,i}` at `c*`. If the denoiser pulls the activation back between
-steps, `e_{t,i}` grows and the correction automatically increases — self-correcting.
+where `h_d, v̂_d` are the `d`-th coordinates and `θ` is the angle between `h` and
+`v̂`. Because `v̂` is unit, `a` is the **signed length of the component of `h` along
+`v̂`**, in the same units as the activations: `a > 0` = behavior present, `a < 0` =
+opposite, `|a|` = how strongly.
 
-**(c) Closed-loop PI — `cmom`:** add an integral (memory) term over denoising
-steps, implemented as an exponential moving average of the error:
+**How it is computed (per position, per step).** At denoising step `t`, the hook
+receives the block-`L` output for the whole sequence, shape `(positions × D)`. For
+each generated position `i` we take one dot product:
 ```
-u_{t,i}  =  β · u_{t+1,i} + (1 − β) · e_{t,i}      (reset at the first step of each sequence),
-h^{(L)}_{t,i}  ←  h^{(L)}_{t,i} + u_{t,i} · v̂ .
+a_{t,i} = Σ_d  h^{(L)}_{t,i,d} · v̂_d          # in code: a = (h * v̂).sum(dim=-1)  -> one scalar per position
 ```
-`β = 0` recovers clamp (P); `β > 0` accumulates the persistent deficit the model
-keeps reverting, i.e. a PI controller. The integral resets per sequence, so it
-integrates across the `T` denoising steps of one generation, not across examples.
+This is `O(D)` per position — a few thousand multiply-adds, negligible next to the
+forward pass.
 
-### 2.4 Setpoint calibration
+**Key property (why this enables control).** Adding `e·v̂` to `h` moves the
+projection by exactly `e`, because `v̂` is unit:
+```
+a' = ⟨h + e·v̂, v̂⟩ = ⟨h,v̂⟩ + e·⟨v̂,v̂⟩ = a + e·‖v̂‖² = a + e .
+```
+So choosing `e = c* − a` gives `a' = c*` — **one correction sets the attribute
+level exactly to the setpoint** (until the model recomputes `h` at the next step,
+which is why we re-apply it every step). This identity is what makes "hold `a` at
+`c*`" well-defined, and is why the direction is normalized.
 
-`c*` sets the held attribute level. We choose it to match the projection the
-best open-loop setting reaches: e.g. for the bias direction the natural
-projection is `a ≈ −3` and open-loop `α=8` drives it to `≈ +65`, so we set
-`c* = 60` — a matched-strength comparison rather than a free parameter advantage.
+### 2.5 The three interventions (applied at every generated position, every step)
+
+**(a) Open-loop / additive** (standard steering, incl. CAA) — a fixed, blind push:
+```
+h  ←  h + α·v̂ .
+```
+`α` is set once; the intervention never observes `a`. The projection is nudged by
+`+α` each step, but the denoiser pulls it back, and the push is not adjusted.
+
+**(b) Closed-loop proportional — `clamp` (P)** — measure, then correct to the
+setpoint:
+```
+a = ⟨h, v̂⟩ ,     e = c* − a ,     h  ←  h + e·v̂         ⇒   projection becomes c* .
+```
+Self-correcting: if the model reverts (`a` drops), `e` grows, so the applied
+correction automatically grows — the level is **held** at `c*`.
+
+**(c) Closed-loop PI — `cmom`** — add an integral (memory) term over denoising
+steps, as an exponential moving average of the error (reset at each new sequence):
+```
+u_t = β·u_{t+1} + (1−β)·e_t ,        h  ←  h + u·v̂ .
+```
+`β = 0` recovers clamp (P); `β > 0` accumulates the *persistent* deficit the model
+keeps reverting (the integral term of a PI controller). The EMA resets per
+sequence, so it integrates across the `T` steps of one generation, not across
+examples.
+
+### 2.6 Setpoint calibration
+
+`c*` sets the held level. We pick it to **match the projection the best open-loop
+run reaches**, so the comparison is at equal strength rather than a free parameter
+advantage. Concretely (bias direction): the natural projection is `a ≈ −3`, and
+open-loop `α=8` moves it to `≈ −3 + 8·‖v‖ = +65`; we therefore set `c* = 60`.
 
 ## 3. Results
 
