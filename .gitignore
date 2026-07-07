@@ -14,3 +14,7 @@ bias_steering/.crows_cache/
 bias_steering/directions/
 race_steering/.stereoset_cache/
 gw_*.log
+
+# internal session notes — keep local only
+handoff.md
+new_idea_sanity_test/HANDOFF.md
