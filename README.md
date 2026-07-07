@@ -126,9 +126,11 @@ dataset (9 categories: `race-color`, `socioeconomic`, `gender`, `disability`,
 plus a combined `all` direction. The CSV is downloaded once (stdlib `urllib` +
 `csv`) and **cached under `bias_steering/.crows_cache/crows_pairs.csv`** (reused
 if present; if there is no network, drop the CSV there manually). Each row's
-minimal pair is mapped by the dataset convention `stereotype = sent_more`,
-`anti = sent_less` (the `stereo_antistereo` field flips the *scoring* comparison,
-not this more/less mapping). Rows are grouped by `bias_type`.
+minimal pair is oriented per the official `metric.py` convention using the
+`stereo_antistereo` column: `stereo` rows map `stereotype = sent_more`,
+`anti = sent_less`, while `antistereo` rows are **swapped** (`stereotype =
+sent_less`, `anti = sent_more`) since there `sent_more` is the less-stereotypical
+sentence. Rows are grouped by `bias_type`.
 
 Per-category `.pt` files land in **`bias_steering/directions/{safe_category}.pt`**
 (category sanitized: lowercased, non-alphanumerics → `_`, e.g. `race-color` →
