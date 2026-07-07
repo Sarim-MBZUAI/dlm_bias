@@ -227,13 +227,16 @@ all lose the attribute.
 Direction: item-anchored "prefer the Black option". `d_gap = Δblack − Δnonblack`
 (directionality vs clean); `acc_disambig` = task competence.
 
-| method | control | black | nonblk | abstain | **d_gap** | acc_disambig |
-|---|---|---:|---:|---:|---:|---:|
-| clean | — | 0.162 | 0.081 | 0.757 | 0.000 | 0.970 |
-| additive α=4 | open-loop | 0.243 | 0.108 | 0.649 | +0.054 | 0.969 |
-| additive α=8 | open-loop | 0.568 | 0.351 | 0.081 | +0.135 | 0.874 |
-| **clamp** | **P** | 0.541 | 0.243 | 0.216 | **+0.216** | **0.907** |
-| **cmom** | **PI** | 0.541 | 0.243 | 0.216 | **+0.216** | **0.913** |
+| method | control | site | black | nonblk | abstain | d_gap | acc_disambig |
+|--------|---------|------|------:|-------:|--------:|------:|-------------:|
+| clean | — | — | 0.162 | 0.081 | 0.757 | +0.000 | 0.970 |
+| additive α=4 | open-loop | L14 | 0.243 | 0.108 | 0.649 | +0.054 | 0.969 |
+| additive α=8 | open-loop | L14 | 0.568 | 0.351 | 0.081 | +0.135 | 0.874 |
+| **clamp** | **P** | **L14** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.907 |
+| **cmom** | **PI** | **L14** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.913 |
+| additive | open-loop | all 32 | 0.216 | 0.108 | 0.676 | +0.027 | 0.969 |
+| clamp | P | all 32 | 0.189 | 0.054 | 0.757 | +0.054 | 0.974 |
+| cmom | PI | all 32 | 0.216 | 0.054 | 0.730 | +0.081 | 0.972 |
 
 Closed-loop control wins on **both** axes: a larger directional gap (**+0.216 vs
 +0.135**) *and* better competence (**0.91 vs 0.874**), while not over-collapsing
@@ -244,19 +247,9 @@ from the closed-loop hold itself.
 
 ### 3.3 Single-layer vs all-layer (is L14 an unfair choice?)
 
-We repeat the comparison applying the same direction at **all 32 blocks** (matched
-total strength; per-layer setpoint = that layer's natural projection + offset).
-
-| method | steering site | d_gap | acc_disambig |
-|---|---|---:|---:|
-| open-loop α=8 | L14 only | +0.135 | 0.874 |
-| clamp (P) | L14 only | **+0.216** | 0.907 |
-| cmom (PI) | L14 only | **+0.216** | 0.913 |
-| additive | all 32 layers | +0.027 | 0.969 |
-| clamp (P) | all 32 layers | +0.054 | 0.974 |
-| cmom (PI) | all 32 layers | +0.081 | 0.972 |
-
-Two points. (i) **Single-layer L14 is not a disadvantage — it is the stronger
+The `all 32` rows of the §3.2 table apply the same direction at every block
+(matched total strength; per-layer setpoint = that layer's natural projection +
+offset). Two points. (i) **Single-layer L14 is not a disadvantage — it is the stronger
 site.** All-layer steering is much weaker (best gap +0.081 vs +0.216), because the
 L14-built direction is only a genuine feature at L14; applying it at the other 31
 blocks dilutes the aim (and increasing all-layer strength to compensate destroys
