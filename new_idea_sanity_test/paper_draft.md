@@ -415,7 +415,7 @@ what the **diffusion** architecture changes:
    mean-difference direction only **disinhibits** (peak +0.05), with split-half
    coherence 0.98 vs 0.27 — which the closed-loop method is layered on top of.
 
-## 6. Planned Experiments, Baselines & Analysis
+## 6. Planned Experiments, Baselines, Benchmarks & Analysis
 
 The results above are directional and preliminary (n=37 bias items, one model,
 one layer, one setpoint). This section lays out the evaluation that would firm
@@ -449,7 +449,28 @@ comparison holds the channel and threat model fixed and isolates the control
 structure. Input-space prompt-injection attacks (e.g. Ghostwriter) are a
 different channel and are out of scope as steering baselines (§4).
 
-### 6.2 Experiments — mechanism spine (Phase 1: LLaDA-8B + BBQ)
+### 6.2 Benchmarks & datasets
+
+We evaluate the injected bias on QA benchmarks; the primary comparison is on BBQ.
+
+| benchmark | measures / structure | abstain? | directional? | role (phase) | status |
+|---|---|:--:|:--:|---|---|
+| **BBQ** (Parrish et al., arXiv:2110.08193) | 11 categories, ambiguous vs disambiguated MCQ; official `s_DIS`/`s_AMB` + our attack metrics (abstention-collapse, target-rate, flip-rate, directional gap) | ✓ | ✓ | **core** — all of Phase 1 | cached / in use |
+| **Full Race_ethnicity Black-referent ambiguous set** | subset derived from the 6880-item BBQ cache, disjoint from the 400 anchored-build items | ✓ | ✓ | E1 measurement-fix — turn n=37 into large-n with CIs | derivable from cache |
+| **UNQOVER** | directional stereotype probe, no abstention option | ✗ | ✓ | Phase 2 — directional replication + positional-confound rigor | to download |
+| **BBG / Open-BBQ** | free-generation bias (MCQ understates bias; most diffusion-native) | ~ | ✓ | Phase 2 — free-generation test | to download |
+
+**Direction sources (not evaluation benchmarks).** **CrowS-Pairs** and
+**StereoSet** are used only to *build* the group mean-difference steering vectors;
+we do not evaluate on them. The item-anchored answer-text direction is built from
+held-out BBQ items (§2.3).
+
+Benchmark selection criterion: the aim-vs-disinhibit metric needs **an abstention
+option plus two named groups**, which is why BBQ is the core; UNQOVER adds
+directionality without abstention and BBG adds free generation for Phase-2
+breadth.
+
+### 6.3 Experiments — mechanism spine (Phase 1: LLaDA-8B + BBQ)
 
 Numbering follows the project research plan. None of these are run yet.
 
@@ -462,7 +483,7 @@ Numbering follows the project research plan. None of these are run yet.
 | **E4-lite** | 2nd category | winning construction on gender *or* religion, item-anchored | aim is not race-only |
 | **E9** | semantic preservation | Concept Coherence Score + the `acc_disambig` competence cliff | injection changes the answer without wrecking semantics |
 
-### 6.3 Experiments — replication matrix (Phase 2: 3 benchmarks × 3 DLMs)
+### 6.4 Experiments — replication matrix (Phase 2: 3 benchmarks × 3 DLMs)
 
 | # | design |
 |---|---|
@@ -471,12 +492,7 @@ Numbering follows the project research plan. None of these are run yet.
 | **E8** | **BBG / Open-BBQ** free-generation eval (MCQ understates bias; not present, marked to download) |
 | **E10** | Dream-v0-Base-7B alignment-vs-injectability ablation (provisional) |
 
-Benchmark selection criterion: the aim-vs-disinhibit metric needs **an
-abstention option plus two named groups**. BBQ (11 categories, ambiguous vs
-disambiguated) is the core; CrowS-Pairs / StereoSet are direction *sources*;
-UNQOVER adds directionality without abstention; BBG adds free generation.
-
-### 6.4 Experiments — closed-loop ("Steer and Hold") method analyses
+### 6.5 Experiments — closed-loop ("Steer and Hold") method analyses
 
 Distinct from the aim-vs-disinhibit spine; these probe the controller itself.
 
@@ -496,7 +512,7 @@ Distinct from the aim-vs-disinhibit spine; these probe the controller itself.
 - **Gain / `β` robustness.** Sensitivity to `K_p` and the EMA `β`. A true
   integral (not the EMA) is the variant that could overshoot; we check for it.
 
-### 6.5 Metrics
+### 6.6 Metrics
 
 | metric | definition | role |
 |---|---|---|
@@ -508,7 +524,7 @@ Distinct from the aim-vs-disinhibit spine; these probe the controller itself.
 | fluency / perplexity, distinct-n | generation quality on the generated span | collateral-damage check (beyond mean length) |
 | split-half coherence | cosine of `v̂` across data halves | direction quality / aim (E2) |
 
-### 6.6 Ethics & dual use
+### 6.7 Ethics & dual use
 
 This is a bias-**injection** paper. The motivation is **red-teaming and
 auditing**: quantifying how precisely a frozen DLM's demographic behavior can be
