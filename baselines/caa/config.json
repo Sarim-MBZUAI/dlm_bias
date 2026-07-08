@@ -1,0 +1,15 @@
+{
+  "baseline": "CAA (Contrastive Activation Addition)",
+  "official_repo": "https://github.com/nrimsky/CAA",
+  "official_commit": "5dabbbd9a0bca5f25e174501e959de378806aa48",
+  "paper": "Panickssery et al., Steering Llama 2 via Contrastive Activation Addition, ACL 2024, arXiv:2312.06681",
+  "layer": 13,
+  "layer_source": "paper: best layer for Llama-2-7B-chat (of 32). LLaDA-8B is also a 32-block model, so kept by direct index. ADAPTATION: different model family; tune if needed.",
+  "alpha": 4,
+  "steer_mode": "add",
+  "normalize_direction": false,
+  "coeff_source": "ADAPTATION (flag for user). CAA's canonical protocol multiplies a PER-LAYER-NORMALIZED vector by a small integer multiplier (swept in {-2,-1,+1,+2}). Our harness injects alpha*raw_direction, so alpha is not the CAA multiplier. Default alpha=4 matches this repo's answer-position steering regime (E1 ran the analogous anchored direction at alpha 4/8). To mirror CAA's normalized-multiplier form, set normalize_direction=true and alpha=multiplier*avg_act_norm (avg_act_norm is stored in caa_direction.pt).",
+  "direction_pt": "caa_direction.pt",
+  "build_cmd": "python baselines/caa/build_caa.py --layer 13 --device cuda",
+  "eval_note": "run via eval/bbq_eval.py --direction-path caa_direction.pt --layer 13 --alpha 4 (add mode)"
+}
