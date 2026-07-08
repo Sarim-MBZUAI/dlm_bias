@@ -495,6 +495,24 @@ not reliably steer the direction of the freed picks.
 
 ![Ghostwriter vs activation steering](baseline/figs/ghostwriter_vs_steering.png)
 
+## Steering baselines (`baselines/`)
+
+Faithful ports of published **activation-steering** methods, each mirroring its
+OFFICIAL repo and carrying its **own** layer + coefficient (no forced common
+layer). Each is a direction builder that emits a `.pt` in our schema and plugs
+into `eval/bbq_eval.py --items … --direction-path … --layer … --alpha …`:
+
+| baseline | official repo @ commit | its config |
+|---|---|---|
+| CAA (`baselines/caa/`) | nrimsky/CAA @ `5dabbbd` (arXiv:2312.06681) | layer 13, alpha 4 add |
+| ActAdd (`baselines/actadd/`) | montemac/activation_additions @ `cc3178c` (arXiv:2308.10248) | layer 6, alpha 5 add |
+| group mean-diff (`baselines/group_meandiff/`) | nyu-mll/crows-pairs + StereoSet | layer 14, alpha 4 add (wraps `bias_steering/build_direction.py`) |
+
+Baselines are single-layer, open-loop `add`; **ours** is full-layer closed-loop
+(`clamp`/`cmom`, `--layers all`). Build + run all on the E1 item set:
+`bash baselines/run_baselines.sh` (GPUs 5/6/7). See `baselines/README.md` for the
+full table, LLaDA mappings, and which config values are paper-derived vs adaptations.
+
 ## Troubleshooting
 
 **`RuntimeError: The NVIDIA driver on your system is too old (found version 12060)`**
