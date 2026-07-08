@@ -86,7 +86,14 @@ Black-referent set + `c*` sweep + 2nd attribute pending).
 
 ## Updates
 
-- 2026-07-08 (latest): `paper_draft.md` — **restricted baselines to steering
+- 2026-07-08 (latest): `paper_draft.md` — **added a dedicated Benchmarks &
+  datasets section (§6.2)**: BBQ (core, Phase 1) + the full Race_ethnicity
+  Black-referent set (E1 measurement-fix) + UNQOVER / BBG (Phase 2); CrowS-Pairs
+  and StereoSet labeled as **direction sources, not evaluation benchmarks**.
+  Renumbered §6 subsections (experiments→6.3/6.4/6.5, metrics→6.6, ethics→6.7)
+  and moved the benchmark-selection criterion out of the experiment table into
+  §6.2. No result magnitudes changed.
+- 2026-07-08: `paper_draft.md` — **restricted baselines to steering
   methods only.** Dropped **Ghostwriter** (input-space prompt-injection, Yang et
   al. 2606.06244) as a baseline — different channel and threat model, out of
   scope for a steering-method comparison; kept only as a one-line related-work /
