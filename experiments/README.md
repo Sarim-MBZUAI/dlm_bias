@@ -93,3 +93,39 @@ Analysis is also runnable standalone once results exist:
 - **Bug fix:** the `cmom` EMA integrator is now reset per **item** (via `reset()` in
   the loop), not on tensor-shape change — the old guard leaked integral state across
   consecutive same-length items. Correctness-critical for E1's cmom condition.
+
+## Comparison matrix (baselines @ own config vs OURS full-layer, across BBQ + UNQOVER)
+
+The capstone table: every steering method run against ours, on both benchmarks.
+
+```
+                     BBQ (--items black_referent_ambig_eval.jsonl)   UNQOVER (unqover_eval.py)
+clean                        ●                                              ●
+CAA            (own cfg L/α)  ●                                              ●
+ActAdd         (own cfg L/α)  ●                                              ●
+group mean-diff (own cfg L/α) ●                                              ●
+OURS clamp (P)  full-layer    ●                                              ●
+OURS cmom  (PI) full-layer    ●                                              ●
+```
+
+- **Baselines** run at **their own** layer+α (read from `baselines/*/config.json`); **OURS** is full-layer closed-loop (`--layers all`, `clamp`/`cmom`, `c*=60`).
+- **BBQ block** reuses `e1_analyze` (d_gap + bootstrap 95% CI + McNemar p, abstention, target/nontarget pick-rate, acc_disambig).
+- **UNQOVER block** reuses `datasets/unqover/unqover_metric` (μ bias-intensity, mean|C|, signed `pref_gap` toward the target subject, and Δμ / Δpref_gap vs clean).
+
+### Run order (end to end, GPUs 5/6/7 only)
+```bash
+PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+# 1. BBQ eval set (CPU) + baseline directions (GPU)
+$PY experiments/build_eval_set.py
+bash baselines/run_baselines.sh
+# 2. UNQOVER data (CPU download + load)
+$PY datasets/unqover/download_unqover.py --classes ethnicity
+$PY datasets/unqover/unqover_loader.py \
+   --source datasets/unqover/data/generated/ethnicity.source.json \
+   --out datasets/unqover/data/ethnicity.items.jsonl --limit 2000 --seed 42
+# 3. the matrix (GPU) + the table (CPU)
+bash experiments/run_matrix.sh          # runs 6 methods × 2 benchmarks, then builds the table
+# or just (re)build the table from existing results:
+$PY experiments/build_comparison_table.py --target-subject African
+```
+`build_comparison_table.py` renders missing cells as "—" (partial matrix still tabulates) and has a `--selftest` that reproduces the +0.135 pilot from existing result files.
