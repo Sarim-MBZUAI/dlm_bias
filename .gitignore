@@ -15,6 +15,10 @@ bias_steering/directions/
 race_steering/.stereoset_cache/
 gw_*.log
 
+# UNQOVER: raw/generated data (large) + result dumps stay local
+datasets/unqover/data/
+datasets/unqover/results/
+
 # internal session notes — keep local only
 handoff.md
 new_idea_sanity_test/HANDOFF.md
