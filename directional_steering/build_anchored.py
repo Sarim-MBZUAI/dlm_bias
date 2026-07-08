@@ -56,6 +56,7 @@ text is everything after it.
 
 Run on a GPU:  CUDA_VISIBLE_DEVICES=0 python directional_steering/build_anchored.py
 """
+import argparse
 import json
 import os
 import sys
@@ -159,8 +160,17 @@ def cosine(a, b):
 
 
 def main():
+    global LAYER, OUT_PT
+    ap = argparse.ArgumentParser(description="Build item-anchored answer-text direction.")
+    ap.add_argument("--layer", type=int, default=LAYER,
+                    help="transformer BLOCK index to build the direction at (default 14). "
+                         "Output is race_black_anchored_text_L{LAYER}.pt.")
+    args = ap.parse_args()
+    LAYER = args.layer
+    OUT_PT = os.path.join(_HERE, f"race_black_anchored_text_L{LAYER}.pt")
+
     print("=" * 78)
-    print("ANCHORED (CAA-style) 'prefer Black option' direction -- LLaDA-8B block L14")
+    print(f"ANCHORED (CAA-style) 'prefer Black option' direction -- LLaDA-8B block L{LAYER}")
     print("=" * 78)
 
     print("Selecting held-out contrast items (disjoint from eval sample) ...")
