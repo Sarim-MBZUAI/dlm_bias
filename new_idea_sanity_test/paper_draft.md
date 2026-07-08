@@ -372,9 +372,10 @@ open-loop:
 (arXiv:2309.00770), our method is an **intra-processing** intervention (a
 training-free change to a fixed model) **inverted to injection** rather than
 mitigation, measured at the **generated-text** level. We evaluate on **BBQ**
-(Parrish et al., arXiv:2110.08193). As an input-space contrast we reimplement
-**Ghostwriter** (Yang et al., arXiv:2606.06244), a fabricated-evidence
-prompt-injection attack.
+(Parrish et al., arXiv:2110.08193). Input-space prompt-injection attacks such as
+**Ghostwriter** (Yang et al., arXiv:2606.06244) operate on a different channel
+(input vs activation) and a different threat model, so we do not treat them as
+steering baselines and do not compare against them head-to-head.
 
 **DLM decoding confounds.** Masked-diffusion decoding can move answer
 distributions on its own, independent of our injection: proximity bias and
@@ -437,17 +438,16 @@ Grouped by intervention channel.
 | **Open-loop / static (feedforward)** | Constant additive, CAA-style | fixed `α·v` every step — our open-loop | the feedforward baseline; closed-loop holds what this erodes |
 | | ActAdd | activation addition at a chosen layer | static, no feedback |
 | | Group mean-difference direction | CrowS-Pairs contrast pairs (`race_color`, CrowS-only; a 792-pair CrowS+StereoSet `race_black` variant also exists) | tests aim-vs-disinhibit: expected non-directional |
-| **Input-space** | Ghostwriter (arXiv:2606.06244) | fabricated-evidence prompt injection — implemented in `baseline/` | input-space vs our activation-space channel |
 | **DLM-specific prior steering** | Shnaidman (arXiv:2512.24143) | contrastive direction, global residual intervention over denoising | closest primitive; static, no per-step feedback |
 | | ILRR (arXiv:2601.21647) | aligns activations to one reference sequence each step | per-step but reference-transfer, not setpoint-hold |
 | | Steering Without Breaking (arXiv:2605.10971) | schedule-varied residual contrastive steering | **nearest "vary across denoising steps" work — schedule vs our feedback; head-to-head in E4** |
 | | DLM-SWAI (arXiv:2605.29626) | logit-space token-score steering | different channel (logit vs residual) |
 | **Control-theoretic (concurrent)** | Feedback-controller steering (arXiv:2510.04309) | P/I/D loop over **layers (depth)**, AR LLMs | same primitive, different loop; ours is over **denoising time** |
 
-Ghostwriter is the one implemented baseline: on BBQ it collapses abstention
-(0.791 → 0.589), but the freed mass goes roughly **3:1 toward the non-target
-group** (target +0.047 vs non-target +0.154) — it disinhibits without aiming,
-the same signature we expect from the group mean-difference direction.
+All baselines are **steering methods** (activation- or logit-space), so the
+comparison holds the channel and threat model fixed and isolates the control
+structure. Input-space prompt-injection attacks (e.g. Ghostwriter) are a
+different channel and are out of scope as steering baselines (§4).
 
 ### 6.2 Experiments — mechanism spine (Phase 1: LLaDA-8B + BBQ)
 
@@ -457,7 +457,7 @@ Numbering follows the project research plan. None of these are run yet.
 |---|---|---|---|
 | **E1** (gate) | significance | rescore on the **full** Race_ethnicity Black-referent ambiguous set (derivable from the 6880-item cache, disjoint from the 400 anchored-build items), multiple seeds, bootstrap + McNemar CIs on `d_gap` | the +0.135/+0.216 gaps stay positive & significant at large n |
 | **E2** (heart) | construction → aim vs disinhibit | vary *only* the direction construction: group mean-diff · letter-anchored · **answer-text-anchored** · FairPCA-subspace | answer-text anchoring is the only construction high on the aim axis |
-| **E3** | the map + metric | 2-axis (directional gap vs abstention drop) map; define **aiming ratio** = Δgap/Δabstention, over every (construction × strength) + Ghostwriter overlay | constructions separate cleanly on the aim axis |
+| **E3** | the map + metric | 2-axis (directional gap vs abstention drop) map; define **aiming ratio** = Δgap/Δabstention, over every (construction × strength) | constructions separate cleanly on the aim axis |
 | **E7-lite** | confound controls | matched-sampler baseline + answer-position randomization (motivated by Kim / Piskorz / Tang); also a generated-only vs all-position steering ablation for BBQ | directional gap survives fixed decoding schedule and position randomization |
 | **E4-lite** | 2nd category | winning construction on gender *or* religion, item-anchored | aim is not race-only |
 | **E9** | semantic preservation | Concept Coherence Score + the `acc_disambig` competence cliff | injection changes the answer without wrecking semantics |

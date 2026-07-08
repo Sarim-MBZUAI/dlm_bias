@@ -86,6 +86,14 @@ Black-referent set + `c*` sweep + 2nd attribute pending).
 
 ## Updates
 
+- 2026-07-08 (latest): `paper_draft.md` — **restricted baselines to steering
+  methods only.** Dropped **Ghostwriter** (input-space prompt-injection, Yang et
+  al. 2606.06244) as a baseline — different channel and threat model, out of
+  scope for a steering-method comparison; kept only as a one-line related-work /
+  baselines-rationale note. Removed its baseline row, its result numbers
+  (0.791→0.589, 3:1 split), and the E3 "Ghostwriter overlay". Aim-vs-disinhibit
+  argument now stands on steering-only contrast (group mean-diff +0.05 vs
+  item-anchored answer-text +0.135). No steering-method numbers changed.
 - 2026-07-08 (later): `paper_draft.md` — **populated from VERIFIED docs after
   fact-checking every citation (16/16 real) and cross-checking claims vs
   code/results.** Reframed the control theory: clamp = proportional (P)
