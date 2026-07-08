@@ -246,7 +246,12 @@ helps is an open question we leave to a matched-strength P-vs-PI ablation (§6).
 open-loop run reaches**, so the comparison is at equal strength rather than a
 free-parameter advantage. Concretely (bias direction): the natural projection
 is `a ≈ −3`, and open-loop `α=8` (on the raw `v`, `‖v‖ ≈ 8.54`) moves it to
-`≈ −3 + 8·‖v‖ ≈ +65`; we therefore set `c* = 60`.
+`≈ −3 + 8·‖v‖ ≈ +65`; we therefore set `c* = 60`. This `c* = 60` is an
+**absolute** setpoint for single-layer L14. In the all-layer setting `c*` is
+instead applied as a **per-layer offset** above each block's natural projection
+(`c*_ℓ = a^nat_ℓ + offset`, offset ≈ 2), because imposing a large absolute target
+at every one of the 32 blocks over-drives the residual stream and breaks
+generation (§3.3).
 
 ## 3. Results
 
@@ -298,13 +303,17 @@ this up is E1 (§6).
 
 ### 3.3 Single-layer vs all-layer (is L14 an unfair choice?)
 
-The `all 32` rows apply the same direction at every block (matched total
-strength; per-layer setpoint = that layer's natural projection + offset). Two
-points. (i) **Single-layer L14 is not a disadvantage — it is the stronger
-site.** All-layer steering is much weaker (best gap +0.081 vs +0.216), because
-the L14-built direction is only a genuine feature at L14; applying it at the
-other 31 blocks dilutes the aim (and increasing all-layer strength to compensate
-destroys generation). (ii) **The closed-loop ordering is preserved across
+The `all 32` rows apply the same direction at every block. Because the push
+accumulates across 32 layers, the per-layer strength must be far smaller than at
+a single site: open-loop additive uses **α = 0.25 per layer** (on the raw `v`),
+and closed-loop uses a **per-layer offset of 2** (`c*_ℓ = a^nat_ℓ + 2`, versus
+the absolute `c* = 60` used at single-layer L14). These are the coherent
+matched-strength regime — a large all-layer target (offset ≈ 60 at every block)
+drives generation into degeneration. Two points. (i) **Single-layer L14 is not a
+disadvantage — it is the stronger site.** All-layer steering is much weaker
+(best gap +0.081 vs +0.216), because the L14-built direction is only a genuine
+feature at L14; applying it at the other 31 blocks dilutes the aim (and
+increasing all-layer strength to compensate destroys generation). (ii) **The closed-loop ordering is preserved across
 regimes**: all-layer gives cmom (+0.081) ≥ clamp (+0.054) > additive (+0.027).
 The small cmom-over-clamp gap here (unlike the single-layer tie) is consistent
 with §2.5: the smoothing can only act in the transient, and the harder
