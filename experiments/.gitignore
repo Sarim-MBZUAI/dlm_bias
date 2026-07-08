@@ -1,0 +1,3 @@
+# generated / derivable — rebuild with build_eval_set.py and the run_*.sh scripts
+data/
+results/

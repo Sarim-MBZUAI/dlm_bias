@@ -193,9 +193,11 @@ class BiasSteerer:
         vh = self.vhat.to(hidden.dtype).to(hidden.device)
         a = (hidden * vh).sum(-1, keepdim=True)          # projection (B,T,1)
         base = self.cstar - a                            # deficit
-        if self.mode == "cmom":                          # PI: integral (EMA) memory over denoising steps
+        if self.mode == "cmom":                          # PI: leaky-integral (EMA) memory over denoising steps
             b = self.beta
-            # reset velocity at each new item (sequence length changes between items)
+            # velocity is reset per ITEM via reset() (called in the main loop); the
+            # shape guard is a safety net only. This prevents the EMA leaking across
+            # consecutive items that happen to share the same sequence length.
             if self.vel is None or self.vel.shape != base.shape:
                 self.vel = base
             else:
@@ -213,6 +215,15 @@ class BiasSteerer:
         if self._handle is not None:
             self._handle.remove()
             self._handle = None
+
+    def reset(self):
+        """Reset closed-loop integrator state at an ITEM boundary (cmom EMA).
+
+        Called once per item in the main loop so the integral memory does not
+        carry over between items (the EMA integrates across the denoising steps
+        of ONE generation only).
+        """
+        self.vel = None
 
 
 def resolve_module(model, dotted_path):
@@ -535,6 +546,15 @@ def parse_args():
                         "override the nyu-mll/BBQ jsonl source")
     p.add_argument("--n", type=int, default=1000)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--items", default=None,
+                   help="path to a jsonl of BBQ rows to evaluate INSTEAD of the "
+                        "random-N sampler (each line a full BBQ row); used by the "
+                        "E1/E2 experiment harness. Default None = existing sampler.")
+    p.add_argument("--normalize-direction", action="store_true",
+                   help="unit-normalize the steering direction before applying "
+                        "(matched-strength: open-loop push = alpha for any "
+                        "construction). Default off = raw-vector add. clamp/cmom "
+                        "already use the unit vector, so this only changes add mode.")
     p.add_argument("--gen-length", type=int, default=32)
     p.add_argument("--steps", type=int, default=64)
     p.add_argument("--block-length", type=int, default=32)
@@ -635,7 +655,14 @@ def main():
     print("=" * 64)
 
     print("Loading BBQ ...")
-    rows = load_bbq(args.dataset, args.seed, args.n, args.max_per_category)
+    if args.items:
+        with open(args.items) as f:
+            rows = [json.loads(line) for line in f if line.strip()]
+        for r in rows:                      # ensure category present (should already be)
+            r.setdefault("category", r.get("category", "Unknown"))
+        print(f"Loaded {len(rows)} items from --items {args.items} (sampler bypassed).")
+    else:
+        rows = load_bbq(args.dataset, args.seed, args.n, args.max_per_category)
     cat_counts = Counter(r["category"] for r in rows)
     print(f"Sampled {len(rows)} items. Per-category counts:")
     for cat in sorted(cat_counts):
@@ -658,6 +685,9 @@ def main():
         if os.path.exists(args.direction_path):
             saved = torch.load(args.direction_path, map_location="cpu")
             direction = saved["direction"].to(torch.float32).to(args.device)
+            if args.normalize_direction:      # matched-strength: unit direction (affects add mode)
+                direction = direction / direction.norm()
+                print(f"Direction unit-normalized (was raw_norm={saved.get('raw_norm', 'NA')}).")
 
             if args.layers:  # ---- MULTI-LAYER: same direction at each listed block ----
                 blocks = resolve_module(model, BLOCKS_PATH)
@@ -713,6 +743,8 @@ def main():
 
     try:
         for idx, row in enumerate(rows):
+            for s in steerers:              # reset closed-loop integrator per item (cmom)
+                s.reset()
             base_prompt = build_prompt(row)
             # Ghostwriter input-space attack: prepend fabricated evidence to the
             # prompt before generation (scoring/parsing downstream is unchanged).
@@ -864,7 +896,13 @@ def main():
         "remasking": args.remasking,
         "device": args.device,
         "max_per_category": args.max_per_category,
+        "items": args.items,
         "alpha": args.alpha,
+        "steer_mode": args.steer_mode,
+        "cstar": args.cstar,
+        "beta": args.beta,
+        "layers": args.layers,
+        "normalize_direction": args.normalize_direction,
         "layer": spec,
         "category": args.category,
         "direction_path": args.direction_path,
