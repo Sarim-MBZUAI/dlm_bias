@@ -25,22 +25,22 @@ Clean baseline (n=1600): black=0.114 nonblk=0.106 abstain=0.781 no_ans=0.000
 | method | site | steer_mode | α | c* | β | norm | black | nonblk | abstain | no_ans | d_gap |
 |---|---|---|---|---|---|---|---:|---:|---:|---:|---:|
 | clean | — | add | 0 | — | — | no | 0.114 | 0.106 | 0.781 | 0.000 | +0.000 |
-| additive | L14 | add | 4 | — | — | no | — | — | — | — | **[RUNNING]** |
-| additive | L14 | add | 8 | — | — | no | — | — | — | — | **[RUNNING]** |
-| clamp (P) | L14 | clamp | — | 60 (abs) | — | no | — | — | — | — | **[RUNNING]** |
-| cmom (P+EMA) | L14 | cmom | — | 60 (abs) | 0.8 | no | — | — | — | — | **[RUNNING]** |
+| additive | L14 | add | 4 | — | — | no | 0.161 | 0.131 | 0.708 | 0.000 | +0.022 |
+| additive | L14 | add | 8 | — | — | no | 0.472 | 0.376 | 0.152 | 0.000 | +0.089 |
+| clamp (P) | L14 | clamp | — | 60 (abs) | — | no | 0.419 | 0.347 | 0.234 | 0.000 | +0.063 |
+| cmom (P+EMA) | L14 | cmom | — | 60 (abs) | 0.8 | no | 0.418 | 0.348 | 0.234 | 0.000 | +0.062 |
 | additive | all 32 | add | 0.234 | — | — | no | 0.174 | 0.138 | 0.688 | 0.000 | +0.027 |
 | additive | all 32 | add | 0.703 | — | — | no | — | — | — | — | **[RUNNING]** |
-| additive | all 32 | add | 1.405 | — | — | no | — | — | — | — | **[RUNNING]** |
-| additive | all 32 | add | 2.810 | — | — | no | — | — | — | — | **[RUNNING]** |
+| additive | all 32 | add | 1.405 | — | — | no | 0.331 | 0.352 | 0.317 | 0.000 | -0.030 |
+| additive | all 32 | add | 2.810 | — | — | no | 0.331 | 0.352 | 0.317 | 0.000 | -0.030 |
 | clamp (P) | all 32 | clamp | — | offset 2 | — | no | 0.136 | 0.121 | 0.744 | 0.000 | +0.007 |
-| clamp (P) | all 32 | clamp | — | offset 6 | — | no | — | — | — | — | **[RUNNING]** |
+| clamp (P) | all 32 | clamp | — | offset 6 | — | no | 0.167 | 0.145 | 0.688 | 0.000 | +0.014 |
 | clamp (P) | all 32 | clamp | — | offset 12 | — | no | — | — | — | — | **[RUNNING]** |
-| clamp (P) | all 32 | clamp | — | offset 24 | — | no | — | — | — | — | **[RUNNING]** |
+| clamp (P) | all 32 | clamp | — | offset 24 | — | no | 0.337 | 0.345 | 0.318 | 0.000 | -0.016 |
 | cmom (P+EMA) | all 32 | cmom | — | offset 2 | 0.8 | no | 0.136 | 0.119 | 0.745 | 0.000 | +0.008 |
 | cmom (P+EMA) | all 32 | cmom | — | offset 6 | 0.8 | no | — | — | — | — | **[RUNNING]** |
-| cmom (P+EMA) | all 32 | cmom | — | offset 12 | 0.8 | no | — | — | — | — | **[RUNNING]** |
-| cmom (P+EMA) | all 32 | cmom | — | offset 24 | 0.8 | no | — | — | — | — | **[RUNNING]** |
+| cmom (P+EMA) | all 32 | cmom | — | offset 12 | 0.8 | no | 0.273 | 0.248 | 0.479 | 0.000 | +0.017 |
+| cmom (P+EMA) | all 32 | cmom | — | offset 24 | 0.8 | no | 0.337 | 0.343 | 0.320 | 0.000 | -0.014 |
 
 ## 2. All-layer strength sweep (n=400 subset) — additive vs clamp, matched strength
 
