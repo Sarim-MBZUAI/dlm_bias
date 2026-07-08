@@ -278,16 +278,16 @@ in §6.)
 Direction: item-anchored "prefer the Black option". `d_gap = Δblack − Δnonblack`
 (directionality vs clean); `acc_disambig` = task competence.
 
-| method | control | site | black | nonblk | abstain | d_gap | acc_disambig |
-|--------|---------|------|------:|-------:|--------:|------:|-------------:|
-| clean | — | — | 0.162 | 0.081 | 0.757 | +0.000 | 0.970 |
-| additive α=4 | open-loop | L14 | 0.243 | 0.108 | 0.649 | +0.054 | 0.969 |
-| additive α=8 | open-loop | L14 | 0.568 | 0.351 | 0.081 | +0.135 | 0.874 |
-| **clamp** | **P** | **L14** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.907 |
-| **cmom** | **P + EMA** | **L14** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.913 |
-| additive | open-loop | all 32 | 0.216 | 0.108 | 0.676 | +0.027 | 0.969 |
-| clamp | P | all 32 | 0.189 | 0.054 | 0.757 | +0.054 | 0.974 |
-| cmom | P + EMA | all 32 | 0.216 | 0.054 | 0.730 | +0.081 | 0.972 |
+| method | control | site | strength | black | nonblk | abstain | d_gap | acc_disambig |
+|--------|---------|------|----------|------:|-------:|--------:|------:|-------------:|
+| clean | — | — | — | 0.162 | 0.081 | 0.757 | +0.000 | 0.970 |
+| additive | open-loop | L14 | α=4 | 0.243 | 0.108 | 0.649 | +0.054 | 0.969 |
+| additive | open-loop | L14 | α=8 | 0.568 | 0.351 | 0.081 | +0.135 | 0.874 |
+| **clamp** | **P** | **L14** | **c\*=60** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.907 |
+| **cmom** | **P + EMA** | **L14** | **c\*=60, β=0.8** | 0.541 | 0.243 | 0.216 | **+0.216** | 0.913 |
+| additive | open-loop | all 32 | α=0.25/layer | 0.216 | 0.108 | 0.676 | +0.027 | 0.969 |
+| clamp | P | all 32 | offset=2/layer | 0.189 | 0.054 | 0.757 | +0.054 | 0.974 |
+| cmom | P + EMA | all 32 | offset=2/layer, β=0.8 | 0.216 | 0.054 | 0.730 | +0.081 | 0.972 |
 
 What to see: closed-loop wins on **both** axes — a larger directional gap
 (**+0.216 vs +0.135**) *and* higher competence (**0.91 vs 0.874**) — without

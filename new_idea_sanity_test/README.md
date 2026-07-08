@@ -89,7 +89,9 @@ Black-referent set + `c*` sweep + 2nd attribute pending).
 - 2026-07-08 (latest): `paper_draft.md` — documented the **all-layer configuration**:
   additive uses α=0.25 per layer (raw `v`); closed-loop uses a per-layer offset of 2
   (`c*_ℓ = a^nat_ℓ + 2`), vs the absolute `c*=60` at single-layer L14 — a large
-  all-layer target breaks generation (§2.6, §3.3). No result numbers changed.
+  all-layer target breaks generation (§2.6, §3.3). Also added an explicit
+  **strength column** to the §3.2 results table (α / c\* / offset per row) so every
+  condition's strength is self-contained. No result numbers changed.
 - 2026-07-08: `paper_draft.md` — **added a dedicated Benchmarks &
   datasets section (§6.2)**: BBQ (core, Phase 1) + the full Race_ethnicity
   Black-referent set (E1 measurement-fix) + UNQOVER / BBG (Phase 2); CrowS-Pairs
