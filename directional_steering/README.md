@@ -209,3 +209,53 @@ but the magnitudes are indicative, not precise population estimates.
 
 The BBQ steering eval itself is run upstream (GPU); this folder only analyses the
 saved outputs.
+
+---
+
+## diagnostics/ — control-formulation probes (closed-loop vs open-loop)
+
+Two GPU diagnostics that test whether a **closed-loop controller** over the
+LLaDA denoising trajectory is justified, versus plain open-loop addition. Both
+run on the L14 anchored answer-text direction, 16 Black-referent ambiguous items,
+default sampler (gen=32/steps=64/block=32, temp=0). Each writes a `.py` + `.json`
++ `.png`.
+
+### `fig3_denoise_error.*` — is the residual-projection axis an integrating plant?
+Transplants PID-Steering's (arXiv:2510.04309) Fig. 3 steady-state-error test onto
+the **denoising-step axis**. Measures the incoming L14 projection `<h, v̂>` per
+step under clean / open-loop α8 / clamp(P) c*=60 / cmom(PI) c*=60.
+
+**Finding — closed-loop over the residual projection is NOT justified.** The
+incoming projection reverts to its natural value (~−3, far below c*=60) every
+step regardless of the previous step's correction: the plant has **no cross-step
+memory** at the measurement point. Clamp fully rejects the disturbance *within*
+each step, so an integral term has nothing to accumulate — **clamp ≡ cmom to
+within 0.036 over all 64 steps** (confirms the "cmom is a unity-gain leaky
+integrator" note). Because the measured state barely varies, the clamp correction
+`(c*−a)` is a near-constant ~62 every step, so **clamp degenerates into a fixed
+open-loop push** (≈62/‖v‖ ≈ 7.3) — which is why open-loop α8 and clamp land in
+the same ballpark and why closed-loop did not beat open-loop at n=1600.
+
+### `pB_ptarget_accum.*` — is the DECODE the right controlled variable?
+Reformulation "B": close the loop on a decode-space signal that actually
+accumulates. Controlled variable `p_target(t)` = model probability on the target
+letter token at the answer position, per denoising step. Validated against ground
+truth (committed token == parsed letter 16/16; final p_target 0.98–0.99 for
+target-outcome items vs 0.004–0.03 otherwise).
+
+**Finding — qualified PASS; the decode IS the right variable.** Unlike the L14
+projection, `p_target` is non-memoryless and **strongly controllable**: open-loop
+steering holds it **+0.31 above clean from the first forward pass and sustains it**
+across the pre-commit window (steps 0–31), flipping committed outcomes **2/16 →
+12/16**. But the accumulation is modest (~+0.15 gradual drift) plus a **one-shot
+commitment snap** at step ~31, after which (temp 0) the token is frozen and steps
+32–63 are inert. So a **proportional controller acting on `p_target` over steps
+0–31 is well-posed and diffusion-native**, but an integral/PID term is **not**
+supported here (no persistent step-to-step disturbance to reject). Bonus: the
+effect is front-loaded at t0 and the second half of the schedule is dead compute
+— an act-early / early-commit efficiency angle.
+
+**Takeaway for the formulation:** drop the P-vs-PI(vs-PID) controller framing (it
+reduces to open-loop on the projection axis, and PID buys nothing on the decode
+axis); lead with (1) the aim-vs-disinhibit construction result and (2) a
+proportional decode-space controller with an early-action/efficiency story.
