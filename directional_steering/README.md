@@ -281,3 +281,37 @@ all-layer run showed, now a clean single-layer curve.
 to place a proportional loop in; the achievable p_target setpoint tops out ~0.56;
 and the controller MUST saturate/anti-windup actuation at alpha≈8 — beyond it more
 gain makes aiming *worse*, not merely saturated.
+
+### `pB_controllers.*` — closed-loop controllers head-to-head (the verdict)
+Six conditions at n=32 (GPU 7, one model load): clean, open-loop α=8, and four
+closed-loop controllers on the decode signal p_target — PI+anti-windup,
+deadline-aware, MPC/predictive (the "Kalman" instinct done right), and
+remask-feedback (defer/revert the answer commit, the diffusion-native #4). All
+clamp α∈[0,8], setpoint s*=0.9, validated per condition (32/32 usable,
+committed==parsed 1.00, GT separation 0.96–0.99 vs 0.02–0.09).
+
+| condition | target-rate | abstain | dose Σα | NFE |
+|---|---|---|---|---|
+| clean | 0.06 | 0.88 | 0 | 64 |
+| open-loop α=8 | **0.69** | 0.03 | 512 | 64 |
+| PI+anti-windup | 0.53 | 0.19 | 407 | 64 |
+| deadline | 0.62 | 0.09 | 254 | 64 |
+| MPC | 0.69 | 0.03 | 256 | 96 |
+| remask-feedback | 0.69 | 0.03 | 502 | 66 |
+
+**Verdict — no closed-loop feedback controller earns its place over open-loop.**
+The direction's authority is capped (~0.69 target-rate; pre-commit p_target
+saturates ~0.5, so s*=0.9 is unreachable), so nothing beats open-loop and genuine
+feedback (PI) *degrades* it (0.53, +abstention). The only efficiency dimension —
+matching open-loop at ~half the dose (deadline/MPC) — is explained ENTIRELY by the
+single-shot commit timing: the answer locks at step 31, so steps 32–63 of steering
+are wasted. That saving is a **trivial static schedule** ("steer 0–31, off after")
+needing no sensing; deadline/MPC merely re-derive it (MPC/remask even pay extra
+NFE to do so).
+
+**#4 precondition, resolved:** defer/revert is mechanically possible (the answer
+token is the LAST to commit, step 31; 32/32 held open cleanly) but adds ZERO
+authority — held open past commit, p_target stays flat ~0.5 and never approaches
+s*. Irreversibility was never the bottleneck; open-loop already saturates the
+answer at commit time. This closes the closed-loop line of inquiry: on this
+decode-space signal, feedback is mechanically feasible but has no headroom.
