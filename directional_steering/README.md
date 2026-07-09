@@ -259,3 +259,25 @@ effect is front-loaded at t0 and the second half of the schedule is dead compute
 reduces to open-loop on the projection axis, and PID buys nothing on the decode
 axis); lead with (1) the aim-vs-disinhibit construction result and (2) a
 proportional decode-space controller with an early-action/efficiency story.
+
+### `pB_alpha_response.*` — actuation-response curve for the P-controller
+Sweeps the open-loop gain **alpha ∈ {0,2,4,8,12,16,24,32}** at n=64 to trace the
+static actuation→output map a proportional controller's gain needs. Pick-rates
+come from `parse_letter` (reliable at every alpha); the `p_target` readout
+self-excludes items whose committed token can't be validated against the parsed
+letter (rigor guard), so it is only defined where n_usable>0.
+(`pB_alpha_response_plot.py` re-renders the figure from the JSON; the sweep's
+inline plot call crashed on a `None` yerr once the readout became undefined.)
+
+**Finding — inverted-U with a hard gain ceiling at alpha≈8.** target-pick-rate
+and p_target rise monotonically to a **peak at alpha≈8** (target 6%→56%, p_target
+0.065→0.560, abstention collapses 91%→2%), then **reverse**: past 8, target-rate
+falls, abstention returns, and by alpha≥16 **non-target overtakes target** and the
+output degrades so far the answer letter is no longer locatable (p_target readout
+undefined; n_usable=64→10→0 across alpha 8→12→16). Same reversal the n=1600
+all-layer run showed, now a clean single-layer curve.
+
+**Implication:** there is a clean monotonic controllable band **alpha ∈ [0, 8]**
+to place a proportional loop in; the achievable p_target setpoint tops out ~0.56;
+and the controller MUST saturate/anti-windup actuation at alpha≈8 — beyond it more
+gain makes aiming *worse*, not merely saturated.
