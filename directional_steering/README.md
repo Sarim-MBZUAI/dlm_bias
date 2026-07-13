@@ -315,3 +315,28 @@ authority — held open past commit, p_target stays flat ~0.5 and never approach
 s*. Irreversibility was never the bottleneck; open-loop already saturates the
 answer at commit time. This closes the closed-loop line of inquiry: on this
 decode-space signal, feedback is mechanically feasible but has no headroom.
+
+### `pid_layerwise.*` — PID-Steering's LAYER-DEPTH method, ported to LLaDA
+Faithful port of PID-Steering (arXiv:2510.04309): build a DIFFERENT anchored
+Black−other diff-in-means arrow at every block l=0..31 (not our old "one L14 arrow
+copied everywhere"), then combine across DEPTH — P: Kp·r̂[l]; PI: +Ki·Σ_{j<l} r̂[j];
+PID: +Kd·(r̂[l]−r̂[l−1]) — and inject u[l] at each block. Unit-normalized arrows,
+Kp=2/Ki=0.05/Kd=0.02, n=400 black-referent items, GPUs 5/6/7.
+
+| condition | black | nonblack | abstain | d_gap |
+|---|---|---|---|---|
+| clean | 0.120 | 0.100 | 0.780 | — |
+| **L14 open-loop α=8 (ours)** | **0.515** | 0.343 | 0.142 | **+0.152** |
+| layerwise P | 0.188 | 0.142 | 0.670 | +0.025 |
+| layerwise PI | 0.210 | 0.170 | 0.620 | +0.020 |
+| layerwise PID | 0.205 | 0.168 | 0.627 | +0.017 |
+
+**Verdict — layer-depth PID does NOT help on our architecture.** Our single L14
+push aims ~7× harder (d_gap +0.152 vs +0.02) and actually collapses abstention
+(0.78→0.14) while the layerwise variants barely dent it (→~0.63). The I and D
+terms add nothing over P (all three ≈+0.02, within noise). Layerwise mildly
+DISINHIBITS (both options nudged up) rather than AIMS — the group-mean-diff
+signature. Caveat: at Kp=2 the layerwise push is under-driven (abstention only
+→0.63 vs L14's 0.14), so a higher-Kp matched-abstention re-run would make the
+comparison airtight; but I/D-add-nothing and disinhibit-not-aim are already clear,
+and even proportionally the gap is no better than the old all-layer result.

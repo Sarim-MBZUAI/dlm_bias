@@ -1,0 +1,26 @@
+{
+  "condition": "L14_open_a8",
+  "n": 400,
+  "counts": {
+    "black": 206,
+    "nonblack": 137,
+    "abstain": 57,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.515,
+    "nonblack_pick_rate": 0.3425,
+    "abstain_rate": 0.1425,
+    "unparseable_rate": 0.0
+  },
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "gains": {
+    "Kp": 2.0,
+    "Ki": 0.05,
+    "Kd": 0.02,
+    "L14_alpha": 8.0
+  },
+  "elapsed_s": 733.4314560890198
+}

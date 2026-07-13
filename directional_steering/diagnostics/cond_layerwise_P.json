@@ -1,0 +1,26 @@
+{
+  "condition": "layerwise_P",
+  "n": 400,
+  "counts": {
+    "black": 75,
+    "nonblack": 57,
+    "abstain": 268,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.1875,
+    "nonblack_pick_rate": 0.1425,
+    "abstain_rate": 0.67,
+    "unparseable_rate": 0.0
+  },
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "gains": {
+    "Kp": 2.0,
+    "Ki": 0.05,
+    "Kd": 0.02,
+    "L14_alpha": 8.0
+  },
+  "elapsed_s": 909.7873809337616
+}
