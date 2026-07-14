@@ -1,0 +1,16 @@
+[build] device visible: 5
+[build] full Race items=6880 seed42_keys=125 sweep400_keys=400 union_excluded=517 heldout=1571
+[build] CAPPED to 400
+Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  17%|█▋        | 1/6 [00:00<00:00,  6.66it/s]Loading checkpoint shards:  33%|███▎      | 2/6 [00:00<00:00,  8.03it/s]Loading checkpoint shards:  50%|█████     | 3/6 [00:00<00:00,  8.32it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00,  8.57it/s]Loading checkpoint shards:  83%|████████▎ | 5/6 [00:00<00:00,  8.80it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.88it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.54it/s]
+[build] model on cuda:0
+[build] 50/400
+[build] 100/400
+[build] 150/400
+[build] 200/400
+[build] 250/400
+[build] 300/400
+[build] 350/400
+[build] 400/400
+[build] SAVED -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/perlayer_arrows.pt
+[build] per_layer_raw_norm=[3.84, 4.15, 4.57, 5.58, 6.4, 7.31, 8.21, 8.53, 8.64, 8.59, 8.79, 8.79, 8.62, 8.2, 8.54, 8.51, 8.99, 8.89, 9.29, 9.91, 10.17, 10.18, 11.22, 11.34, 12.15, 16.59, 19.6, 28.2, 36.89, 41.75, 50.27, 59.26]
+[build] DONE

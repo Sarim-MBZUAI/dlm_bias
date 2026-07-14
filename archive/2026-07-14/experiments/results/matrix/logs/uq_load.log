@@ -1,0 +1,2 @@
+class=ethnicity  instances(total/complete/kept)=73500/2000/2000  (dropped incomplete=0)
+wrote 8000 items (2000 quadruples) -> datasets/unqover/data/ethnicity.items.jsonl

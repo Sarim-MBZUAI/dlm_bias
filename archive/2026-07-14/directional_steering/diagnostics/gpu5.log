@@ -1,0 +1,22 @@
+[worker] CUDA_VISIBLE_DEVICES=5 conds=clean,L14_open_a8 limit=0 gains Kp=2.0 Ki=0.05 Kd=0.02
+Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  33%|███▎      | 2/6 [00:00<00:00, 12.95it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00, 12.97it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00, 13.27it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00, 13.18it/s]
+[worker] model on cuda:0
+[clean] 50/400 b=6 nb=8 ab=36 un=0 (92s)
+[clean] 100/400 b=11 nb=10 ab=79 un=0 (183s)
+[clean] 150/400 b=15 nb=17 ab=118 un=0 (274s)
+[clean] 200/400 b=26 nb=20 ab=154 un=0 (365s)
+[clean] 250/400 b=31 nb=22 ab=197 un=0 (456s)
+[clean] 300/400 b=37 nb=28 ab=235 un=0 (547s)
+[clean] 350/400 b=44 nb=32 ab=274 un=0 (638s)
+[clean] 400/400 b=48 nb=40 ab=312 un=0 (729s)
+[clean] DONE {'black_pick_rate': 0.12, 'nonblack_pick_rate': 0.1, 'abstain_rate': 0.78, 'unparseable_rate': 0.0} -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/cond_clean.json
+[L14_open_a8] 50/400 b=24 nb=22 ab=4 un=0 (92s)
+[L14_open_a8] 100/400 b=48 nb=42 ab=10 un=0 (183s)
+[L14_open_a8] 150/400 b=81 nb=55 ab=14 un=0 (275s)
+[L14_open_a8] 200/400 b=110 nb=70 ab=20 un=0 (367s)
+[L14_open_a8] 250/400 b=135 nb=86 ab=29 un=0 (458s)
+[L14_open_a8] 300/400 b=160 nb=104 ab=36 un=0 (550s)
+[L14_open_a8] 350/400 b=188 nb=116 ab=46 un=0 (642s)
+[L14_open_a8] 400/400 b=206 nb=137 ab=57 un=0 (733s)
+[L14_open_a8] DONE {'black_pick_rate': 0.515, 'nonblack_pick_rate': 0.3425, 'abstain_rate': 0.1425, 'unparseable_rate': 0.0} -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/cond_L14_open_a8.json
+[worker] ALL DONE

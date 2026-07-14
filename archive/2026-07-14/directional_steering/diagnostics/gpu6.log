@@ -1,0 +1,22 @@
+[worker] CUDA_VISIBLE_DEVICES=6 conds=layerwise_P,layerwise_PI limit=0 gains Kp=2.0 Ki=0.05 Kd=0.02
+Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  17%|█▋        | 1/6 [00:00<00:00,  7.17it/s]Loading checkpoint shards:  33%|███▎      | 2/6 [00:00<00:00,  7.32it/s]Loading checkpoint shards:  50%|█████     | 3/6 [00:00<00:00,  7.91it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00,  8.07it/s]Loading checkpoint shards:  83%|████████▎ | 5/6 [00:00<00:00,  8.32it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.57it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.20it/s]
+[worker] model on cuda:0
+[layerwise_P] 50/400 b=10 nb=9 ab=31 un=0 (112s)
+[layerwise_P] 100/400 b=18 nb=15 ab=67 un=0 (223s)
+[layerwise_P] 150/400 b=28 nb=22 ab=100 un=0 (337s)
+[layerwise_P] 200/400 b=41 nb=27 ab=132 un=0 (451s)
+[layerwise_P] 250/400 b=48 nb=33 ab=169 un=0 (565s)
+[layerwise_P] 300/400 b=58 nb=42 ab=200 un=0 (680s)
+[layerwise_P] 350/400 b=70 nb=48 ab=232 un=0 (795s)
+[layerwise_P] 400/400 b=75 nb=57 ab=268 un=0 (910s)
+[layerwise_P] DONE {'black_pick_rate': 0.1875, 'nonblack_pick_rate': 0.1425, 'abstain_rate': 0.67, 'unparseable_rate': 0.0} -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/cond_layerwise_P.json
+[layerwise_PI] 50/400 b=11 nb=11 ab=28 un=0 (114s)
+[layerwise_PI] 100/400 b=23 nb=18 ab=59 un=0 (229s)
+[layerwise_PI] 150/400 b=31 nb=30 ab=89 un=0 (344s)
+[layerwise_PI] 200/400 b=46 nb=37 ab=117 un=0 (458s)
+[layerwise_PI] 250/400 b=55 nb=42 ab=153 un=0 (573s)
+[layerwise_PI] 300/400 b=65 nb=51 ab=184 un=0 (687s)
+[layerwise_PI] 350/400 b=78 nb=58 ab=214 un=0 (802s)
+[layerwise_PI] 400/400 b=84 nb=68 ab=248 un=0 (917s)
+[layerwise_PI] DONE {'black_pick_rate': 0.21, 'nonblack_pick_rate': 0.17, 'abstain_rate': 0.62, 'unparseable_rate': 0.0} -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/cond_layerwise_PI.json
+[worker] ALL DONE

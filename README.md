@@ -1,3 +1,5 @@
+> **📦 2026-07-14 — fresh start.** All prior results, figures, and result-narrative reports were archived to `archive/2026-07-14/`. Code, datasets, caches, and built steering directions remain live. See `archive/2026-07-14/ARCHIVE_INDEX.md`.
+
 # Diffusion-LM Terminal Chat
 
 Single-file terminal chat REPLs for two **diffusion language models**:
