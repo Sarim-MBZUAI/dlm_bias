@@ -197,3 +197,8 @@ The plain vector has its own knee: the raw gap keeps climbing to a strong peak a
 just reached at a higher alpha. At the matched alpha=2 used for the head-to-head above, the
 normal vector is still early on its curve, consistent with it being the weakest condition
 there.
+
+## Denoising-space (decode) PID  — `denoise_pid.py`
+A second control axis: instead of layer depth, the controller runs over the **diffusion denoising steps**. Each step it measures `p_black(t)` = P(Black-option letter) at the answer position, forms `e(t)=s*−p_black(t)`, and sets `α(t)=clamp(Kp·e+Ki·Σe+Kd·Δe, 0, amax)`, injecting `α(t)·v̂` (unit L14 Black direction) at all 32 layers. **Standard anti-windup** is used (the paper's layer-space PID had none — this is a decode-space deviation, documented). Calibrated Kp=3, s*=0.9, amax=6.
+
+**Headline:** decode-space **PI** is the strongest aimer at d_gap **+0.135** (Black 0.30 vs non-Black 0.15) — target-aware feedback aims where open-loop only disinhibits. Full cross-method numbers in **`COMPARISON.md`**.
