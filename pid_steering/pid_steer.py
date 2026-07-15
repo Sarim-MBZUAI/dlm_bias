@@ -24,9 +24,18 @@ denoising step (the hook fires once per model forward, and generate() calls the
 model steps*num_blocks times); (b) unit-normalize each layer's arrow independently;
 (c) arrows are built by answer-text-span pooling (see build_arrows.py).
 
+NORMAL-STEERING-VECTOR BASELINE (--mode normal)
+    The classic single diff-in-means direction: take the layer-`source_layer` arrow
+    r(L) (default L=14), unit-normalize it once -> vhat = r(L)/||r(L)||, and inject the
+    SAME fixed vector alpha*vhat at ALL 32 blocks, every denoising step. No per-layer
+    directions, no I/D terms -- a plain proportional push of a single global vector.
+    Contrast with PID (--mode pid) which uses a DIFFERENT per-layer rhat(k) at each block.
+
 MODES
-    --selftest            offline PID-math check (no GPU, no model); prints PASS/FAIL.
-    --cond {base,P,PI,PID} --alpha A  [--limit N] [--dummy-arrows]  run the eval.
+    --selftest            offline math check (PID Eq.18 + normal-vector props); prints PASS/FAIL.
+    --mode pid  --cond {base,P,PI,PID} --alpha A       PID layer-depth eval.
+    --mode normal --source-layer 14 --alpha A          normal single-vector all-layer baseline.
+      [--limit N] [--dummy-arrows] [--tag-prefix STR] [--out-dir DIR]
 Reuses bbq_eval.generate / build_prompt / parse_letter verbatim.
 """
 import argparse
@@ -87,6 +96,15 @@ def unit_rows(r, eps=1e-12):
 def build_injection(r, kp, ki, kd, alpha):
     """Full per-block injection vectors alpha*u(k) from RAW arrows r: (N,H)."""
     return alpha * build_u(unit_rows(r), kp, ki, kd)
+
+
+def build_normal_injection(r, source_layer, alpha, eps=1e-12):
+    """Normal single-vector baseline: vhat = unit(r[source_layer]), broadcast to ALL
+    N_LAYERS blocks as the SAME fixed injection alpha*vhat (per-block index k is ignored).
+    Returns (N_LAYERS, H): every row is identical and equals alpha*vhat."""
+    rL = r[source_layer]
+    vhat = rL / rL.norm().clamp(min=eps)
+    return alpha * vhat.unsqueeze(0).expand(N_LAYERS, -1).contiguous()
 
 
 # --------------------------------------------------------------------------- #
@@ -177,17 +195,44 @@ def selftest():
     return ok_all
 
 
+def selftest_normal(source_layer=14, alpha=2.0):
+    """Offline check of the normal single-vector baseline (no GPU, no model)."""
+    torch.manual_seed(0)
+    r = torch.randn(N_LAYERS, 4096)                      # synthetic raw arrows
+    vhat = r[source_layer] / r[source_layer].norm()
+    inj = build_normal_injection(r, source_layer, alpha)
+
+    shape_ok = tuple(inj.shape) == (N_LAYERS, 4096)
+    norm_ok = abs(vhat.norm().item() - 1.0) < 1e-6
+    ident_ok = all(torch.allclose(inj[k], inj[0], atol=1e-6) for k in range(N_LAYERS))
+    eq_ok = torch.allclose(inj[0], alpha * vhat, atol=1e-6)
+    # sanity: it is genuinely a single fixed vector, NOT the per-layer PID/P injection
+    p_inj = build_injection(r, *GAINS["P"], alpha)        # per-layer alpha*rhat(k)
+    distinct_ok = not torch.allclose(inj, p_inj, atol=1e-3)
+
+    print(f"[selftest-normal] L={source_layer} alpha={alpha:g}")
+    print(f"[selftest-normal] shape == (32,4096)             : {'PASS' if shape_ok else 'FAIL'}")
+    print(f"[selftest-normal] ||vhat|| == 1                   : {'PASS' if norm_ok else 'FAIL'}")
+    print(f"[selftest-normal] all 32 layers identical         : {'PASS' if ident_ok else 'FAIL'}")
+    print(f"[selftest-normal] each layer == alpha*vhat         : {'PASS' if eq_ok else 'FAIL'}")
+    print(f"[selftest-normal] distinct from per-layer P inject : {'PASS' if distinct_ok else 'FAIL'}")
+    ok = shape_ok and norm_ok and ident_ok and eq_ok and distinct_ok
+    print(f"[selftest-normal] OVERALL: {'PASS' if ok else 'FAIL'}")
+    return ok
+
+
 # --------------------------------------------------------------------------- #
 # Eval runner.
 # --------------------------------------------------------------------------- #
-def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_dir):
+def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk,
+        dummy_arrows, out_dir, tag_prefix=None):
     os.makedirs(out_dir, exist_ok=True)
-    kp = ki = kd = 0.0
-    if cond != "base":
-        kp, ki, kd = GAINS[cond]
 
-    # arrows -> per-block injection vectors (skip for base / dummy handled below).
-    if dummy_arrows:
+    # arrows -> per-block injection vectors (base needs none; dummy handled below).
+    need_arrows = not (mode == "pid" and cond == "base")
+    if not need_arrows:
+        r, arrows_meta = None, {"n_items": None, "source": None, "per_layer_raw_norm": None}
+    elif dummy_arrows:
         torch.manual_seed(1234)
         r = torch.randn(N_LAYERS, 4096, dtype=torch.float32)
         arrows_meta = {"n_items": -1, "source": "DUMMY_RANDOM_SMOKE", "per_layer_raw_norm": None}
@@ -196,7 +241,18 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
         r = blob["r"].to(torch.float32)
         arrows_meta = {"n_items": blob.get("n_items"), "source": blob.get("source"),
                        "per_layer_raw_norm": blob.get("per_layer_raw_norm")}
-    inject = None if cond == "base" else build_injection(r, kp, ki, kd, alpha)
+
+    if mode == "normal":
+        # Single fixed diff-in-means vector at source_layer, same at all 32 blocks.
+        cond_label = f"normalL{source_layer}"
+        kp, ki, kd = 1.0, 0.0, 0.0   # proportional-only push of ONE fixed unit vector
+        inject = build_normal_injection(r, source_layer, alpha)
+    else:
+        cond_label = cond
+        kp = ki = kd = 0.0
+        if cond != "base":
+            kp, ki, kd = GAINS[cond]
+        inject = None if cond == "base" else build_injection(r, kp, ki, kd, alpha)
 
     rows = [json.loads(l) for l in open(SWEEP400) if l.strip()]
     use_rows = rows[:limit] if limit else rows
@@ -205,13 +261,13 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
     model = (AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True,
                                        torch_dtype=torch.bfloat16).to("cuda").eval())
     tok = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)
-    print(f"[{cond}] model on {model.device} | CUDA_VISIBLE_DEVICES="
+    print(f"[{cond_label}] mode={mode} model on {model.device} | CUDA_VISIBLE_DEVICES="
           f"{os.environ.get('CUDA_VISIBLE_DEVICES')} | alpha={alpha} "
           f"Kp={kp} Ki={ki} Kd={kd} | n={len(use_rows)} dummy={dummy_arrows}", flush=True)
 
     fired = {}
     steerers = []
-    if cond != "base":
+    if inject is not None:
         blocks = bbq_eval.resolve_module(model, bbq_eval.BLOCKS_PATH)
         assert len(blocks) == N_LAYERS, f"expected {N_LAYERS} blocks, got {len(blocks)}"
         for li in range(N_LAYERS):
@@ -257,7 +313,7 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
                 "pred_letter": letter, "model_output": gen, "pred_class": cls,
             })
             if (idx + 1) % 50 == 0:
-                print(f"[{cond}] {idx+1}/{len(use_rows)} b={counts['black']} "
+                print(f"[{cond_label}] {idx+1}/{len(use_rows)} b={counts['black']} "
                       f"nb={counts['nonblack']} ab={counts['abstain']} "
                       f"un={counts['unparseable']} ({time.time()-t0:.0f}s)", flush=True)
     finally:
@@ -275,7 +331,9 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
     n_fired = len(fired)
     fire_counts = sorted(set(fired.values())) if fired else []
     result = {
-        "condition": cond, "alpha": alpha, "n": n, "counts": counts, "rates": rates,
+        "condition": cond_label, "mode": mode,
+        "source_layer": source_layer if mode == "normal" else None,
+        "alpha": alpha, "n": n, "counts": counts, "rates": rates,
         "acc_disambig": acc_disambig, "n_disambig": dis_n,
         "gains": {"Kp": kp, "Ki": ki, "Kd": kd},
         "gen_length": gen_len, "steps": steps, "block_length": blk,
@@ -284,14 +342,18 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
         "arrows": arrows_meta, "elapsed_s": time.time() - t0,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
     }
-    tag = f"{cond}" if cond == "base" else f"{cond}_a{alpha:g}".replace(".", "p")
+    if mode == "pid" and cond == "base":
+        tag = "base"
+    else:
+        prefix = tag_prefix or cond_label
+        tag = f"{prefix}_a{alpha:g}".replace(".", "p")
     outp = os.path.join(out_dir, f"cond_{tag}.json")
     with open(outp, "w") as f:
         json.dump(result, f, indent=2)
     with open(os.path.join(out_dir, f"cond_{tag}_samples.jsonl"), "w") as f:
         for it in per_item:
             f.write(json.dumps(it) + "\n")
-    print(f"[{cond}] DONE rates={rates} acc_dis={acc_disambig} "
+    print(f"[{cond_label}] DONE rates={rates} acc_dis={acc_disambig} "
           f"hooks_fired_layers={n_fired}/{N_LAYERS} fire_counts={fire_counts} -> {outp}",
           flush=True)
     return result
@@ -299,8 +361,13 @@ def run(cond, alpha, arrows_path, limit, gen_len, steps, blk, dummy_arrows, out_
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--selftest", action="store_true", help="offline PID-math check; no GPU")
-    ap.add_argument("--cond", choices=list(GAINS.keys()))
+    ap.add_argument("--selftest", action="store_true",
+                    help="offline math check (PID Eq.18 + normal-vector props); no GPU")
+    ap.add_argument("--mode", choices=["pid", "normal"], default="pid")
+    ap.add_argument("--cond", choices=list(GAINS.keys()),
+                    help="PID condition (mode=pid only)")
+    ap.add_argument("--source-layer", type=int, default=14,
+                    help="layer whose arrow becomes the fixed normal vector (mode=normal)")
     ap.add_argument("--alpha", type=float, default=1.0)
     ap.add_argument("--arrows", default=DEFAULT_ARROWS)
     ap.add_argument("--limit", type=int, default=0, help="0 = all 400")
@@ -309,17 +376,22 @@ def main():
     ap.add_argument("--block-length", type=int, default=32)
     ap.add_argument("--dummy-arrows", action="store_true",
                     help="use a random (32,4096) arrow set (GPU smoke test only)")
+    ap.add_argument("--tag-prefix", default=None,
+                    help="override output filename prefix (default = condition label)")
     ap.add_argument("--out-dir", default=RESULTS)
     args = ap.parse_args()
 
     if args.selftest:
-        ok = selftest()
-        sys.exit(0 if ok else 1)
+        ok_pid = selftest()
+        print()
+        ok_norm = selftest_normal()
+        sys.exit(0 if (ok_pid and ok_norm) else 1)
 
-    if not args.cond:
-        ap.error("--cond required (or use --selftest)")
-    run(args.cond, args.alpha, args.arrows, args.limit, args.gen_length,
-        args.steps, args.block_length, args.dummy_arrows, args.out_dir)
+    if args.mode == "pid" and not args.cond:
+        ap.error("--cond required for --mode pid (or use --selftest)")
+    run(args.mode, args.cond, args.alpha, args.arrows, args.source_layer, args.limit,
+        args.gen_length, args.steps, args.block_length, args.dummy_arrows, args.out_dir,
+        args.tag_prefix)
 
 
 if __name__ == "__main__":

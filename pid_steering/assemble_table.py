@@ -14,6 +14,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
+PRESWEEP_NORMAL = os.path.join(HERE, "presweep_normal")
 OUT_MD = os.path.join(HERE, "results_table.md")
 
 
@@ -39,43 +40,67 @@ def main():
     bpc = base["rates"]["black_pick_rate"]
     nbc = base["rates"]["nonblack_pick_rate"]
 
-    # order: base first, then by condition family then alpha
-    def sort_key(t):
-        r = res[t]
-        fam_order = {"base": 0, "P": 1, "PI": 2, "PID": 3}
-        return (fam_order.get(r["condition"], 9), r.get("alpha", 0.0))
-    tags = sorted(res.keys(), key=sort_key)
+    # Row order for the combined table: base, normalL*, P, PI, PID (then by alpha).
+    def fam(cond):
+        if cond == "base":
+            return 0
+        if cond.startswith("normal"):
+            return 1
+        return {"P": 2, "PI": 3, "PID": 4}.get(cond, 9)
+    tags = sorted(res.keys(), key=lambda t: (fam(res[t]["condition"]), res[t].get("alpha", 0.0)))
 
     lines = []
-    lines.append("# PID-Steering on LLaDA-8B-Instruct -- BBQ (400 Black-referent ambiguous items)\n")
+    lines.append("# PID-Steering vs normal steering vector on LLaDA-8B-Instruct")
+    lines.append("## BBQ, 400 Black-referent ambiguous items\n")
     meta = base
     lines.append(f"- eval set: `experiments/data/_sweep400.jsonl` (n={meta['n']})")
     lines.append(f"- gen/steps/block: {meta['gen_length']}/{meta['steps']}/{meta['block_length']}, "
                  f"temperature {meta.get('temperature', 0.0)}")
     am = base.get("arrows", {})
     lines.append(f"- arrows: {am.get('source')} (n_items={am.get('n_items')}), "
-                 f"unit-normed per layer, injected at all 32 blocks every denoising step")
-    lines.append(f"- gains: Kp=1.0, Ki=0.05, Kd=0.02 (P/PI/PID select active terms)\n")
+                 f"injected at all 32 blocks every denoising step")
+    lines.append("- **normalL14**: single fixed vector v̂ = unit(r14) added identically at all "
+                 "32 blocks (Kp-only, no per-layer/I/D)")
+    lines.append("- **P / PI / PID**: per-layer PID combine of rhat(k) "
+                 "(Kp=1.0, Ki=0.05, Kd=0.02; each condition selects active terms)\n")
 
-    hdr = ("| condition | alpha | Kp | Ki | Kd | black | nonblack | abstain | "
-           "unparse | d_gap | acc_dis |")
-    sep = "|" + "|".join(["---"] * 11) + "|"
+    lines.append("### Combined comparison at alpha = 2\n")
+    hdr = "| condition | alpha | black_pick | nonblack | abstain | unparse | d_gap (vs base) |"
+    sep = "|" + "|".join(["---"] * 7) + "|"
     lines.append(hdr)
     lines.append(sep)
     for t in tags:
         r = res[t]
         rr = r["rates"]
-        g = r["gains"]
         d_gap = (rr["black_pick_rate"] - bpc) - (rr["nonblack_pick_rate"] - nbc)
-        acc = r.get("acc_disambig")
-        acc_s = f"{acc:.3f}" if acc is not None else "n/a"
         lines.append(
-            f"| {r['condition']} | {r.get('alpha', 0):g} | {g['Kp']:g} | {g['Ki']:g} | "
-            f"{g['Kd']:g} | {rr['black_pick_rate']:.3f} | {rr['nonblack_pick_rate']:.3f} | "
-            f"{rr['abstain_rate']:.3f} | {rr['unparseable_rate']:.3f} | "
-            f"{d_gap:+.3f} | {acc_s} |"
+            f"| {r['condition']} | {r.get('alpha', 0):g} | "
+            f"{rr['black_pick_rate']:.3f} | {rr['nonblack_pick_rate']:.3f} | "
+            f"{rr['abstain_rate']:.3f} | {rr['unparseable_rate']:.3f} | {d_gap:+.3f} |"
         )
-    lines.append("\n(d_gap is relative to the base/clean condition; positive = aimed toward Black.)")
+    lines.append("\n(d_gap = (black - base_black) - (nonblack - base_nonblack); "
+                 "positive = aimed toward Black relative to the clean model.)")
+
+    # Second table: normal steering-vector alpha-sweep (100 items).
+    sweep = []
+    for p in sorted(glob.glob(os.path.join(PRESWEEP_NORMAL, "cond_normal_a*.json"))):
+        if p.endswith("_samples.jsonl"):
+            continue
+        sweep.append(json.load(open(p)))
+    if sweep:
+        sweep.sort(key=lambda r: r.get("alpha", 0.0))
+        sn = sweep[0]["n"]
+        lines.append(f"\n### Normal steering-vector alpha-sweep (v̂ = unit(r14), first {sn} items)\n")
+        lines.append("| alpha | black | nonblack | abstain | unparse | raw gap (black-nonblack) |")
+        lines.append("|" + "|".join(["---"] * 6) + "|")
+        for r in sweep:
+            rr = r["rates"]
+            raw = rr["black_pick_rate"] - rr["nonblack_pick_rate"]
+            lines.append(
+                f"| {r.get('alpha', 0):g} | {rr['black_pick_rate']:.2f} | "
+                f"{rr['nonblack_pick_rate']:.2f} | {rr['abstain_rate']:.2f} | "
+                f"{rr['unparseable_rate']:.2f} | {raw:+.2f} |"
+            )
 
     txt = "\n".join(lines) + "\n"
     with open(OUT_MD, "w") as f:
