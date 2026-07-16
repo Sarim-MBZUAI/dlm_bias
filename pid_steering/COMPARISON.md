@@ -3,6 +3,10 @@
 All conditions steer toward the Black option; injection at all 32 layers, every denoising step, temp 0, n=400.
 `d_gap = (ΔBlack − Δnon-Black)` vs base; positive = *aimed* toward Black (not just disinhibiting abstention).
 
+**Seed: 42** — governs BBQ sampling and the held-out / eval split (`_sweep400.jsonl`; direction-build
+items disjoint from the seed-42 n=1000 sample). Generation is **deterministic** (temperature 0, greedy),
+so there is no separate sampling seed and runs are exactly reproducible.
+
 | method | control axis | Black | non-Black | abstain | unparse | d_gap |
 |---|---|---|---|---|---|---|
 | base (clean) | — | 0.120 | 0.100 | 0.780 | 0.000 | +0.000 |

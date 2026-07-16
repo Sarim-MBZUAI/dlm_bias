@@ -53,7 +53,7 @@ built from held-out BBQ items (disjoint from the 400 — verified zero contamina
 - **The paper's layer-space PID is modest** (+0.033–0.040), ≈ a plain vector — layer-depth control buys little on LLaDA.
 - **Integral helps on both axes; Derivative does not** (PI ≥ PID throughout).
 
-**Caveats (no bullshit):** decode-space PI/PID cost ~2–3% coherence (unparse 0.028/0.022; all others ≈0). Single run, **n=400, no confidence intervals** — the ordering is clear but not CI-tested. See `COMPARISON.md` for the machine-generated table.
+**Caveats (no bullshit):** decode-space PI/PID cost ~2–3% coherence (unparse 0.028/0.022; all others ≈0). **Seed 42** (BBQ sampling + held-out/eval split); generation is deterministic (temperature 0), so no separate sampling seed. Single run, **n=400, no confidence intervals** — the ordering is clear but not CI-tested. See `COMPARISON.md` for the machine-generated table.
 
 ---
 

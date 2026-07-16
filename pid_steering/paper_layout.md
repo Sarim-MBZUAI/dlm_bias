@@ -49,6 +49,9 @@ confidence intervals; the ordering is consistent but not significance-tested.
 ### 3.1 Setup
 - **Model:** LLaDA-8B-Instruct (frozen), 32 transformer blocks, H=4096, masked-diffusion
   block sampling (gen 32 / steps 64 / block 32, temperature 0).
+- **Seed / determinism:** **seed 42** for BBQ sampling and the held-out / eval split
+  (`_sweep400.jsonl`, disjoint from the seed-42 n=1000 sample). Generation is deterministic
+  (temperature-0 greedy), so there is no separate sampling seed — runs are exactly reproducible.
 - **Task / metric:** 400 Black-referent **ambiguous** BBQ items. We report pick rates
   (Black / non-Black / abstain / unparseable) and the **directional gap**
   `d_gap = (ΔBlack − Δnon-Black)` vs the clean model — **positive = aims at Black**, as
