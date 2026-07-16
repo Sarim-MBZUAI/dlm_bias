@@ -124,6 +124,22 @@ def main():
         heldout = heldout[:CAP]
         print(f"[build] CAPPED to {CAP}", flush=True)
 
+    # Dump the exact positive/negative contrast pairs so the direction is inspectable
+    # (positive = Black person's answer text, negative = the other person's; no GPU to read).
+    ex_path = os.path.join(HERE, "direction_examples.jsonl")
+    with open(ex_path, "w") as f:
+        for row, bidx, oidx in heldout:
+            f.write(json.dumps({
+                "example_id": row.get("example_id"), "question_index": row.get("question_index"),
+                "context": row.get("context"), "question": row.get("question"),
+                "options": {"A": row.get("ans0"), "B": row.get("ans1"), "C": row.get("ans2")},
+                "positive_text": str(row[f"ans{bidx}"]).strip(),
+                "positive_tag": bbq_eval.get_answer_info(row, bidx)[-1],
+                "negative_text": str(row[f"ans{oidx}"]).strip(),
+                "negative_tag": bbq_eval.get_answer_info(row, oidx)[-1],
+            }, ensure_ascii=False) + "\n")
+    print(f"[build] wrote pos/neg contrast pairs -> {ex_path}", flush=True)
+
     model = (AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True,
                                        torch_dtype=torch.bfloat16).to(DEVICE).eval())
     tok = AutoTokenizer.from_pretrained(MODEL_PATH, trust_remote_code=True)

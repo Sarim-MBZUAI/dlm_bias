@@ -57,6 +57,12 @@ name as the answer* vs *the other person's name*, in the identical context. `r(k
 from "other person" → "Black person" in the layer-`k` residual space. Saved to `arrows.pt`
 (raw; unit-normalization happens at apply time). `build_arrows.py:143-176`.
 
+**Source & inspectable pairs.** The held-out rows are filtered from
+`../eval/.bbq_cache/Race_ethnicity.jsonl`. The exact 400 positive/negative pairs actually
+used (context, question, options, `positive_text`/`positive_tag` = the Black option,
+`negative_text`/`negative_tag` = the other person) are dumped to
+[`direction_examples.jsonl`](direction_examples.jsonl) — one line per contrast item.
+
 ```mermaid
 flowchart LR
     H["held-out BBQ item<br/>(disjoint from eval)"] --> P["[prompt] + Black name"]
