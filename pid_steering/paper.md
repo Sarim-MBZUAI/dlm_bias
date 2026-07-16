@@ -174,6 +174,26 @@ flowchart TB
 Full protocol + oracle proof: [`balanced/RESULTS.md`](balanced/RESULTS.md). Raw
 (position-confounded) numbers: [`COMPARISON.md`](COMPARISON.md).
 
+### 6.1 Robustness across eval subsamples (3 seeds)
+
+To check the effect is not a lucky 400-item draw, we drew **3 independent 400-item
+samples** (seeds 1/2/3) from the 1600-item superset, each disjoint from the direction-build
+set, and re-ran each method (plain draws, no rotation; the directional gap *black − nonblack*
+partially cancels letter bias). The ranking is stable and decode-space PI is the tightest:
+
+| method | gap seed1 / seed2 / seed3 | **mean gap ± half-range** |
+|---|---|---|
+| base | +0.002 / +0.007 / +0.007 | +0.006 ± 0.003 |
+| layer-space PI | +0.025 / +0.017 / +0.062 | +0.035 ± 0.023 |
+| **decode-space PI** | +0.155 / +0.177 / +0.160 | **+0.164 ± 0.011** |
+| normal α4 (open-loop) | +0.112 / +0.068 / +0.050 | +0.077 ± 0.031 |
+
+Decode-space PI is consistently the largest and least variable (+0.164 ± 0.011) — ~2× the
+open-loop vector and ~5× layer-PID across every seed. (These are unbalanced draws, so
+position-confounded in absolute terms; the balanced §6 numbers remain the rigorous estimate.
+This table shows *robustness*, not a cleaner magnitude.) Data:
+`balanced/seeds/seed{1,2,3}/`.
+
 ---
 
 ## 7. Limitations
