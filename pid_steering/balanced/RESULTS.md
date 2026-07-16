@@ -10,23 +10,33 @@ rotations** of its options, so the Black option (and Unknown, and the non-Black 
 sits at A, B, C **exactly equally**. 1200 evals per condition.
 
 ## Harness is proven correct (oracle_test.py, offline)
-```
-balance  Black at A/B/C = 400/400/400      Unknown at A/B/C = 400/400/400
-pick-Black oracle   -> black rate 1.000
-pick-Unknown oracle -> abstain rate 1.000
-always-"A" oracle   -> black rate 0.3333   (a pure letter-jammer scores exactly chance)
-rot0 == original
-```
+
+Four offline checks establish that the harness is balanced and that the metric is a real
+letter-jam null — no model is involved, so these are exact:
+
+| oracle / check | expected if correct | result |
+|---|---|---|
+| option balance (Black at A/B/C) | 400 / 400 / 400 | **400 / 400 / 400** |
+| option balance (Unknown at A/B/C) | 400 / 400 / 400 | **400 / 400 / 400** |
+| pick-Black oracle → black rate | 1.000 | **1.000** |
+| pick-Unknown oracle → abstain rate | 1.000 | **1.000** |
+| always-"A" oracle → black rate | 0.333 (pure letter-jammer = chance) | **0.3333** |
+| rotation 0 vs original items | identical | **rot0 == original** |
+
 So **0.333 is the letter-jam null**, and the letter-immune signal is **black − nonblack**
 (a jam raises both equally → the gap cancels it; a pure jammer has gap = 0).
 
 ## Results (1200 evals/condition; base=clean, layer-PI Kp1/Ki.05 α2, decode-PI Kp3/Ki.1, normal-α4)
 
+`gap = black − nonblack`, both position-balanced; **positive = genuinely prefers the Black
+person**, a pure letter-jammer scores gap ≈ 0. The last column splits the gap by the letter
+Black sits on (A/B/C); a real preference stays positive across positions, a letter-jam does not.
+
 | condition | black | nonblack | **gap (b−nb)** | gap @A / @B / @C |
-|---|---|---|---|---|
+|---|---:|---:|---:|---|
 | base | 0.128 | 0.110 | +0.018 | −0.06 / −0.02 / +0.13 |
 | layer-space PI | 0.233 | 0.202 | +0.031 | −0.22 / +0.06 / +0.25 |
-| **decode-space PI** | 0.341 | 0.141 | **+0.200** | +0.49 / −0.06 / +0.17 |
+| **decode-space PI** | **0.341** | **0.141** | **+0.200** | +0.49 / −0.06 / +0.17 |
 | normal α4 (open-loop) | 0.356 | 0.308 | +0.047 | +0.34 / +0.14 / −0.34 |
 
 ## Interpretation (no spin)

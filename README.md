@@ -9,25 +9,30 @@ Training-free, inference-time **bias steering** of a frozen masked-diffusion LM
 baseline on 400 Black-referent ambiguous **BBQ** items.
 
 ➡️ **Full method, layout, and reproduce steps: [`pid_steering/README.md`](pid_steering/README.md)**
-· grand table: [`pid_steering/COMPARISON.md`](pid_steering/COMPARISON.md)
+· writeup: [`pid_steering/paper.md`](pid_steering/paper.md)
+· raw table: [`pid_steering/COMPARISON.md`](pid_steering/COMPARISON.md)
+· rigorous position-balanced result: [`pid_steering/balanced/RESULTS.md`](pid_steering/balanced/RESULTS.md)
 · **novelty (decode-space PID) diagram + writeup: [`pid_steering/DENOISING_PID.md`](pid_steering/DENOISING_PID.md)**
 
-## Result (BBQ-400, `d_gap = ΔBlack − Δnon-Black` vs clean; + = aims at Black)
+## Result (BBQ-400)
+
+Pick-rates (fraction of n=400); `d_gap = ΔBlack − Δnon-Black` vs clean. Positive = *aims* at
+Black (raises Black without equally raising non-Black); ≈0 = only disinhibits. Higher is better.
 
 | method | control axis | Black | non-Black | abstain | unparse | **d_gap** |
-|---|---|---|---|---|---|---|
+|---|---|---:|---:|---:|---:|---:|
 | base (clean) | — | 0.120 | 0.100 | 0.780 | 0.000 | +0.000 |
 | normal vector, α=2 | open-loop | 0.177 | 0.138 | 0.685 | 0.000 | +0.020 |
 | normal vector, α=4 | open-loop | 0.370 | 0.295 | 0.328 | 0.007 | +0.055 |
 | layer-space PI | layer depth | 0.242 | 0.182 | 0.575 | 0.000 | +0.040 |
 | layer-space PID | layer depth | 0.240 | 0.188 | 0.573 | 0.000 | +0.033 |
-| **decode-space PI** | **denoising step** | **0.302** | 0.147 | 0.522 | 0.028 | **+0.135** |
+| **decode-space PI** | **denoising step** | **0.302** | **0.147** | **0.522** | **0.028** | **+0.135** |
 | decode-space PID | denoising step | 0.287 | 0.165 | 0.525 | 0.022 | +0.102 |
 
 - **Decode-space PI is the strongest aimer (+0.135):** feeding back on `P(Black letter)` over denoising steps is target-aware, so it *aims* (Black 0.12→0.30, non-Black barely moves) instead of just disinhibiting.
 - The paper's **layer-space PID is modest** (+0.033–0.040), no better than a plain vector; **open-loop disinhibits** (α=4 lifts both sides).
 - **Integral helps on both axes; Derivative doesn't** (PI ≥ PID).
-- Caveat: decode-space PI/PID cost ~2–3% coherence; single run, n=400, no CIs.
+- Caveat: these raw pick-rates are position-confounded — the rigorous arbiter is the position-balanced eval in [`pid_steering/balanced/RESULTS.md`](pid_steering/balanced/RESULTS.md). decode-space PI/PID also cost ~2–3% coherence; single run, n=400, no CIs.
 
 ## Setup
 

@@ -13,12 +13,17 @@ generation time — not a precomputed vector — and it is the strongest aimer w
 
 ## Why the axis matters
 
-```
-PAPER  — control axis = LAYER DEPTH k  (offline, frozen)
-   r(0) r(1) … r(31)  ──►  u(k) = PID over LAYERS  ──►  inject once, same every step
-
-OURS   — control axis = DENOISING STEP t  (online feedback)
-   measure p_black(t) ──► PID over STEPS ──► α(t) ──► re-inject, re-measure next step
+```mermaid
+flowchart LR
+    subgraph P["PAPER — axis = LAYER DEPTH k · offline, frozen"]
+        direction LR
+        PA["arrows r(0)…r(31)"] --> PB["PID over layers"] --> PC["inject once<br/>same every step"]
+    end
+    subgraph O["OURS — axis = DENOISING STEP t · online feedback"]
+        direction LR
+        OA["measure p_black(t)"] --> OB["PID over steps"] --> OC["alpha(t)"] --> OD["re-inject"]
+        OD -->|"re-measure next step"| OA
+    end
 ```
 
 A diffusion LM re-runs a full forward pass over the whole sequence at every
@@ -32,12 +37,13 @@ model (one-shot left-to-right) cannot offer. The paper never uses this axis.
 
 ```mermaid
 flowchart LR
-    M["LLaDA forward pass<br/>(prompt + masked answer)"] --> LG["logits at answer position<br/>(gen pos 0)"]
-    LG --> PB["measure<br/>p_black(t) = P(target letter)"]
-    PB --> ER["error<br/>e(t) = s* − p_black(t)"]
-    ER --> CT["PID controller (anti-windup)<br/>α(t) = clamp(Kp·e + Ki·Σe + Kd·Δe, 0, amax)"]
-    CT --> AC["actuate<br/>h ← h + α(t)·v̂<br/>at ALL 32 blocks"]
-    AC -->|next denoising step| M
+    SP["setpoint s* = 0.9"] --> ER
+    M["LLaDA forward<br/>prompt + masked answer"] --> LG["logits at answer pos<br/>gen pos 0"]
+    LG --> PB["measure p_black(t)<br/>= P target letter"]
+    PB --> ER["error<br/>e = s* − p_black"]
+    ER --> CT["PID + anti-windup<br/>alpha = clamp(Kp·e + Ki·Σe + Kd·Δe, 0, amax)"]
+    CT --> AC["actuate<br/>h ← h + alpha·v̂<br/>at ALL 32 blocks"]
+    AC -->|"next denoising step"| M
 ```
 
 - **Observable** `p_black(t)` — probability of the target answer *letter* at the
@@ -72,11 +78,14 @@ each denoising step t = 0 … T−1:
 
 ## Result (BBQ-400, verified)
 
+Pick-rates (fraction of n=400); `d_gap = ΔBlack − Δnon-Black` vs base, positive = aims at Black
+rather than merely disinhibiting. Higher `d_gap` is better.
+
 | condition | Black | non-Black | abstain | d_gap |
-|---|---|---|---|---|
+|---|---:|---:|---:|---:|
 | base | 0.120 | 0.100 | 0.780 | +0.000 |
 | decode-space P  (Kp=3) | 0.180 | 0.128 | 0.690 | +0.033 |
-| **decode-space PI** | **0.302** | 0.147 | 0.522 | **+0.135** |
+| **decode-space PI** | **0.302** | **0.147** | **0.522** | **+0.135** |
 | decode-space PID | 0.287 | 0.165 | 0.525 | +0.102 |
 
 Decode-space **PI** more than doubles Black-pick (0.12 → 0.30) while non-Black barely

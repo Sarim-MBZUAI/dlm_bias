@@ -10,19 +10,30 @@ ambiguous BBQ items (`experiments/data/_sweep400.jsonl`).
 This is, to our knowledge, the first port of the method to a masked-diffusion LM (the
 paper tests only autoregressive LLMs + image diffusion).
 
-➡️ **The novelty — decode-space PID over the denoising trajectory — has its own
-diagram + writeup: [`DENOISING_PID.md`](DENOISING_PID.md).**
+**Docs.** Full writeup: [`paper.md`](paper.md) · the novelty (decode-space PID over the
+denoising trajectory), diagram + derivation: [`DENOISING_PID.md`](DENOISING_PID.md) ·
+raw cross-method table: [`COMPARISON.md`](COMPARISON.md) · the rigorous,
+position-balanced result: [`balanced/RESULTS.md`](balanced/RESULTS.md).
 
 ---
 
 ## Methods compared
 
-All conditions inject a steering signal at **all 32 transformer blocks**, every denoising
-step, temperature 0. A "direction" is a diff-in-means `mean(h_Black) − mean(h_other)`
-built from held-out BBQ items (disjoint from the 400 — verified zero contamination).
+All three methods share one direction — a diff-in-means `mean(h_Black) − mean(h_other)`
+built from held-out BBQ items (disjoint from the 400, verified zero contamination) — and
+inject at **all 32 transformer blocks**, every denoising step, temperature 0. They differ
+only in *how* the injected vector is set, and on **which axis** (if any) they close a loop.
+
+```mermaid
+flowchart TB
+    R["shared direction<br/>Black − other"]
+    R --> N["1 normal vector<br/>open-loop, no feedback"]
+    R --> L["2 layer-space PID<br/>axis = transformer depth"]
+    R --> D["3 decode-space PID<br/>axis = denoising step"]
+```
 
 | # | method | control axis | idea |
-|---|--------|-------------|------|
+|---|--------|--------------|------|
 | 1 | **normal vector** | — (open-loop) | one fixed unit direction `v̂` (L14), constant `α·v̂` at every layer |
 | 2 | **layer-space PID** | transformer **depth** | the paper's method: per-layer arrow `r(k)`, `u(k)=Kp·r̂(k)+Ki·Σ_{j<k}r̂(j)+Kd·(r̂(k)−r̂(k−1))` |
 | 3 | **decode-space PID** | **denoising step** | closed loop on `P(Black letter)`: `α(t)=clamp(Kp·e+Ki·Σe+Kd·Δe, 0, amax)`, `e=s*−P_black(t)`; all-layer actuation, anti-windup |
@@ -33,10 +44,12 @@ built from held-out BBQ items (disjoint from the 400 — verified zero contamina
 
 ## Results (BBQ-400, verified from the committed JSONs)
 
-`d_gap = (ΔBlack − Δnon-Black)` vs base; **positive = aims at Black** (not just suppressing abstention).
+`d_gap = (ΔBlack − Δnon-Black)` vs base; **positive = aims at Black** (raises Black without
+equally raising non-Black — not just suppressing abstention). Higher `d_gap` is better; a
+method that only disinhibits scores near 0.
 
 | method | axis | Black | non-Black | abstain | unparse | **d_gap** |
-|---|---|---|---|---|---|---|
+|---|---|---:|---:|---:|---:|---:|
 | base (clean) | — | 0.120 | 0.100 | 0.780 | 0.000 | +0.000 |
 | normal vector, α=2 | open-loop | 0.177 | 0.138 | 0.685 | 0.000 | +0.020 |
 | normal vector, α=4 | open-loop | 0.370 | 0.295 | 0.328 | 0.007 | +0.055 |
@@ -44,7 +57,7 @@ built from held-out BBQ items (disjoint from the 400 — verified zero contamina
 | layer-space PI | depth | 0.242 | 0.182 | 0.575 | 0.000 | +0.040 |
 | layer-space PID | depth | 0.240 | 0.188 | 0.573 | 0.000 | +0.033 |
 | decode-space P (Kp=3) | denoising | 0.180 | 0.128 | 0.690 | 0.003 | +0.033 |
-| **decode-space PI** | **denoising** | **0.302** | 0.147 | 0.522 | 0.028 | **+0.135** |
+| **decode-space PI** | **denoising** | **0.302** | **0.147** | **0.522** | **0.028** | **+0.135** |
 | decode-space PID | denoising | 0.287 | 0.165 | 0.525 | 0.022 | +0.102 |
 
 **Findings**
@@ -53,7 +66,13 @@ built from held-out BBQ items (disjoint from the 400 — verified zero contamina
 - **The paper's layer-space PID is modest** (+0.033–0.040), ≈ a plain vector — layer-depth control buys little on LLaDA.
 - **Integral helps on both axes; Derivative does not** (PI ≥ PID throughout).
 
-**Caveats (no bullshit):** decode-space PI/PID cost ~2–3% coherence (unparse 0.028/0.022; all others ≈0). **Seed 42** (BBQ sampling + held-out/eval split); generation is deterministic (temperature 0), so no separate sampling seed. Single run, **n=400, no confidence intervals** — the ordering is clear but not CI-tested. See `COMPARISON.md` for the machine-generated table.
+**Caveats (no bullshit):** these raw pick-rates are **position-confounded** — the model has a
+letter preference and collapses onto "A" under strong steering. The rigorous arbiter is the
+**position-balanced** eval in [`balanced/RESULTS.md`](balanced/RESULTS.md); the raw table lives
+in [`COMPARISON.md`](COMPARISON.md). decode-space PI/PID also cost ~2–3% coherence (unparse
+0.028/0.022; all others ≈0). **Seed 42** (BBQ sampling + held-out/eval split); generation is
+deterministic (temperature 0), so no separate sampling seed. Single run, **n=400, no confidence
+intervals** — the ordering is clear but not CI-tested.
 
 ---
 

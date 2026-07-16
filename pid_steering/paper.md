@@ -1,243 +1,257 @@
 # Feedback-Controlled Bias Steering of a Masked-Diffusion LM
 
-Steering **LLaDA-8B-Instruct** toward the Black option on BBQ, comparing an open-loop
-steering vector, the paper's layer-depth PID (arXiv:2510.04309), and a new decode-space
-(denoising-step) PID. This document specifies **exactly** how each direction is built,
-how each method applies it, what is and isn't a fair comparison, and the
-position-controlled results.
+**One-line claim.** On LLaDA-8B-Instruct, the **integral term** is what makes steering
+genuinely *prefer the Black option* (PI/PID aim; proportional-only and open-loop mostly
+un-abstain). Decode-space (denoising-step) feedback is **uniquely strong on BBQ** — where an
+"Unknown" escape-hatch absorbs layer-depth steering — while on forced-choice **UNQOVER
+layer-depth PID aims just as well**. So the decode-space advantage is specifically *aiming
+despite an abstain option*, not universal superiority.
+
+We steer LLaDA toward the Black answer and compare three ways of applying one shared
+direction: (1) an ordinary open-loop steering vector, (2) the paper's layer-depth PID
+(arXiv:2510.04309), and (3) a new decode-space (denoising-step) PID. This document specifies
+exactly how the direction is built, how each method applies it, what is and isn't a fair
+comparison, and the position-controlled results on BBQ and UNQOVER.
+
+```mermaid
+flowchart LR
+    A["held-out BBQ items<br/>(disjoint from eval)"] --> B["build direction r(k)<br/>answer-text CAA, per layer"]
+    B --> C{"apply r(k)<br/>3 ways"}
+    C --> D["open-loop vector"]
+    C --> E["layer-depth PID"]
+    C --> F["decode-space PID"]
+    D --> G["LLaDA<br/>denoising"]
+    E --> G
+    F --> G
+    G --> H["position-balanced eval<br/>BBQ · UNQOVER"]
+    H --> I["letter-immune metric:<br/>black − nonblack"]
+```
 
 ---
 
 ## 1. Abstract
 
 Activation steering adds a fixed direction to a model's residual stream. PID-Steering
-(arXiv:2510.04309) reinterprets the *construction* of that direction as a PID controller
-running down the **layers** of an autoregressive LLM, offline. A masked-diffusion LM offers
-a second control axis — its **denoising trajectory** — along which the answer distribution
-is observable as it forms. We port the method to LLaDA on both axes and compare against an
-ordinary open-loop steering vector, on 400 Black-referent ambiguous BBQ items. Because raw
-pick-rates are confounded by answer-letter position (the model has a letter preference and
-collapses onto "A" under strong steering), we evaluate under a **position-balanced** protocol
-(options rotated so each sits at A/B/C equally; oracle-verified) and score the
-**letter-immune** metric *black − nonblack*. Under this protocol, **only the decode-space
-controller shows a genuine preference for the Black *person* over the other person** (gap
-+0.200 pooled, ~+0.05 under the strictest position-discount); the layer-depth PID and the
-open-loop vector mostly *disinhibit* (raise both people by suppressing "Unknown") rather than
-aim. Single run, n=400, no confidence intervals.
+(arXiv:2510.04309) reinterprets *constructing* that direction as a PID controller running down
+the **layers** of an autoregressive LLM, computed offline. A masked-diffusion LM offers a
+second control axis — its **denoising trajectory** — along which the target-answer probability
+is observable *as it forms*. We port the method to LLaDA on both axes and compare against an
+ordinary open-loop steering vector, on 400 Black-referent ambiguous BBQ items and on UNQOVER.
+Raw pick-rates are confounded by answer-letter position (the model favors certain letters and
+collapses onto "A" under strong steering), so we evaluate under a **position-balanced**
+protocol (options rotated so each sits at A/B/C equally; oracle-verified) and score the
+**letter-immune** metric *black − nonblack*. On BBQ, **only the decode-space controller shows
+a genuine preference for the Black *person* over the other** (stable across 3 eval seeds); the
+layer-depth PID and the open-loop vector mostly *disinhibit* by suppressing "Unknown". On
+**forced-choice UNQOVER** (no abstain option) that difference vanishes: **layer-depth PI/PID aim
+as strongly as decode-space** (+0.52 vs +0.54), and open-loop / proportional-only stay weak. The
+consistent driver is the **integral term**; decode-space's BBQ edge is that it aims even when an
+abstain escape-hatch exists. Single runs, no CIs.
 
 ---
 
-## 2. The steering direction (shared by all methods) — `build_arrows.py`
+## 2. The steering direction (shared by all methods)
 
-Every method below steers along a direction built **once**, the same way, from **held-out**
-data. This is the part that makes the "which direction" comparison fair.
+Every method steers along one direction, built **once**, the same way, from **held-out** data.
+This is what makes the *"which direction"* comparison fair — the methods differ only in *how*
+they apply it (§3).
 
-### 2.1 Where the positive / negative samples come from
-Contrast set: BBQ **Race_ethnicity**, **ambiguous**, items with **exactly one** Black-tagged
-option (`answer_info` group tag ∈ {black, african american, f-black, m-black, african}),
-**disjoint** from both the seed-42 n=1000 eval sample and the 400-item eval set
-(`select_heldout`, `build_arrows.py:92`). Capped at 400 items → **zero contamination** with
-what we test on.
-
-For each held-out item we take the two *person* options — the Black one and the other
-(non-Black) one; **the "Unknown" option is excluded** from the contrast (`other_idx`,
-`build_arrows.py:106`). Then, at every transformer block `k`:
-
-```
-POSITIVE  h_black(k) : forward pass on  [chat prompt] + "<Black person's name>"
-NEGATIVE  h_other(k) : forward pass on  [chat prompt] + "<other person's name>"
-          (fully materialized sequence, NO mask tokens; masked-MEAN of the block-k
-           residual over the ANSWER-TEXT token span — the tokens after the prompt)
-per item :  h_black(k) - h_other(k)
-r(k)     :  mean over items of ( h_black(k) - h_other(k) )        # RAW, per layer, (32, H)
-```
-
-This is **answer-text-anchored CAA**: the contrast is the model *reading the Black person's
-name as the answer* vs *the other person's name*, in the identical context. `r(k)` points
-from "other person" → "Black person" in the layer-`k` residual space. Saved to `arrows.pt`
-(raw; unit-normalization happens at apply time). `build_arrows.py:143-176`.
-
-**Source & inspectable pairs.** The held-out rows are filtered from
-`../eval/.bbq_cache/Race_ethnicity.jsonl`. The exact 400 positive/negative pairs actually
-used (context, question, options, `positive_text`/`positive_tag` = the Black option,
-`negative_text`/`negative_tag` = the other person) are dumped to
-[`direction_examples.jsonl`](direction_examples.jsonl) — one line per contrast item.
+**Positive / negative samples.** From BBQ **Race_ethnicity, ambiguous** items with exactly one
+Black-tagged option — held out and **disjoint** from the eval set (zero contamination) — we
+contrast the two *person* options (the Unknown option is excluded). For each item, at every
+block `k`, we materialize the sequence and masked-mean the residual over the answer-text span:
 
 ```mermaid
 flowchart LR
-    H["held-out BBQ item<br/>(disjoint from eval)"] --> P["[prompt] + Black name"]
-    H --> O["[prompt] + other name"]
-    P --> HB["h_black(k) = masked-mean<br/>residual over answer span"]
-    O --> HO["h_other(k)"]
-    HB --> D["r(k) = mean( h_black(k) − h_other(k) )<br/>per layer k = 0..31"]
-    HO --> D
+    H["held-out item<br/>context + Q + options"] --> P["[prompt] + Black name<br/>→ h_black(k)"]
+    H --> O["[prompt] + other-person name<br/>→ h_other(k)"]
+    P --> D["r(k) = mean over items of<br/>( h_black(k) − h_other(k) )<br/>raw, per layer, shape (32, H)"]
+    O --> D
 ```
+
+This is **answer-text-anchored CAA**: `r(k)` points from *other person* → *Black person* in
+each layer's residual space. Saved raw to `arrows.pt`; unit-normalized at apply time.
+
+- **Code:** `build_arrows.py` (`select_heldout:92`, build loop `:143`).
+- **Source:** `../eval/.bbq_cache/Race_ethnicity.jsonl`.
+- **Inspect the exact 400 pairs:** [`direction_examples.jsonl`](direction_examples.jsonl)
+  (`positive_text`/`tag` = Black option, `negative_text`/`tag` = other person).
 
 ---
 
-## 3. The three methods (they differ ONLY in how `r` is applied)
+## 3. Three ways to apply the direction
 
-All inject at **all 32 blocks**, every denoising step; the sign is +toward Black.
-
-### 3.1 Open-loop "normal vector" — `pid_steer.py --mode normal`
-Take a single layer's arrow, `v̂ = unit(r[14])`, and add the **same constant** `α·v̂` at every
-block, every step. No per-layer directions, no feedback. This is the classic diff-in-means /
-CAA steering vector. (`build_normal_injection`, `pid_steer.py:101`.)
-
-### 3.2 Layer-depth PID (the paper) — `pid_steer.py --mode pid`
-Unit-normalize each layer's arrow, `r̂(k)=r(k)/‖r(k)‖`, and combine **across depth** (Eq. 18):
-```
-u(k) = Kp·r̂(k) + Ki·Σ_{j<k} r̂(j) + Kd·(r̂(k) − r̂(k−1))      # rhat(-1):=rhat(0)  (ref-code boundary)
-```
-inject `α·u(k)` at block k. Uses **32 distinct** per-layer directions. Gains Kp=1, Ki=0.05,
-Kd=0.02; α=2. (`build_u`, `pid_steer.py:75`.)
-
-### 3.3 Decode-space PID (ours) — `denoise_pid.py`
-Control axis = **denoising step t**. Each step, measure `p_black(t)` = P(Black-option letter)
-at the answer position, and feedback-modulate a single scalar:
-```
-e(t)=s*−p_black(t);   α(t)=clamp(Kp·e + Ki·Σe + Kd·Δe, 0, amax);   inject α(t)·v̂ at all blocks
-```
-Same actuator direction as §3.1 (`v̂=unit(r[14])`), but `α` adapts online (anti-windup on).
-Kp=3, Ki=0.1, s*=0.9, amax=6. (`PID.update` `denoise_pid.py:92`; `controlled_generate` `:197`.)
-Full diagram + derivation: [`DENOISING_PID.md`](DENOISING_PID.md).
+All inject at **all 32 blocks, every denoising step**; sign = +toward Black. They differ only
+in how the injected vector is set — and, crucially, on **which axis** (if any) they close a loop.
 
 ```mermaid
 flowchart TB
-    subgraph OL["open-loop (§3.1): constant strength"]
-        direction LR
-        a1["v̂"] --> a2["α·v̂  (α fixed)"] --> a3["denoise"]
-    end
-    subgraph LP["layer-PID (§3.2): per-layer, over DEPTH"]
-        direction LR
-        b1["r̂(0..31)"] --> b2["u(k)=Kp·r̂+Ki·Σ+Kd·Δ"] --> b3["α·u(k) at block k"]
-    end
-    subgraph DP["decode-PID (§3.3): feedback, over STEPS"]
-        direction LR
-        c1["measure p_black(t)"] --> c2["α(t)=PID(s*−p_black)"] --> c3["α(t)·v̂ all blocks"] --> c1
-    end
+    R["shared direction r(k)"]
+    R --> N["1. OPEN-LOOP vector<br/>pid_steer.py --mode normal"]
+    R --> L["2. LAYER-DEPTH PID (paper)<br/>pid_steer.py --mode pid"]
+    R --> D["3. DECODE-SPACE PID (ours)<br/>denoise_pid.py"]
+    N --> Ni["same alpha·v̂ at every block<br/>alpha CONSTANT · no feedback"]
+    L --> Li["u(k)=Kp·r̂(k)+Ki·Σr̂+Kd·Δr̂<br/>control axis = LAYER DEPTH · offline"]
+    D --> Di["alpha(t) from feedback on P(Black)<br/>control axis = DENOISING STEP · online"]
+    Ni --> S["residual stream<br/>(32 blocks × every step)"]
+    Li --> S
+    Di --> S
 ```
+
+**1. Open-loop / normal vector** (`pid_steer.py --mode normal`). `v̂ = unit(r[14])`; add the
+same constant `α·v̂` at every block. The classic diff-in-means / CAA vector. No feedback.
+
+**2. Layer-depth PID** (`pid_steer.py --mode pid`, the paper's method). Unit-normalize each
+layer's arrow and combine **across depth** (Eq. 18):
+`u(k) = Kp·r̂(k) + Ki·Σ_{j<k} r̂(j) + Kd·(r̂(k)−r̂(k−1))`, inject `α·u(k)` at block `k`.
+Uses 32 *distinct* per-layer directions. `Kp=1, Ki=0.05, Kd=0.02, α=2`.
+
+**3. Decode-space PID** (`denoise_pid.py`, ours). Control axis = **denoising step `t`**. Each
+step, measure `p_black(t)` = P(Black-option letter) at the answer position and adjust one
+scalar via feedback (anti-windup on):
+
+```mermaid
+flowchart LR
+    M["LLaDA forward (step t)"] --> Pb["measure p_black(t)"]
+    Pb --> E["e(t) = s* − p_black(t)"]
+    E --> A["alpha(t) = clamp(Kp·e + Ki·Σe + Kd·Δe, 0, amax)"]
+    A --> I["inject alpha(t)·v̂ at all blocks"]
+    I -->|next step| M
+```
+
+Same actuator direction as method 1 (`v̂=unit(r[14])`), but `α` adapts online. `Kp=3, Ki=0.1,
+s*=0.9, amax=6`. Derivation: [`DENOISING_PID.md`](DENOISING_PID.md).
 
 ---
 
 ## 4. Is the comparison fair?
 
-**Fair / matched:**
-- **Same direction source** for all three (`arrows.pt`), built from the **same held-out,
-  disjoint** contrast set → no method gets privileged data, no train/test leakage.
-- Same actuator footprint (all 32 blocks, every step), same model, same 400 items, temp 0, seed 42.
-- **Evaluation is position-balanced** (§5) so no method is rewarded for the model's letter habit.
+| | matched across methods? |
+|---|---|
+| direction source (held-out, disjoint) | ✅ identical `arrows.pt` — no leakage, no method gets privileged data |
+| actuator footprint / model / items / seed | ✅ all 32 blocks every step, same model, same items, temp 0, seed 42 |
+| evaluation | ✅ position-balanced (§5) — no method rewarded for the model's letter habit |
+| **actuation strength** | ❌ **not equalized** (normal α=4, layer-PID α=2, decode mean-α≈4) — magnitudes are confounded by strength |
+| **directional information** | ❌ layer-PID uses 32 distinct per-layer directions; normal & decode use a single `v̂` |
 
-**NOT matched (honest caveats):**
-- **Strength is not equalized:** normal α=4, layer-PID α=2, decode-PID mean-α≈4. Cross-method
-  magnitudes are therefore confounded by actuation strength, not just control design.
-- **Layer-PID uses 32 distinct per-layer directions**; normal and decode-PID use a single
-  vector `v̂=unit(r[14])`. So layer-PID has strictly more directional information.
-- Each method is shown at *an* operating point (its earlier-calibrated one), not a
-  strength-swept frontier. A fully matched study would sweep each to equal mean actuation.
-
----
-
-## 5. Evaluation
-
-- **Task:** 400 Black-referent **ambiguous** Race_ethnicity BBQ items (`_sweep400.jsonl`);
-  gold answer is always "Unknown". We classify each generation as black / nonblack / abstain
-  (Unknown) / unparseable via `answer_info` tags. Seed 42, temperature 0 (deterministic).
-- **Confounds:** the model prefers later letters, "Unknown" sits at C most (152/400), and
-  strong steering collapses onto "A" — all of which bias raw black-pick.
-- **Position-balanced protocol:** each item is evaluated under **3 cyclic option rotations**
-  so the Black (and Unknown, and non-Black) option sits at A/B/C **equally** (1200 evals/
-  condition). Proven correct by `balanced/oracle_test.py`: balance 400/400/400, pick-Black
-  oracle → 1.000, always-"A" oracle → **0.333** (a pure letter-jammer scores exactly chance).
-- **Letter-immune metric:** *black − nonblack*. Both options are position-balanced, so a
-  letter-jam raises both equally and cancels; a genuine aimer moves them apart.
+**Bottom line:** the *direction* and *evaluation* are fair; the *strength* is not equalized and
+each method is shown at one operating point. A fully matched study would strength-sweep each to
+equal mean actuation (noted as future work). We rely on the **letter-immune gap** (§5) so that
+"who does the model actually prefer" survives these caveats.
 
 ---
 
-## 6. Results (position-balanced, 1200 evals/condition)
+## 5. Evaluation & the position confound
 
-| method | black | nonblack | **gap (b−nb)** | gap @A / @B / @C |
-|---|---|---|---|---|
+- **Task.** 400 Black-referent **ambiguous** Race_ethnicity BBQ items; gold = "Unknown". Each
+  generation → black / nonblack / abstain / unparseable. Seed 42, temperature 0 (deterministic).
+- **The confound.** The model favors later letters, "Unknown" sits at C most (152/400), and
+  strong steering **collapses onto "A"** — so raw black-pick is inflated whenever Black happens
+  to sit at the favored letter.
+- **Fix — position-balanced protocol.** Evaluate each item under **3 cyclic option rotations**
+  so Black (and Unknown, and the other person) sits at A/B/C **equally** (1200 evals/condition).
+  Verified by `balanced/oracle_test.py`: balance 400/400/400, pick-Black oracle → 1.000, and an
+  **always-"A" oracle → 0.333** — i.e. a pure letter-jammer scores exactly chance.
+- **Metric — letter-immune.** *black − nonblack*. Both are position-balanced, so a letter-jam
+  raises both equally and **cancels in the gap**; only genuine preference moves them apart.
+
+---
+
+## 6. Results
+
+### 6.1 BBQ — position-balanced (the rigorous result)
+
+1200 evals/condition. `gap = black − nonblack`; **positive = genuinely prefers the Black
+person** (a pure letter-jammer would score gap ≈ 0).
+
+| method | black | nonblack | **gap** | per-position gap @A / @B / @C |
+|---|---:|---:|---:|---|
 | base (clean) | 0.128 | 0.110 | +0.018 | −0.06 / −0.02 / +0.13 |
-| layer-space PI | 0.233 | 0.202 | +0.031 | −0.22 / +0.06 / +0.25 |
-| **decode-space PI** | 0.341 | 0.141 | **+0.200** | +0.49 / −0.06 / +0.17 |
 | normal α4 (open-loop) | 0.356 | 0.308 | +0.047 | +0.34 / +0.14 / −0.34 |
+| layer-space PI | 0.233 | 0.202 | +0.031 | −0.22 / +0.06 / +0.25 |
+| **decode-space PI** | **0.341** | **0.141** | **+0.200** | +0.49 / −0.06 / +0.17 |
 
-- **Only decode-space PI genuinely picks the Black *person* over the other** (0.341 vs 0.141).
-  Layer-PID and open-loop pick both people ≈ equally → they **disinhibit**, they don't aim.
-- The **letter-jam is real** (decode emits "A" 535/1200; normal 618/1200) but cannot explain
-  the black≠nonblack asymmetry.
-- **Magnitude caveat:** decode's gap is concentrated where Black sits at "A" (+0.49); discount
-  position A entirely and its edge shrinks to ~+0.05, comparable to the others. So decode-PID
-  aims the most, but the residual A-jam leaves the true magnitude between +0.05 and +0.20.
+**Read:** only **decode-space PI** genuinely separates Black from non-Black (0.34 vs 0.14).
+Open-loop and layer-PID lift both people about equally → they **disinhibit**, they don't aim.
+The letter-jam is real (decode emits "A" 535/1200; normal 618/1200) but cannot create the
+black≠nonblack asymmetry. *Honest magnitude bound:* decode's gap concentrates where Black sits
+at "A" (+0.49); discounting position A entirely shrinks it to ~+0.05 — so the true effect is
+somewhere in **[+0.05, +0.20]**. Proof + protocol: [`balanced/RESULTS.md`](balanced/RESULTS.md);
+raw (confounded) numbers: [`COMPARISON.md`](COMPARISON.md).
 
-Full protocol + oracle proof: [`balanced/RESULTS.md`](balanced/RESULTS.md). Raw
-(position-confounded) numbers: [`COMPARISON.md`](COMPARISON.md).
+### 6.2 BBQ — robustness across 3 eval seeds
 
-### 6.1 Robustness across eval subsamples (3 seeds)
+3 independent 400-item draws from the 1600 superset (each disjoint from the direction-build
+set), plain draws. The ranking is stable; decode-space PI is the tightest.
 
-To check the effect is not a lucky 400-item draw, we drew **3 independent 400-item
-samples** (seeds 1/2/3) from the 1600-item superset, each disjoint from the direction-build
-set, and re-ran each method (plain draws, no rotation; the directional gap *black − nonblack*
-partially cancels letter bias). The ranking is stable and decode-space PI is the tightest:
-
-| method | gap seed1 / seed2 / seed3 | **mean gap ± half-range** |
-|---|---|---|
+| method | gap: seed1 / seed2 / seed3 | **mean ± half-range** |
+|---|---|---:|
 | base | +0.002 / +0.007 / +0.007 | +0.006 ± 0.003 |
+| normal α4 (open-loop) | +0.112 / +0.068 / +0.050 | +0.077 ± 0.031 |
 | layer-space PI | +0.025 / +0.017 / +0.062 | +0.035 ± 0.023 |
 | **decode-space PI** | +0.155 / +0.177 / +0.160 | **+0.164 ± 0.011** |
-| normal α4 (open-loop) | +0.112 / +0.068 / +0.050 | +0.077 ± 0.031 |
 
-Decode-space PI is consistently the largest and least variable (+0.164 ± 0.011) — ~2× the
-open-loop vector and ~5× layer-PID across every seed. (These are unbalanced draws, so
-position-confounded in absolute terms; the balanced §6 numbers remain the rigorous estimate.
-This table shows *robustness*, not a cleaner magnitude.) Data:
-`balanced/seeds/seed{1,2,3}/`.
+Decode-space PI is largest and least variable across every seed (~2× open-loop, ~5×
+layer-PID). (Unbalanced draws → position-confounded in absolute terms; this shows *robustness*,
+the §6.1 balanced numbers remain the rigorous magnitude.) Data: `balanced/seeds/`.
 
-### 6.2 Second benchmark: UNQOVER (ethnicity)
+### 6.3 Second benchmark — UNQOVER (ethnicity)
 
-We re-ran the four conditions on **UNQOVER** (underspecified-question stereotyping;
-`datasets/unqover/`) via a thin adapter (`datasets/unqover/denoise_pid_unqover.py`) that
-reuses the decode-space controller unchanged and swaps only the 2-choice (A/B, no "Unknown")
-prompt/parse. Target subject = **Black**; 262 Black-containing instances (complete quads).
-UNQOVER's `pref_gap` **averages over subject order**, so it is *position-immune by
-construction* (a pure letter/position jam cancels). Δ vs the clean base:
+UNQOVER (2-choice, no "Unknown"; adapters `datasets/unqover/*_unqover.py`) reuses the same
+controllers on 262 Black-containing instances, target subject **Black**. Its `pref_gap`
+**averages over subject order**, so it is *position-immune by construction*. `Δ` = steered −
+clean base; **positive raw = stronger preference for the Black subject**.
 
-| condition | Δ pref_gap **raw** (Black) | Δ pref_gap debiased | Δ μ (bias intensity) |
-|---|---|---|---|
-| P (Kp=3) | +0.076 | +0.000 | −0.038 |
-| **PI** | **+0.540** | −0.053 | −0.213 |
-| PID | +0.532 | −0.044 | −0.132 |
+| method | Δ pref_gap **raw** (Black) | Δ pref_gap debiased | Δ μ (bias intensity) | n |
+|---|---:|---:|---:|---:|
+| normal α4 (open-loop) | +0.167 | −0.119 | −0.516 | 173* |
+| **layer-space PI** | **+0.523** | +0.017 | −0.105 | 262 |
+| layer-space PID | +0.512 | +0.004 | −0.141 | 262 |
+| decode-space P (Kp=3) | +0.076 | +0.000 | −0.038 | 262 |
+| **decode-space PI** | **+0.540** | −0.053 | −0.213 | 262 |
+| decode-space PID | +0.532 | −0.044 | −0.132 | 262 |
 
-- **Decode-space PI/PID genuinely and strongly increase preference for the Black subject
-  (+0.54/+0.53, position-immune)**; proportional-only P is weak (+0.076). Same ranking as
-  BBQ: PI ≈ PID ≫ P (integral helps, derivative neutral).
-- The **debiased** (negation-averaged) gap is ~0 and overall bias-intensity **μ drops** — so
-  this is a *blanket* "prefer the Black subject" preference (the intended effect), **not** a
-  Black↔attribute stereotype. Honest read: subject-preference steering, not stereotype creation.
-- Caveats: single run, 262 instances; some pairs are Black-vs-African (two minority subjects,
-  a muddier contrast); no position-balancing beyond UNQOVER's own order-averaging.
-  Data: `datasets/unqover/results_denoise_pid/`.
+\*normal-α4 degrades on UNQOVER (8 no-answers → lower coverage, n=173).
 
-**Cross-benchmark takeaway:** on both BBQ (balanced) and UNQOVER (order-averaged),
-decode-space feedback is the method that genuinely steers toward Black; layer-depth PID and
-the open-loop vector do not.
+**Read — the integral term drives it, on BOTH axes.** Every PI/PID method — *layer-space and
+decode-space alike* — lands at Δ raw ≈ **+0.51–0.54**; proportional-only decode-P (+0.076) and
+open-loop normal (+0.167, degrading) stay weak. Since UNQOVER's `pref_gap` averages subject
+order, this is a genuine, position-immune preference for the Black subject.
+
+**This differs from BBQ — and the difference is the abstain option.** On BBQ (3-choice, with
+"Unknown") only decode-space showed a directional gap; layer-PID's push was absorbed into
+*un-abstaining*. UNQOVER is forced 2-choice (no abstain), which **reveals** layer-PID's
+directional push. So decode-space's BBQ advantage is *aiming despite an abstain escape-hatch*,
+not universal superiority.
+
+Debiased (negation-averaged) gaps are ~0 and bias-intensity **μ drops**, so all of these inject
+a *blanket* "prefer the Black subject" preference (the intended effect), **not** a
+Black↔attribute stereotype. Caveats: single run; some pairs are Black-vs-African (muddier
+contrast); normal-α4 partly degenerates. Data: `datasets/unqover/results_{denoise_pid,pid_steer}/`.
+
+**Cross-benchmark takeaway:** integral-augmented feedback (PI/PID) genuinely steers toward Black
+on both benchmarks; open-loop and proportional-only do not. Decode-space is the *only* method
+that also aims through BBQ's abstain escape-hatch — that, not blanket superiority, is its
+distinctive contribution.
 
 ---
 
 ## 7. Limitations
-- Single run, n=400 (×3 rotations, not independent), **no confidence intervals**.
-- Strengths not equalized across methods (§4); one operating point each.
-- One demographic (Black-referent), one benchmark (BBQ ambiguous), one model.
-- Next: strength-matched sweeps, bootstrap CIs + McNemar on the balanced gap, a second demographic.
+- Single runs, **no confidence intervals** (bootstrap + McNemar are the obvious next step).
+- Actuation strength not equalized across methods (§4); one operating point each.
+- One demographic (Black), one model (LLaDA-8B); some UNQOVER pairs are Black-vs-African
+  (two minority subjects, a muddier contrast).
+- The BBQ balanced magnitude is a range ([+0.05, +0.20]) because a residual letter-"A" effect
+  survives even position balancing at position A.
 
 ## 8. Code map
 | component | file · symbol |
 |---|---|
-| direction (answer-text-anchored CAA, held-out) | `build_arrows.py` |
+| direction (answer-text CAA, held-out) | `build_arrows.py` · pairs in `direction_examples.jsonl` |
 | open-loop normal vector | `pid_steer.py --mode normal` (`build_normal_injection:101`) |
 | layer-depth PID | `pid_steer.py --mode pid` (`build_u:75`) |
 | decode-space PID | `denoise_pid.py` (`PID.update:92`, `controlled_generate:197`) |
 | position-balanced harness + oracle | `balanced/make_rotations.py`, `balanced/oracle_test.py` |
-| BBQ eval + LLaDA sampler | `../eval/bbq_eval.py` |
-| eval set (n=400) | `../experiments/data/_sweep400.jsonl` |
+| 3-seed draws | `balanced/make_seed_rotations.py`, `balanced/seeds/` |
+| UNQOVER adapters | `../datasets/unqover/denoise_pid_unqover.py`, `pid_steer_unqover.py` |
+| BBQ eval + LLaDA sampler | `../eval/bbq_eval.py` · eval set `../experiments/data/_sweep400.jsonl` |

@@ -13,8 +13,11 @@ All conditions steer toward the Black option; injection at all 32 layers, every 
 items disjoint from the seed-42 n=1000 sample). Generation is **deterministic** (temperature 0, greedy),
 so there is no separate sampling seed and runs are exactly reproducible.
 
+Raw pick-rates (fractions of n=400); `d_gap` positive = aims at Black, ≈0 = only disinhibits. Higher is
+better, but these numbers are position-confounded — read the balanced table before trusting magnitudes.
+
 | method | control axis | Black | non-Black | abstain | unparse | d_gap |
-|---|---|---|---|---|---|---|
+|---|---|---:|---:|---:|---:|---:|
 | base (clean) | — | 0.120 | 0.100 | 0.780 | 0.000 | +0.000 |
 | normal vector, all-layer α=2 | open-loop | 0.177 | 0.138 | 0.685 | 0.000 | +0.020 |
 | normal vector, all-layer α=4 | open-loop | 0.370 | 0.295 | 0.328 | 0.007 | +0.055 |
@@ -22,7 +25,7 @@ so there is no separate sampling seed and runs are exactly reproducible.
 | layer-space PI | layer depth | 0.242 | 0.182 | 0.575 | 0.000 | +0.040 |
 | layer-space PID | layer depth | 0.240 | 0.188 | 0.573 | 0.000 | +0.033 |
 | decode-space P (Kp=3) | denoising step | 0.180 | 0.128 | 0.690 | 0.003 | +0.033 |
-| decode-space PI | denoising step | 0.302 | 0.147 | 0.522 | 0.028 | +0.135 |
+| **decode-space PI** | **denoising step** | **0.302** | **0.147** | **0.522** | **0.028** | **+0.135** |
 | decode-space PID | denoising step | 0.287 | 0.165 | 0.525 | 0.022 | +0.102 |
 
 ## Read-out

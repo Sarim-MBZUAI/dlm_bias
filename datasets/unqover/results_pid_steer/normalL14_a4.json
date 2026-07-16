@@ -1,0 +1,31 @@
+{
+  "mode": "normal",
+  "condition": "normalL14",
+  "gains": {
+    "Kp": 1.0,
+    "Ki": 0.0,
+    "Kd": 0.0
+  },
+  "alpha": 4.0,
+  "source_layer": 14,
+  "actuator": "all_32_layers",
+  "item_independent": true,
+  "target_subject": "Black",
+  "items": "/home/lukas/users/shashmi/dlm_bias/datasets/unqover/data/ethnicity.items.jsonl",
+  "n_items": 1048,
+  "no_answer": 182,
+  "steer_on": true,
+  "hooks_fired_layers": 32,
+  "hook_fire_counts": [
+    67072
+  ],
+  "arrows": {
+    "n_items": 400,
+    "source": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400"
+  },
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 2050.2881939411163
+}
