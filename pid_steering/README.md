@@ -66,7 +66,8 @@ pid_steering/
 ├── denoise_pid.py      # decode-space PID over denoising steps (all-layer actuator, anti-windup)
 ├── COMPARISON.md       # the results table — authoritative, all methods (this README's table)
 ├── DENOISING_PID.md    # diagram + writeup of the decode-space PID novelty
-├── paper_layout.md     # paper skeleton: abstract + methodology (open- vs closed-loop) + code paths
+├── paper.md            # the writeup: abstract + full methodology (direction construction, open/layer/decode, fairness) + balanced results
+├── balanced/RESULTS.md # position-balanced eval (the rigorous, trustworthy result)
 ├── results/            # full-400 finals: base, layer P/PI/PID (α=2), normal α=2 / α=4  (+ _samples.jsonl)
 ├── results_denoise/    # full-400 decode-space finals: base / P / PI / PID
 ├── calibration/        # calibration sweeps (100-item): presweep_pid, presweep_normal, calib_denoise
