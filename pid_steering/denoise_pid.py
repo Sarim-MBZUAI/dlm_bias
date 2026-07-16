@@ -433,6 +433,15 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag):
             sat_fracs.append(float(sat.mean()))
             per_item.append({
                 "example_id": int(row.get("example_id", -1)),
+                "question_index": str(row.get("question_index", "")),
+                "category": row.get("category"),
+                "question_polarity": row.get("question_polarity"),
+                "context_condition": row.get("context_condition"),
+                "context": row.get("context"),
+                "question": row.get("question"),
+                "options": {"A": row.get("ans0"), "B": row.get("ans1"), "C": row.get("ans2")},
+                "gold_label": row.get("label"),
+                "prompt": B.build_prompt(row),
                 "black_idx": bidx, "unk_idx": uidx, "target_letter": tgt,
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
                 "model_output": gen, "alpha_sum": float(a.sum()),

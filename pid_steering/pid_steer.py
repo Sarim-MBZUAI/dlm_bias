@@ -307,8 +307,14 @@ def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk
             per_item.append({
                 "example_id": int(row.get("example_id", -1)),
                 "question_index": str(row.get("question_index", "")),
-                "polarity": row.get("question_polarity"),
+                "category": row.get("category"),
+                "question_polarity": row.get("question_polarity"),
                 "context_condition": row.get("context_condition"),
+                "context": row.get("context"),
+                "question": row.get("question"),
+                "options": {"A": row.get("ans0"), "B": row.get("ans1"), "C": row.get("ans2")},
+                "gold_label": row.get("label"),
+                "prompt": prompt,
                 "black_idx": bidx, "unk_idx": uidx, "pred_index": pred,
                 "pred_letter": letter, "model_output": gen, "pred_class": cls,
             })
