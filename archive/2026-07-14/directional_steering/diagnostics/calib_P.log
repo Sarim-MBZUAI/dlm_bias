@@ -1,5 +1,0 @@
-[worker] CUDA_VISIBLE_DEVICES=5 conds=layerwise_P limit=20 gains Kp=2.0 Ki=0.05 Kd=0.02
-Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  33%|███▎      | 2/6 [00:00<00:00, 11.83it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00, 11.44it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00, 11.70it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00, 11.66it/s]
-[worker] model on cuda:0
-[layerwise_P] DONE {'black_pick_rate': 0.15, 'nonblack_pick_rate': 0.2, 'abstain_rate': 0.65, 'unparseable_rate': 0.0} -> /home/lukas/users/shashmi/dlm_bias/directional_steering/diagnostics/cond_layerwise_P.json
-[worker] ALL DONE

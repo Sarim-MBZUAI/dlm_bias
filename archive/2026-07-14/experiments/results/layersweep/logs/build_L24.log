@@ -1,39 +1,0 @@
-==============================================================================
-ANCHORED (CAA-style) 'prefer Black option' direction -- LLaDA-8B block L24
-==============================================================================
-Selecting held-out contrast items (disjoint from eval sample) ...
-  full Race_ethnicity items          : 6880
-  eval-sample Race_ethnicity keys    : 125
-  held-out (ambig, Black-referent,     
-           disjoint from eval)        : 1963
-  CAPPED to 400 items.
-Loading model and tokenizer ...
-Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  17%|█▋        | 1/6 [00:00<00:00,  9.81it/s]Loading checkpoint shards:  50%|█████     | 3/6 [00:00<00:00,  9.70it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00,  9.72it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  9.85it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  9.80it/s]
-  hooked block L24 -> LLaDALlamaBlock
-    [25/400] |diff|=40.9478
-    [50/400] |diff|=40.0467
-    [75/400] |diff|=41.7307
-    [100/400] |diff|=51.2112
-    [125/400] |diff|=44.5066
-    [150/400] |diff|=34.1348
-    [175/400] |diff|=41.2636
-    [200/400] |diff|=46.0030
-    [225/400] |diff|=53.6074
-    [250/400] |diff|=48.2836
-    [275/400] |diff|=40.0456
-    [300/400] |diff|=48.5286
-    [325/400] |diff|=40.4184
-    [350/400] |diff|=44.6488
-    [375/400] |diff|=49.8013
-    [400/400] |diff|=41.0681
-
-------------------------------------------------------------------------------
-n_pairs          : 400  (capped=True)
-splithalf_cosine : 0.9420
-norm_ratio       : 0.2738
-raw_norm         : 12.1523
-mean_diff_norm   : 44.3879
-avg_act_norm     : 150.5157  (answer-token hidden-state L2)
-saved direction  -> /home/lukas/users/shashmi/dlm_bias/directional_steering/race_black_anchored_text_L24.pt
-saved audit      -> /home/lukas/users/shashmi/dlm_bias/directional_steering/data/anchored_items.jsonl  (400 rows)
-------------------------------------------------------------------------------

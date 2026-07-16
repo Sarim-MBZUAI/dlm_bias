@@ -1,4 +1,4 @@
-> **📦 2026-07-14 — fresh start.** All prior results, figures, and result-narrative reports were archived to `archive/2026-07-14/`. Code, datasets, caches, and built steering directions remain live. See `archive/2026-07-14/ARCHIVE_INDEX.md`.
+> **▶ Latest work — PID-Steering on LLaDA.** Faithful port of PID-Steering (arXiv:2510.04309) to LLaDA-8B-Instruct across two control axes (layer depth + denoising step), vs a normal steering-vector baseline, on BBQ-400. Results + reproduce steps: **`pid_steering/README.md`** (grand table in `pid_steering/COMPARISON.md`).
 
 # Diffusion-LM Terminal Chat
 

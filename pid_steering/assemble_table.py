@@ -14,7 +14,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(HERE, "results")
-PRESWEEP_NORMAL = os.path.join(HERE, "presweep_normal")
+PRESWEEP_NORMAL = os.path.join(HERE, "calibration", "presweep_normal")
 OUT_MD = os.path.join(HERE, "results_table.md")
 
 

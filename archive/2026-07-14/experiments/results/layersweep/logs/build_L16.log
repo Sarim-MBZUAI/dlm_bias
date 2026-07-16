@@ -1,39 +1,0 @@
-==============================================================================
-ANCHORED (CAA-style) 'prefer Black option' direction -- LLaDA-8B block L16
-==============================================================================
-Selecting held-out contrast items (disjoint from eval sample) ...
-  full Race_ethnicity items          : 6880
-  eval-sample Race_ethnicity keys    : 125
-  held-out (ambig, Black-referent,     
-           disjoint from eval)        : 1963
-  CAPPED to 400 items.
-Loading model and tokenizer ...
-Loading checkpoint shards:   0%|          | 0/6 [00:00<?, ?it/s]Loading checkpoint shards:  17%|█▋        | 1/6 [00:00<00:00,  7.39it/s]Loading checkpoint shards:  33%|███▎      | 2/6 [00:00<00:00,  8.18it/s]Loading checkpoint shards:  50%|█████     | 3/6 [00:00<00:00,  8.35it/s]Loading checkpoint shards:  67%|██████▋   | 4/6 [00:00<00:00,  8.63it/s]Loading checkpoint shards:  83%|████████▎ | 5/6 [00:00<00:00,  8.83it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.98it/s]Loading checkpoint shards: 100%|██████████| 6/6 [00:00<00:00,  8.68it/s]
-  hooked block L16 -> LLaDALlamaBlock
-    [25/400] |diff|=20.4730
-    [50/400] |diff|=19.7336
-    [75/400] |diff|=23.6019
-    [100/400] |diff|=27.6005
-    [125/400] |diff|=21.6625
-    [150/400] |diff|=20.2524
-    [175/400] |diff|=19.9152
-    [200/400] |diff|=24.9992
-    [225/400] |diff|=24.2785
-    [250/400] |diff|=19.3631
-    [275/400] |diff|=22.3204
-    [300/400] |diff|=23.7863
-    [325/400] |diff|=21.9172
-    [350/400] |diff|=21.6104
-    [375/400] |diff|=24.4616
-    [400/400] |diff|=22.1397
-
-------------------------------------------------------------------------------
-n_pairs          : 400  (capped=True)
-splithalf_cosine : 0.9780
-norm_ratio       : 0.4027
-raw_norm         : 8.9934
-mean_diff_norm   : 22.3319
-avg_act_norm     : 98.1367  (answer-token hidden-state L2)
-saved direction  -> /home/lukas/users/shashmi/dlm_bias/directional_steering/race_black_anchored_text_L16.pt
-saved audit      -> /home/lukas/users/shashmi/dlm_bias/directional_steering/data/anchored_items.jsonl  (400 rows)
-------------------------------------------------------------------------------
