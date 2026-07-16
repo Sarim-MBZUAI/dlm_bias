@@ -440,7 +440,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag):
                 "context": row.get("context"),
                 "question": row.get("question"),
                 "options": {"A": row.get("ans0"), "B": row.get("ans1"), "C": row.get("ans2")},
-                "gold_label": row.get("label"),
+                "ground_truth": row.get("label"),
                 "prompt": B.build_prompt(row),
                 "black_idx": bidx, "unk_idx": uidx, "target_letter": tgt,
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
