@@ -64,8 +64,8 @@ pid_steering/
 ├── build_arrows.py     # build 32-layer diff-in-means arrows (Black−other), held-out, disjoint from the 400
 ├── pid_steer.py        # layer-space PID  (--mode pid) + normal single-vector baseline (--mode normal)
 ├── denoise_pid.py      # decode-space PID over denoising steps (all-layer actuator, anti-windup)
-├── assemble_table.py   # reads results/ → results_table.md
-├── COMPARISON.md       # grand cross-method table (this README's results table)
+├── COMPARISON.md       # the results table — authoritative, all methods (this README's table)
+├── DENOISING_PID.md    # diagram + writeup of the decode-space PID novelty
 ├── results/            # full-400 finals: base, layer P/PI/PID (α=2), normal α=2 / α=4  (+ _samples.jsonl)
 ├── results_denoise/    # full-400 decode-space finals: base / P / PI / PID
 ├── calibration/        # calibration sweeps (100-item): presweep_pid, presweep_normal, calib_denoise
@@ -85,6 +85,6 @@ CUDA_VISIBLE_DEVICES=5 $PY pid_steering/pid_steer.py --cond PID --alpha 2
 CUDA_VISIBLE_DEVICES=5 $PY pid_steering/pid_steer.py --mode normal --source-layer 14 --alpha 4
 # 3. decode-space PID over denoising steps (Kp=3)
 CUDA_VISIBLE_DEVICES=0 $PY pid_steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
-# 4. table
-$PY pid_steering/assemble_table.py
 ```
+Each run writes `cond_*.json` (metrics) + `cond_*_samples.jsonl` (per-item, self-contained)
+to `results/` or `results_denoise/`; the cross-method table lives in `COMPARISON.md`.
