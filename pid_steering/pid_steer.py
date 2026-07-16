@@ -225,7 +225,7 @@ def selftest_normal(source_layer=14, alpha=2.0):
 # Eval runner.
 # --------------------------------------------------------------------------- #
 def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk,
-        dummy_arrows, out_dir, tag_prefix=None):
+        dummy_arrows, out_dir, tag_prefix=None, items_path=SWEEP400):
     os.makedirs(out_dir, exist_ok=True)
 
     # arrows -> per-block injection vectors (base needs none; dummy handled below).
@@ -254,8 +254,9 @@ def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk
             kp, ki, kd = GAINS[cond]
         inject = None if cond == "base" else build_injection(r, kp, ki, kd, alpha)
 
-    rows = [json.loads(l) for l in open(SWEEP400) if l.strip()]
+    rows = [json.loads(l) for l in open(items_path) if l.strip()]
     use_rows = rows[:limit] if limit else rows
+    print(f"[{cond_label}] items={items_path}", flush=True)
 
     from transformers import AutoModel, AutoTokenizer
     model = (AutoModel.from_pretrained(MODEL_PATH, trust_remote_code=True,
@@ -386,6 +387,8 @@ def main():
                     help="use a random (32,4096) arrow set (GPU smoke test only)")
     ap.add_argument("--tag-prefix", default=None,
                     help="override output filename prefix (default = condition label)")
+    ap.add_argument("--items", default=SWEEP400,
+                    help="input jsonl (default sweep400; point at a rotation file)")
     ap.add_argument("--out-dir", default=RESULTS)
     args = ap.parse_args()
 
@@ -399,7 +402,7 @@ def main():
         ap.error("--cond required for --mode pid (or use --selftest)")
     run(args.mode, args.cond, args.alpha, args.arrows, args.source_layer, args.limit,
         args.gen_length, args.steps, args.block_length, args.dummy_arrows, args.out_dir,
-        args.tag_prefix)
+        args.tag_prefix, args.items)
 
 
 if __name__ == "__main__":

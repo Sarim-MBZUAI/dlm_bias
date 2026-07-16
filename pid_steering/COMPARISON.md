@@ -1,5 +1,11 @@
 # PID-Steering on LLaDA-8B-Instruct — grand comparison (BBQ-400, Black-referent ambiguous)
 
+> ⚠️ **This raw table is position-confounded** (the model has a letter preference and
+> collapses onto "A" under strong steering, which inflates "black-pick" whenever the Black
+> option sits at A). For the **rigorous, position-balanced result** — which is the one to
+> trust — see [`balanced/RESULTS.md`](balanced/RESULTS.md). Short version there: only
+> decode-space PI shows a genuine Black-vs-non-Black preference; the others mostly disinhibit.
+
 All conditions steer toward the Black option; injection at all 32 layers, every denoising step, temp 0, n=400.
 `d_gap = (ΔBlack − Δnon-Black)` vs base; positive = *aimed* toward Black (not just disinhibiting abstention).
 

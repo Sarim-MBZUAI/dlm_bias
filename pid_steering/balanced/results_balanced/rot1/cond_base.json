@@ -1,0 +1,40 @@
+{
+  "condition": "base",
+  "mode": "pid",
+  "source_layer": null,
+  "alpha": 1.0,
+  "n": 400,
+  "counts": {
+    "black": 57,
+    "nonblack": 45,
+    "abstain": 298,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.1425,
+    "nonblack_pick_rate": 0.1125,
+    "abstain_rate": 0.745,
+    "unparseable_rate": 0.0
+  },
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gains": {
+    "Kp": 0.0,
+    "Ki": 0.0,
+    "Kd": 0.0
+  },
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "dummy_arrows": false,
+  "hooks_fired_layers": 0,
+  "hook_fire_counts": [],
+  "arrows": {
+    "n_items": null,
+    "source": null,
+    "per_layer_raw_norm": null
+  },
+  "elapsed_s": 744.2540702819824,
+  "cuda_visible_devices": "4"
+}

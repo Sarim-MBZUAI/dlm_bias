@@ -324,8 +324,8 @@ def load_vhat():
     return r14 / r14.norm().clamp(min=1e-12)
 
 
-def load_items(limit):
-    rows = [json.loads(l) for l in open(SWEEP400) if l.strip()]
+def load_items(limit, items_path=SWEEP400):
+    rows = [json.loads(l) for l in open(items_path) if l.strip()]
     return rows[:limit] if limit else rows
 
 
@@ -387,7 +387,7 @@ def smoke(n_items, kp, ki, kd, amax):
 # --------------------------------------------------------------------------- #
 # Full / limited eval over the sweep400.
 # --------------------------------------------------------------------------- #
-def run(cond, kp, ki, kd, amax, limit, out_dir, tag):
+def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400):
     os.makedirs(out_dir, exist_ok=True)
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -399,7 +399,8 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag):
     plain, space = letter_token_ids(tok)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, eff_ki, eff_kd, SETPOINT, amax, antiwindup=True)
-    rows = load_items(limit)
+    rows = load_items(limit, items_path)
+    print(f"[{cond}] items={items_path}", flush=True)
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{N_LAYERS} "
           f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} amax={amax} "
@@ -498,6 +499,8 @@ def main():
     ap.add_argument("--kd", type=float, default=1.0)
     ap.add_argument("--amax", type=float, default=ALPHA_MAX)
     ap.add_argument("--limit", type=int, default=0, help="0 = all 400")
+    ap.add_argument("--items", default=SWEEP400,
+                    help="input jsonl (default sweep400; point at a rotation file)")
     ap.add_argument("--out-dir", default=RESULTS)
     ap.add_argument("--tag", default=None, help="output stem override: cond_<tag>.json")
     args = ap.parse_args()
@@ -510,7 +513,7 @@ def main():
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
-        args.out_dir, args.tag)
+        args.out_dir, args.tag, args.items)
 
 
 if __name__ == "__main__":
