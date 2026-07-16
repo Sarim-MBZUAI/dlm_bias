@@ -314,6 +314,8 @@ def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk
                 "question": row.get("question"),
                 "options": {"A": row.get("ans0"), "B": row.get("ans1"), "C": row.get("ans2")},
                 "ground_truth": row.get("label"),
+                "ground_truth_text": ([row.get("ans0"), row.get("ans1"), row.get("ans2")][row["label"]]
+                                      if isinstance(row.get("label"), int) and 0 <= row["label"] < 3 else None),
                 "prompt": prompt,
                 "black_idx": bidx, "unk_idx": uidx, "pred_index": pred,
                 "pred_letter": letter, "model_output": gen, "pred_class": cls,
