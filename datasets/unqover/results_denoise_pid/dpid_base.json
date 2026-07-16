@@ -1,0 +1,22 @@
+{
+  "condition": "base",
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.0,
+    "Kd": 0.0
+  },
+  "actuator": "all_32_layers",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 6.0,
+  "target_subject": "Black",
+  "items": "/home/lukas/users/shashmi/dlm_bias/datasets/unqover/data/ethnicity.items.jsonl",
+  "n_items": 1048,
+  "no_answer": 0,
+  "steer_on": false,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 2027.4629592895508
+}
