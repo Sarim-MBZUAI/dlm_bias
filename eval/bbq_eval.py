@@ -38,10 +38,14 @@ from collections import Counter
 import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-# ghostwriter.py lives in the top-level baseline/ folder (../baseline)
-sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "baseline"))
 import bias_metrics
-import ghostwriter
+# ghostwriter.py (the old input-space baseline) is optional; import lazily so the
+# eval harness has no hard dependency on the baseline/ folder for normal runs.
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "baseline"))
+    import ghostwriter
+except ImportError:
+    ghostwriter = None
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -605,6 +609,9 @@ def main():
 
     # Ghostwriter (input-space) and activation steering are mutually exclusive.
     ghostwriter_active = args.attack == "ghostwriter"
+    if ghostwriter_active and ghostwriter is None:
+        raise SystemExit("--attack ghostwriter requires the baseline/ folder, which "
+                         "has been removed; this repo keeps only the PID-Steering work.")
     if args.attack == "ghostwriter" and args.alpha != 0.0:
         raise SystemExit("--attack ghostwriter is mutually exclusive with --alpha "
                          "(activation steering); pick one.")

@@ -47,8 +47,6 @@ Runs use `/home/lukas/miniconda3/envs/sarim_awm/bin/python`. Model at
 | `eval/bbq_eval.py` | BBQ generation-based MC eval harness for LLaDA (reused by the steering code) |
 | `experiments/data/_sweep400.jsonl` | the 400 Black-referent ambiguous BBQ items used everywhere |
 | `chat.py` / `chat_llada.py` | terminal chat REPLs for Dream-v0-7B / LLaDA-8B-Instruct |
-| `bias_steering/`, `directional_steering/`, `baselines/`, `baseline/`, `race_steering/`, `new_idea_sanity_test/` | earlier exploration (direction builders, prior steering probes) |
-| `datasets/` | vendored benchmark data (UNQOVER) |
 
 ## Terminal chat (optional)
 
