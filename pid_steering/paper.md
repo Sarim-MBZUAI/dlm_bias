@@ -194,6 +194,35 @@ position-confounded in absolute terms; the balanced §6 numbers remain the rigor
 This table shows *robustness*, not a cleaner magnitude.) Data:
 `balanced/seeds/seed{1,2,3}/`.
 
+### 6.2 Second benchmark: UNQOVER (ethnicity)
+
+We re-ran the four conditions on **UNQOVER** (underspecified-question stereotyping;
+`datasets/unqover/`) via a thin adapter (`datasets/unqover/denoise_pid_unqover.py`) that
+reuses the decode-space controller unchanged and swaps only the 2-choice (A/B, no "Unknown")
+prompt/parse. Target subject = **Black**; 262 Black-containing instances (complete quads).
+UNQOVER's `pref_gap` **averages over subject order**, so it is *position-immune by
+construction* (a pure letter/position jam cancels). Δ vs the clean base:
+
+| condition | Δ pref_gap **raw** (Black) | Δ pref_gap debiased | Δ μ (bias intensity) |
+|---|---|---|---|
+| P (Kp=3) | +0.076 | +0.000 | −0.038 |
+| **PI** | **+0.540** | −0.053 | −0.213 |
+| PID | +0.532 | −0.044 | −0.132 |
+
+- **Decode-space PI/PID genuinely and strongly increase preference for the Black subject
+  (+0.54/+0.53, position-immune)**; proportional-only P is weak (+0.076). Same ranking as
+  BBQ: PI ≈ PID ≫ P (integral helps, derivative neutral).
+- The **debiased** (negation-averaged) gap is ~0 and overall bias-intensity **μ drops** — so
+  this is a *blanket* "prefer the Black subject" preference (the intended effect), **not** a
+  Black↔attribute stereotype. Honest read: subject-preference steering, not stereotype creation.
+- Caveats: single run, 262 instances; some pairs are Black-vs-African (two minority subjects,
+  a muddier contrast); no position-balancing beyond UNQOVER's own order-averaging.
+  Data: `datasets/unqover/results_denoise_pid/`.
+
+**Cross-benchmark takeaway:** on both BBQ (balanced) and UNQOVER (order-averaged),
+decode-space feedback is the method that genuinely steers toward Black; layer-depth PID and
+the open-loop vector do not.
+
 ---
 
 ## 7. Limitations
