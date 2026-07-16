@@ -112,6 +112,11 @@ def make_record(item, target, pick, gen, diag):
         "pred_letter": (LETTERS[pick] if pick is not None else None),
         "pred_subject": (item[f"subj{pick}"] if pick is not None else None),
         "model_output": gen,
+        # ---- human-readable item (so records are self-inspectable) ----
+        "context": item.get("context"),
+        "question": item.get("question"),
+        "choices": item.get("choices"),
+        "prompt": U.build_prompt(item),
         # ---- controller diagnostics (extra fields; ignored by the metric) ----
         "target_subject": target,
         "target_letter": diag.get("target_letter"),

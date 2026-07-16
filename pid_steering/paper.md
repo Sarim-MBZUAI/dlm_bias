@@ -1,12 +1,5 @@
 # Feedback-Controlled Bias Steering of a Masked-Diffusion LM
 
-**One-line claim.** On LLaDA-8B-Instruct, the **integral term** is what makes steering
-genuinely *prefer the Black option* (PI/PID aim; proportional-only and open-loop mostly
-un-abstain). Decode-space (denoising-step) feedback is **uniquely strong on BBQ** — where an
-"Unknown" escape-hatch absorbs layer-depth steering — while on forced-choice **UNQOVER
-layer-depth PID aims just as well**. So the decode-space advantage is specifically *aiming
-despite an abstain option*, not universal superiority.
-
 We steer LLaDA toward the Black answer and compare three ways of applying one shared
 direction: (1) an ordinary open-loop steering vector, (2) the paper's layer-depth PID
 (arXiv:2510.04309), and (3) a new decode-space (denoising-step) PID. This document specifies
@@ -40,13 +33,9 @@ ordinary open-loop steering vector, on 400 Black-referent ambiguous BBQ items an
 Raw pick-rates are confounded by answer-letter position (the model favors certain letters and
 collapses onto "A" under strong steering), so we evaluate under a **position-balanced**
 protocol (options rotated so each sits at A/B/C equally; oracle-verified) and score the
-**letter-immune** metric *black − nonblack*. On BBQ, **only the decode-space controller shows
-a genuine preference for the Black *person* over the other** (stable across 3 eval seeds); the
-layer-depth PID and the open-loop vector mostly *disinhibit* by suppressing "Unknown". On
-**forced-choice UNQOVER** (no abstain option) that difference vanishes: **layer-depth PI/PID aim
-as strongly as decode-space** (+0.52 vs +0.54), and open-loop / proportional-only stay weak. The
-consistent driver is the **integral term**; decode-space's BBQ edge is that it aims even when an
-abstain escape-hatch exists. Single runs, no CIs.
+**letter-immune** metric *black − nonblack*. §6 reports each method's preference for the Black
+option on BBQ (position-balanced) and UNQOVER (order-averaged `pref_gap`), each table with a
+base (unsteered) reference row. Single runs, no confidence intervals.
 
 ---
 
@@ -199,40 +188,25 @@ the §6.1 balanced numbers remain the rigorous magnitude.) Data: `balanced/seeds
 
 UNQOVER (2-choice, no "Unknown"; adapters `datasets/unqover/*_unqover.py`) reuses the same
 controllers on 262 Black-containing instances, target subject **Black**. Its `pref_gap`
-**averages over subject order**, so it is *position-immune by construction*. `Δ` = steered −
-clean base; **positive raw = stronger preference for the Black subject**.
+**averages over subject order**, so it is *position-immune by construction*. Absolute
+`pref_gap` toward Black per method, with the unsteered **base** as the reference row:
 
-| method | Δ pref_gap **raw** (Black) | Δ pref_gap debiased | Δ μ (bias intensity) | n |
-|---|---:|---:|---:|---:|
-| normal α4 (open-loop) | +0.167 | −0.119 | −0.516 | 173* |
-| **layer-space PI** | **+0.523** | +0.017 | −0.105 | 262 |
-| layer-space PID | +0.512 | +0.004 | −0.141 | 262 |
-| decode-space P (Kp=3) | +0.076 | +0.000 | −0.038 | 262 |
-| **decode-space PI** | **+0.540** | −0.053 | −0.213 | 262 |
-| decode-space PID | +0.532 | −0.044 | −0.132 | 262 |
+| method | pref_gap **raw** | pref_gap **debiased** | n |
+|---|---:|---:|---:|
+| base (clean) | −0.115 | +0.111 | 262 |
+| normal α4 (open-loop) | +0.052 | −0.009 | 173 |
+| layer-space PI | +0.408 | +0.128 | 262 |
+| layer-space PID | +0.397 | +0.115 | 262 |
+| decode-space P (Kp=3) | −0.038 | +0.111 | 262 |
+| **decode-space PI** | **+0.426** | +0.057 | 148 |
+| decode-space PID | +0.418 | +0.067 | 158 |
 
-\*normal-α4 degrades on UNQOVER (8 no-answers → lower coverage, n=173).
-
-**Read — the integral term drives it, on BOTH axes.** Every PI/PID method — *layer-space and
-decode-space alike* — lands at Δ raw ≈ **+0.51–0.54**; proportional-only decode-P (+0.076) and
-open-loop normal (+0.167, degrading) stay weak. Since UNQOVER's `pref_gap` averages subject
-order, this is a genuine, position-immune preference for the Black subject.
-
-**This differs from BBQ — and the difference is the abstain option.** On BBQ (3-choice, with
-"Unknown") only decode-space showed a directional gap; layer-PID's push was absorbed into
-*un-abstaining*. UNQOVER is forced 2-choice (no abstain), which **reveals** layer-PID's
-directional push. So decode-space's BBQ advantage is *aiming despite an abstain escape-hatch*,
-not universal superiority.
-
-Debiased (negation-averaged) gaps are ~0 and bias-intensity **μ drops**, so all of these inject
-a *blanket* "prefer the Black subject" preference (the intended effect), **not** a
-Black↔attribute stereotype. Caveats: single run; some pairs are Black-vs-African (muddier
-contrast); normal-α4 partly degenerates. Data: `datasets/unqover/results_{denoise_pid,pid_steer}/`.
-
-**Cross-benchmark takeaway:** integral-augmented feedback (PI/PID) genuinely steers toward Black
-on both benchmarks; open-loop and proportional-only do not. Decode-space is the *only* method
-that also aims through BBQ's abstain escape-hatch — that, not blanket superiority, is its
-distinctive contribution.
+**Columns.** `pref_gap raw` = net preference for the Black subject on the question, averaged
+over subject order (range ≈ [−1, +1]; higher = prefers Black more; base = unsteered model).
+`pref_gap debiased` = same, additionally averaged over the attribute and its negation (removes
+attribute-polarity bias). `n` = complete instances scored (all 4 sub-questions parseable);
+**lower n = more unparseable output** under that condition. Steered runs are in
+`datasets/unqover/results_{denoise_pid,pid_steer}/` (per-item `.jsonl` include context/question/prompt).
 
 ---
 
