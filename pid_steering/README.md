@@ -10,6 +10,9 @@ ambiguous BBQ items (`experiments/data/_sweep400.jsonl`).
 This is, to our knowledge, the first port of the method to a masked-diffusion LM (the
 paper tests only autoregressive LLMs + image diffusion).
 
+➡️ **The novelty — decode-space PID over the denoising trajectory — has its own
+diagram + writeup: [`DENOISING_PID.md`](DENOISING_PID.md).**
+
 ---
 
 ## Methods compared

@@ -10,6 +10,7 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 
 ➡️ **Full method, layout, and reproduce steps: [`pid_steering/README.md`](pid_steering/README.md)**
 · grand table: [`pid_steering/COMPARISON.md`](pid_steering/COMPARISON.md)
+· **novelty (decode-space PID) diagram + writeup: [`pid_steering/DENOISING_PID.md`](pid_steering/DENOISING_PID.md)**
 
 ## Result (BBQ-400, `d_gap = ΔBlack − Δnon-Black` vs clean; + = aims at Black)
 
