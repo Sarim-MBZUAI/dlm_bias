@@ -148,10 +148,24 @@ equal mean actuation (noted as future work). We rely on the **letter-immune gap*
 
 ## 6. Results
 
-### 6.1 BBQ — position-balanced (the rigorous result)
+### 6.1 BBQ — pick rates (all methods) and position-balanced gap
 
-1200 evals/condition. `gap = black − nonblack`; **positive = genuinely prefers the Black
-person** (a pure letter-jammer would score gap ≈ 0).
+**Raw pick-rates (full 400).** Fraction of items answered black / non-Black / abstain
+("Unknown") / unparseable; `d_gap = ΔBlack − Δnon-Black` vs base (higher = aims more). ⚠️ These
+are **position-confounded** — read the balanced table below for the trustworthy magnitude.
+
+| method | control axis | Black | non-Black | abstain | unparse | d_gap |
+|---|---|---:|---:|---:|---:|---:|
+| base (clean) | — | 0.120 | 0.100 | 0.780 | 0.000 | +0.000 |
+| normal vector, α=2 | open-loop | 0.177 | 0.138 | 0.685 | 0.000 | +0.020 |
+| normal vector, α=4 | open-loop | 0.370 | 0.295 | 0.328 | 0.007 | +0.055 |
+| layer-space PI | layer depth | 0.242 | 0.182 | 0.575 | 0.000 | +0.040 |
+| layer-space PID | layer depth | 0.240 | 0.188 | 0.573 | 0.000 | +0.033 |
+| **decode-space PI** | denoising step | **0.302** | 0.147 | 0.522 | 0.028 | **+0.135** |
+| decode-space PID | denoising step | 0.287 | 0.165 | 0.525 | 0.022 | +0.102 |
+
+**Position-balanced (the rigorous arbiter).** 1200 evals/condition; `gap = black − nonblack`;
+**positive = genuinely prefers the Black person** (a pure letter-jammer would score gap ≈ 0).
 
 | method | black | nonblack | **gap** | per-position gap @A / @B / @C |
 |---|---:|---:|---:|---|
