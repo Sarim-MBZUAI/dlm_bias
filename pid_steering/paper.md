@@ -87,6 +87,46 @@ flowchart TB
     Di --> S
 ```
 
+### 3.1 Mathematical formulation
+
+**Notation.** $r_k\in\mathbb{R}^{H}$ is the raw per-layer direction at block $k$ (§2);
+$\hat r_k = r_k/\lVert r_k\rVert$ is its unit version; $\hat v = r_{14}/\lVert r_{14}\rVert$ is
+the single L14 direction. $h_k^{(t)}$ is the residual stream at block $k$, denoising step $t$.
+
+**Direction (from §2):**
+
+$$r_k \;=\; \frac{1}{N}\sum_{i=1}^{N}\Big(\bar h^{\text{blk}}_{k,i} \;-\; \bar h^{\text{oth}}_{k,i}\Big),$$
+
+where $\bar h_{k,i}$ is the masked-mean of the block-$k$ residual over the answer-text span.
+
+**Shared intervention.** Every method adds a vector to the residual at each block/step,
+
+$$h_k^{(t)} \;\leftarrow\; h_k^{(t)} + s_k^{(t)},$$
+
+and they differ *only* in how $s_k^{(t)}$ is set:
+
+**(1) Open-loop / normal vector** — constant in both $k$ and $t$:
+
+$$s_k^{(t)} \;=\; \alpha\,\hat v .$$
+
+**(2) Layer-wise PID** (the paper) — varies over depth $k$, constant over $t$, with $\hat r_{-1}:=\hat r_0$:
+
+$$u_k \;=\; K_p\,\hat r_k \;+\; K_i\!\sum_{j=0}^{k-1}\hat r_j \;+\; K_d\,(\hat r_k-\hat r_{k-1}),
+\qquad s_k^{(t)} \;=\; \alpha\,u_k .$$
+
+**(3) Decode-space PID** (ours) — constant over $k$, varies over step $t$ via feedback on the
+target-answer probability $p_t = P(\text{target letter}\mid\text{answer position})$:
+
+$$e_t = s^{*}-p_t,\qquad
+I_t = I_{t-1}+e_t\ \text{(frozen if saturated)},\qquad
+\Delta e_t = e_t - e_{t-1},$$
+
+$$\alpha_t \;=\; \mathrm{clip}\!\big(K_p\,e_t + K_i\,I_t + K_d\,\Delta e_t,\; 0,\; \alpha_{\max}\big),
+\qquad s_k^{(t)} \;=\; \alpha_t\,\hat v .$$
+
+The three are the *same* residual edit; the axis of variation is what differs — **none**
+(normal), **layer depth $k$** (layer-PID), or **denoising step $t$** (decode-PID).
+
 **1. Open-loop / normal vector** (`pid_steer.py --mode normal`). `v̂ = unit(r[14])`; add the
 same constant `α·v̂` at every block. The classic diff-in-means / CAA vector. No feedback.
 
