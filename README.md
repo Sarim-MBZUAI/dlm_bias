@@ -53,6 +53,9 @@ steering/    PID-Steering code: build_arrows.py, pid_steer.py (layer axis),
 eval/        BBQ eval harness (bbq_eval.py, bias_metrics.py, attack_metrics.py)
              + balanced/ position-balanced rotation & oracle scripts
 unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
+baselines/   faithful prior-method baselines on the same harness: caa, meanact,
+             actadd, linearact, aura, itic (+ common/calib/directions infra, run_all.py).
+             Fit artifacts cached in baselines/cache/ (gitignored); results/<method>/.
 data/        gitignored inputs — bbq_items/ (_sweep400.jsonl etc.),
              bbq_cache/ (BBQ jsonl cache), unqover/ (source + items)
 results/     tracked result dumps — base/, normal/ (+ alpha_sweep/), layer_pid/,
