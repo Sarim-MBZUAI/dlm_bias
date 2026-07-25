@@ -1,0 +1,35 @@
+{
+  "condition": "actadd",
+  "n": 400,
+  "counts": {
+    "black": 49,
+    "nonblack": 40,
+    "abstain": 311,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.1225,
+    "nonblack_pick_rate": 0.1,
+    "abstain_rate": 0.7775,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400.jsonl",
+  "hook_fire_count": 25600,
+  "elapsed_s": 765.5791006088257,
+  "cuda_visible_devices": "4",
+  "config": {
+    "method": "actadd_single_pair",
+    "alpha": 8.0,
+    "layer": 14,
+    "n_items_fit": 1,
+    "granularity": "block_residual"
+  }
+}

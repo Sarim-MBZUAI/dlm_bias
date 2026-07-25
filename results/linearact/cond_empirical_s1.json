@@ -1,0 +1,37 @@
+{
+  "condition": "empirical_s1",
+  "n": 400,
+  "counts": {
+    "black": 105,
+    "nonblack": 80,
+    "abstain": 215,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.2625,
+    "nonblack_pick_rate": 0.2,
+    "abstain_rate": 0.5375,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400.jsonl",
+  "hook_fire_count": 819200,
+  "elapsed_s": 931.6974048614502,
+  "cuda_visible_devices": "4",
+  "config": {
+    "method": "linear_act",
+    "variant": "empirical",
+    "strength": 1.0,
+    "where": "mlp_hidden",
+    "layers": "all",
+    "intervention_position": "all_bidirectional",
+    "stats_path": "/home/lukas/users/shashmi/dlm_bias/baselines/cache/linearact_stats.pt"
+  }
+}
