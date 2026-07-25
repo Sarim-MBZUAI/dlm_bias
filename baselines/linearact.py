@@ -179,9 +179,15 @@ def build_injection(variant, strength=1.0, stats=None, layers=None):
 
     if variant == "gaussian":
         g = stats["gaussian"]
-        ratio = g["sig_dst"] / g["sig_src"].clamp(min=EPS)   # sig_dst/sig_src
+        # FAITHFUL to AcT (transport.py:203-210,270): low-variance neurons in
+        # EITHER class are left at IDENTITY, not transported. Clamping sig_src
+        # instead (old bug) let near-dead source neurons get beta=sig_dst/1e-4
+        # ~1e4 and explosively over-inject. Mask them to beta=1, bias=0.
+        ss, sd = g["sig_src"], g["sig_dst"]
+        valid = (ss > EPS) & (sd > EPS)
+        ratio = torch.where(valid, sd / ss.clamp(min=EPS), torch.ones_like(ss))
         beta = ratio
-        bias = g["mu_dst"] - ratio * g["mu_src"]
+        bias = torch.where(valid, g["mu_dst"] - ratio * g["mu_src"], torch.zeros_like(ss))
     else:
         e = stats["empirical"]
         beta = e["beta"].clone()
