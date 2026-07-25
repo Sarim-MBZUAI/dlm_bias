@@ -110,5 +110,5 @@ Caveat: ~2–3% coherence cost at mean α≈4; single run, n=400, no CIs.
 Run:
 ```bash
 CUDA_VISIBLE_DEVICES=0 /home/lukas/miniconda3/envs/sarim_awm/bin/python \
-    pid_steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
+    steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
 ```

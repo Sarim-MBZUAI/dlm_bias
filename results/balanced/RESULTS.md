@@ -60,10 +60,10 @@ Black sits on (A/B/C); a real preference stays positive across positions, a lett
 ## Reproduce
 ```bash
 PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
-$PY pid_steering/balanced/make_rotations.py          # -> _sweep400_rot0/1/2.jsonl
-$PY pid_steering/balanced/oracle_test.py             # correctness proof (offline)
+$PY eval/balanced/make_rotations.py                  # -> _sweep400_rot0/1/2.jsonl
+$PY eval/balanced/oracle_test.py                     # correctness proof (offline)
 # per condition, per rotation r in 0/1/2 (GPUs 4-7):
-CUDA_VISIBLE_DEVICES=6 $PY pid_steering/denoise_pid.py --cond PI \
-    --items pid_steering/balanced/_sweep400_rot${r}.jsonl \
-    --out-dir pid_steering/balanced/results_balanced/rot${r} --tag dpid_PI
+CUDA_VISIBLE_DEVICES=6 $PY steering/denoise_pid.py --cond PI \
+    --items results/balanced/_sweep400_rot${r}.jsonl \
+    --out-dir results/balanced/results_balanced/rot${r} --tag dpid_PI
 ```
