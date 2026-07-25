@@ -55,8 +55,10 @@ eval/        BBQ eval harness (bbq_eval.py, bias_metrics.py, attack_metrics.py)
 unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
 data/        gitignored inputs — bbq_items/ (_sweep400.jsonl etc.),
              bbq_cache/ (BBQ jsonl cache), unqover/ (source + items)
-results/     tracked result dumps — pid_layer/, pid_denoise/, calibration/,
-             balanced/, unqover/, bbq/  (each keeps its RESULTS.md with the data)
+results/     tracked result dumps — base/, normal/ (+ alpha_sweep/), layer_pid/,
+             decode_pid/, calibration/, balanced/, unqover/  (each keeps its RESULTS.md)
+             pid_steer.py writes P/PI/PID to results/layer_pid by default; run the base
+             and normal conditions with `--out-dir results/base` and `--out-dir results/normal`
 docs/        writeup: paper.md, COMPARISON.md, DENOISING_PID.md
 chat.py / chat_llada.py   terminal chat REPLs for Dream-v0-7B / LLaDA-8B-Instruct
 ```

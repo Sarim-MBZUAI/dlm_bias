@@ -92,9 +92,11 @@ steering/
 ../docs/DENOISING_PID.md       # diagram + writeup of the decode-space PID novelty
 ../docs/paper.md               # the writeup: abstract + full methodology + balanced results
 ../results/balanced/RESULTS.md # position-balanced eval (the rigorous, trustworthy result)
-../results/pid_layer/          # full-400 finals: base, layer P/PI/PID (α=2), normal α=2 / α=4  (+ _samples.jsonl)
-../results/pid_denoise/        # full-400 decode-space finals: base / P / PI / PID
-../results/calibration/        # calibration sweeps (100-item): presweep_pid, presweep_normal, calib_denoise
+../results/base/               # full-400 base (no steering)  (+ _samples.jsonl)
+../results/normal/             # full-400 normal single-vector α=2 / α=4  (+ alpha_sweep/ 100-item α-sweep)
+../results/layer_pid/          # full-400 finals: layer P/PI/PID (α=2)  (+ _samples.jsonl)
+../results/decode_pid/         # full-400 decode-space finals: base / P / PI / PID
+../results/calibration/        # calibration sweeps (100-item): presweep_pid, calib_denoise
 ```
 
 ## Reproduce
@@ -112,4 +114,4 @@ CUDA_VISIBLE_DEVICES=5 $PY steering/pid_steer.py --mode normal --source-layer 14
 CUDA_VISIBLE_DEVICES=0 $PY steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
 ```
 Each run writes `cond_*.json` (metrics) + `cond_*_samples.jsonl` (per-item, self-contained)
-to `results/pid_layer/` or `results/pid_denoise/`; the cross-method table lives in `../docs/COMPARISON.md`.
+to `results/layer_pid/` (base/normal via `--out-dir results/base` / `results/normal`) or `results/decode_pid/`; the cross-method table lives in `../docs/COMPARISON.md`.

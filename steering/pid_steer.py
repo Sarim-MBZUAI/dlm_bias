@@ -55,7 +55,7 @@ SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ARROWS = os.path.join(ROOT, "steering", "arrows.pt")
-RESULTS = os.path.join(ROOT, "results", "pid_layer")
+RESULTS = os.path.join(ROOT, "results", "layer_pid")
 
 N_LAYERS = 32
 BLACK_TAGS = {"black", "african american", "f-black", "m-black", "african"}

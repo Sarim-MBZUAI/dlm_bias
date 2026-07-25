@@ -64,7 +64,7 @@ SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 # arrows.pt is gitignored in the worktree -> always read the MAIN-tree copy.
 DEFAULT_ARROWS = os.path.join(ROOT, "steering", "arrows.pt")
 HERE = os.path.dirname(os.path.abspath(__file__))
-RESULTS = os.path.join(ROOT, "results", "pid_denoise")
+RESULTS = os.path.join(ROOT, "results", "decode_pid")
 
 N_LAYERS = 32
 LAYER = 14                       # vhat source layer (direction only; actuator = all 32)
