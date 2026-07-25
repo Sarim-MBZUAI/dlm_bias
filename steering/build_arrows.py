@@ -17,10 +17,10 @@ Held-out contrast items: BBQ Race_ethnicity AMBIGUOUS, Black-referent (exactly o
 option carries a Black group tag), DISJOINT from BOTH the seed-42 n=1000 eval keys
 AND the 400-item _sweep400.jsonl keys -> zero contamination with the PID eval set.
 
-Saves RAW (not unit-normed) r to pid_steering/arrows.pt with metadata. The
+Saves RAW (not unit-normed) r to steering/arrows.pt with metadata. The
 unit-normalization per layer happens later, in pid_steer.py (paper Eq. 18).
 
-Run on ONE GPU:  CUDA_VISIBLE_DEVICES=5 python pid_steering/build_arrows.py
+Run on ONE GPU:  CUDA_VISIBLE_DEVICES=5 python steering/build_arrows.py
 """
 import json
 import os
@@ -35,8 +35,8 @@ sys.path.insert(0, os.path.join(ROOT, "eval"))
 import bbq_eval  # noqa: E402  (build_prompt/load_bbq/get_answer_info/unknown_index/resolve_module...)
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
-SWEEP400 = os.path.join(ROOT, "experiments", "data", "_sweep400.jsonl")
-RACE_CACHE = os.path.join(ROOT, "eval", ".bbq_cache", "Race_ethnicity.jsonl")
+SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
+RACE_CACHE = os.path.join(ROOT, "data", "bbq_cache", "Race_ethnicity.jsonl")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_PT = os.path.join(HERE, "arrows.pt")

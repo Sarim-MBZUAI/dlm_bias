@@ -5,15 +5,15 @@ Faithful port of **PID-Steering** — *"Activation Steering with a Feedback Cont
 [dungnvnus/pid-steering](https://github.com/dungnvnus/pid-steering)) — to **LLaDA-8B-Instruct**,
 a masked-diffusion LM. Goal: steer the model toward the **Black option** on BBQ and
 measure how much *directional* bias each control method injects, on 400 Black-referent
-ambiguous BBQ items (`experiments/data/_sweep400.jsonl`).
+ambiguous BBQ items (`data/bbq_items/_sweep400.jsonl`).
 
 This is, to our knowledge, the first port of the method to a masked-diffusion LM (the
 paper tests only autoregressive LLMs + image diffusion).
 
-**Docs.** Full writeup: [`paper.md`](paper.md) · the novelty (decode-space PID over the
-denoising trajectory), diagram + derivation: [`DENOISING_PID.md`](DENOISING_PID.md) ·
-raw cross-method table: [`COMPARISON.md`](COMPARISON.md) · the rigorous,
-position-balanced result: [`balanced/RESULTS.md`](balanced/RESULTS.md).
+**Docs.** Full writeup: [`../docs/paper.md`](../docs/paper.md) · the novelty (decode-space PID
+over the denoising trajectory), diagram + derivation: [`../docs/DENOISING_PID.md`](../docs/DENOISING_PID.md) ·
+raw cross-method table: [`../docs/COMPARISON.md`](../docs/COMPARISON.md) · the rigorous,
+position-balanced result: [`../results/balanced/RESULTS.md`](../results/balanced/RESULTS.md).
 
 ---
 
@@ -68,8 +68,8 @@ method that only disinhibits scores near 0.
 
 **Caveats (no bullshit):** these raw pick-rates are **position-confounded** — the model has a
 letter preference and collapses onto "A" under strong steering. The rigorous arbiter is the
-**position-balanced** eval in [`balanced/RESULTS.md`](balanced/RESULTS.md); the raw table lives
-in [`COMPARISON.md`](COMPARISON.md). decode-space PI/PID also cost ~2–3% coherence (unparse
+**position-balanced** eval in [`../results/balanced/RESULTS.md`](../results/balanced/RESULTS.md); the raw table lives
+in [`../docs/COMPARISON.md`](../docs/COMPARISON.md). decode-space PI/PID also cost ~2–3% coherence (unparse
 0.028/0.022; all others ≈0). **Seed 42** (BBQ sampling + held-out/eval split); generation is
 deterministic (temperature 0), so no separate sampling seed. Single run, **n=400, no confidence
 intervals** — the ordering is clear but not CI-tested.
@@ -78,19 +78,23 @@ intervals** — the ordering is clear but not CI-tested.
 
 ## Layout
 
+Code lives in `steering/`; docs in `docs/`; result dumps in `results/`.
+
 ```
-pid_steering/
-├── build_arrows.py     # build 32-layer diff-in-means arrows (Black−other), held-out, disjoint from the 400
-├── pid_steer.py        # layer-space PID  (--mode pid) + normal single-vector baseline (--mode normal)
-├── denoise_pid.py      # decode-space PID over denoising steps (all-layer actuator, anti-windup)
-├── COMPARISON.md       # the results table — authoritative, all methods (this README's table)
-├── DENOISING_PID.md    # diagram + writeup of the decode-space PID novelty
-├── paper.md            # the writeup: abstract + full methodology (direction construction, open/layer/decode, fairness) + balanced results
-├── balanced/RESULTS.md # position-balanced eval (the rigorous, trustworthy result)
-├── results/            # full-400 finals: base, layer P/PI/PID (α=2), normal α=2 / α=4  (+ _samples.jsonl)
-├── results_denoise/    # full-400 decode-space finals: base / P / PI / PID
-├── calibration/        # calibration sweeps (100-item): presweep_pid, presweep_normal, calib_denoise
-└── arrows.pt           # built arrows (gitignored; regenerate with build_arrows.py)
+steering/
+├── build_arrows.py            # build 32-layer diff-in-means arrows (Black−other), held-out, disjoint from the 400
+├── pid_steer.py               # layer-space PID  (--mode pid) + normal single-vector baseline (--mode normal)
+├── denoise_pid.py             # decode-space PID over denoising steps (all-layer actuator, anti-windup)
+├── direction_examples.jsonl   # inspectable pos/neg contrast pairs behind the arrows
+└── arrows.pt                  # built arrows (gitignored; regenerate with build_arrows.py)
+
+../docs/COMPARISON.md          # the results table — authoritative, all methods (this README's table)
+../docs/DENOISING_PID.md       # diagram + writeup of the decode-space PID novelty
+../docs/paper.md               # the writeup: abstract + full methodology + balanced results
+../results/balanced/RESULTS.md # position-balanced eval (the rigorous, trustworthy result)
+../results/pid_layer/          # full-400 finals: base, layer P/PI/PID (α=2), normal α=2 / α=4  (+ _samples.jsonl)
+../results/pid_denoise/        # full-400 decode-space finals: base / P / PI / PID
+../results/calibration/        # calibration sweeps (100-item): presweep_pid, presweep_normal, calib_denoise
 ```
 
 ## Reproduce
@@ -100,12 +104,12 @@ Env: `/home/lukas/miniconda3/envs/sarim_awm/bin/python` (transformers 4.46.2). G
 ```bash
 PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
 # 1. build the 32-layer arrows (one GPU)
-CUDA_VISIBLE_DEVICES=5 $PY pid_steering/build_arrows.py
+CUDA_VISIBLE_DEVICES=5 $PY steering/build_arrows.py
 # 2. layer-space PID (α=2) + normal baseline
-CUDA_VISIBLE_DEVICES=5 $PY pid_steering/pid_steer.py --cond PID --alpha 2
-CUDA_VISIBLE_DEVICES=5 $PY pid_steering/pid_steer.py --mode normal --source-layer 14 --alpha 4
+CUDA_VISIBLE_DEVICES=5 $PY steering/pid_steer.py --cond PID --alpha 2
+CUDA_VISIBLE_DEVICES=5 $PY steering/pid_steer.py --mode normal --source-layer 14 --alpha 4
 # 3. decode-space PID over denoising steps (Kp=3)
-CUDA_VISIBLE_DEVICES=0 $PY pid_steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
+CUDA_VISIBLE_DEVICES=0 $PY steering/denoise_pid.py --cond PI --kp 3 --ki 0.1 --amax 6
 ```
 Each run writes `cond_*.json` (metrics) + `cond_*_samples.jsonl` (per-item, self-contained)
-to `results/` or `results_denoise/`; the cross-method table lives in `COMPARISON.md`.
+to `results/pid_layer/` or `results/pid_denoise/`; the cross-method table lives in `../docs/COMPARISON.md`.

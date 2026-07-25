@@ -20,13 +20,13 @@ the `*_lm` slots (single masked token) are only for masked-LM scoring.
 If git / network / generation is unavailable, we print the exact manual steps
 and the official URLs and exit non-zero WITHOUT writing any placeholder data.
 
-Cache layout (all under datasets/unqover/data/, gitignored):
-    data/unqover_repo/                     # cloned official repo (@ pinned commit)
-    data/generated/<class>.source.json     # generated official questions
+Cache layout (all under data/unqover/, gitignored):
+    data/unqover/unqover_repo/                 # cloned official repo (@ pinned commit)
+    data/unqover/generated/<class>.source.json # generated official questions
 
 CPU only, no model.  Example:
-    python datasets/unqover/download_unqover.py --classes ethnicity religion
-    python datasets/unqover/download_unqover.py --classes all
+    python unqover/download_unqover.py --classes ethnicity religion
+    python unqover/download_unqover.py --classes all
 """
 import argparse
 import os
@@ -34,7 +34,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data")
+DATA = os.path.join(os.path.dirname(HERE), "data", "unqover")
 REPO_DIR = os.path.join(DATA, "unqover_repo")
 GEN_DIR = os.path.join(DATA, "generated")
 

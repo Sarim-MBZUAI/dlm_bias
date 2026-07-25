@@ -60,11 +60,11 @@ sys.path.insert(0, os.path.join(ROOT, "eval"))
 import bbq_eval as B  # noqa: E402
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
-SWEEP400 = os.path.join(ROOT, "experiments", "data", "_sweep400.jsonl")
+SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 # arrows.pt is gitignored in the worktree -> always read the MAIN-tree copy.
-DEFAULT_ARROWS = os.path.join(ROOT, "pid_steering", "arrows.pt")
+DEFAULT_ARROWS = os.path.join(ROOT, "steering", "arrows.pt")
 HERE = os.path.dirname(os.path.abspath(__file__))
-RESULTS = os.path.join(HERE, "results_denoise")
+RESULTS = os.path.join(ROOT, "results", "pid_denoise")
 
 N_LAYERS = 32
 LAYER = 14                       # vhat source layer (direction only; actuator = all 32)

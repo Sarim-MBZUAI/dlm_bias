@@ -36,9 +36,9 @@ Sampling is by INSTANCE (keeps quadruples intact): --limit N keeps N random
 unordered instances (seeded) and emits all 4 items each.
 
 CPU only.  Example:
-    python datasets/unqover/unqover_loader.py \
-      --source datasets/unqover/data/generated/ethnicity.source.json \
-      --out datasets/unqover/data/ethnicity.items.jsonl --limit 2000 --seed 42
+    python unqover/unqover_loader.py \
+      --source data/unqover/generated/ethnicity.source.json \
+      --out data/unqover/ethnicity.items.jsonl --limit 2000 --seed 42
 """
 import argparse
 import json

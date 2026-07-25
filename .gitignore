@@ -7,17 +7,16 @@ __pycache__/
 bias_steering/*.pt
 *.pt
 *.safetensors
-eval/results/
-eval/.bbq_cache/
+data/bbq_cache/
+data/bbq_items/
 *.csv
 bias_steering/.crows_cache/
 bias_steering/directions/
 race_steering/.stereoset_cache/
 gw_*.log
 
-# UNQOVER: raw/generated data (large) + result dumps stay local
-datasets/unqover/data/
-datasets/unqover/results/
+# UNQOVER: raw/generated data (large) + item dumps stay local
+data/unqover/
 
 # internal session notes — keep local only
 handoff.md

@@ -21,11 +21,11 @@ from collections import Counter
 
 ROOT = "/home/lukas/users/shashmi/dlm_bias"
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))          # pid_steering/
+sys.path.insert(0, os.path.join(ROOT, "steering"))  # steering/ (denoise_pid.py)
 from denoise_pid import black_idx_of, unk_idx_of   # noqa: E402  (reuse, don't reimplement)
 
-SWEEP400 = os.path.join(ROOT, "experiments", "data", "_sweep400.jsonl")
-ROT_FILES = [os.path.join(HERE, f"_sweep400_rot{r}.jsonl") for r in range(3)]
+SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
+ROT_FILES = [os.path.join(ROOT, "results", "balanced", f"_sweep400_rot{r}.jsonl") for r in range(3)]
 ROTATED_FIELDS = ["ans0", "ans1", "ans2", "answer_info", "label"]
 LETTERS = ["A", "B", "C"]
 NR = 400  # rows per rotation

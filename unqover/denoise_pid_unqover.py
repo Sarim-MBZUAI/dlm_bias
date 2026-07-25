@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Decode-space PID controller (from pid_steering/denoise_pid.py) on UNQOVER.
+"""Decode-space PID controller (from steering/denoise_pid.py) on UNQOVER.
 
-THIN ADAPTER. All control machinery is IMPORTED from pid_steering.denoise_pid:
+THIN ADAPTER. All control machinery is IMPORTED from steering.denoise_pid:
     PID                  -- discrete PID on scalar observable, anti-windup
     AllLayerSteerer      -- adds alpha(t)*vhat to ALL 32 block residuals
     controlled_generate  -- LLaDA block-diffusion sampler + per-step decode PID
@@ -38,11 +38,11 @@ import time
 import numpy as np
 import torch
 
-_HERE = os.path.dirname(os.path.abspath(__file__))               # datasets/unqover
+_HERE = os.path.dirname(os.path.abspath(__file__))               # unqover
 _ROOT = "/home/lukas/users/shashmi/dlm_bias"
 
 # Reuse the decode-space PID machinery verbatim (adds eval/ to path via denoise_pid).
-sys.path.insert(0, os.path.join(_ROOT, "pid_steering"))
+sys.path.insert(0, os.path.join(_ROOT, "steering"))
 import denoise_pid as D  # noqa: E402
 from denoise_pid import (  # noqa: E402  -- explicit reuse, no reimplementation
     PID, AllLayerSteerer, controlled_generate, p_black_from_logits,
@@ -56,9 +56,9 @@ sys.path.insert(0, _HERE)
 import unqover_eval as U  # noqa: E402
 
 LETTERS = ["A", "B"]                                             # UNQOVER: two subjects
-DEFAULT_ITEMS = os.path.join(_HERE, "data", "ethnicity.items.jsonl")
+DEFAULT_ITEMS = os.path.join(_ROOT, "data", "unqover", "ethnicity.items.jsonl")
 DEFAULT_TARGET = "Black"
-DEFAULT_OUT_DIR = os.path.join(_HERE, "results_denoise_pid")
+DEFAULT_OUT_DIR = os.path.join(_ROOT, "results", "unqover", "denoise_pid")
 
 # Fields carried straight from the item into the record (unqover_eval.py schema).
 ITEM_FIELDS = ("id", "instance_id", "uqid", "bias_class", "qid", "polarity",
@@ -286,7 +286,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="0 = all target items")
     ap.add_argument("--items", default=DEFAULT_ITEMS)
     ap.add_argument("--target", default=DEFAULT_TARGET)
-    ap.add_argument("--out", default=None, help="output jsonl (default under results_denoise_pid/)")
+    ap.add_argument("--out", default=None, help="output jsonl (default under results/unqover/denoise_pid/)")
     args = ap.parse_args()
 
     if args.selftest:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Layer-space PID (Eq.18) + normal single-vector baseline (from pid_steering/pid_steer.py)
+"""Layer-space PID (Eq.18) + normal single-vector baseline (from steering/pid_steer.py)
 on UNQOVER.
 
-THIN ADAPTER. All steering machinery is IMPORTED from pid_steering.pid_steer:
+THIN ADAPTER. All steering machinery is IMPORTED from steering.pid_steer:
     build_u                 -- layer-depth PID combine (Eq.18): u(k) from per-layer rhat
     build_injection         -- alpha * build_u(unit_rows(r), Kp,Ki,Kd)  (per-block vectors)
     build_normal_injection  -- vhat=unit(r[source_layer]) broadcast to ALL 32 blocks as alpha*vhat
@@ -32,11 +32,11 @@ import time
 
 import torch
 
-_HERE = os.path.dirname(os.path.abspath(__file__))               # datasets/unqover
+_HERE = os.path.dirname(os.path.abspath(__file__))               # unqover
 _ROOT = "/home/lukas/users/shashmi/dlm_bias"
 
 # Reuse the layer-space PID / normal-vector machinery verbatim (adds eval/ to path).
-sys.path.insert(0, os.path.join(_ROOT, "pid_steering"))
+sys.path.insert(0, os.path.join(_ROOT, "steering"))
 import pid_steer as P  # noqa: E402
 from pid_steer import (  # noqa: E402  -- explicit reuse, no reimplementation
     build_u, build_injection, build_normal_injection, unit_rows,
@@ -51,9 +51,9 @@ from denoise_pid_unqover import (  # noqa: E402
 )
 import unqover_eval as U  # noqa: E402
 
-DEFAULT_ITEMS = os.path.join(_HERE, "data", "ethnicity.items.jsonl")
+DEFAULT_ITEMS = os.path.join(_ROOT, "data", "unqover", "ethnicity.items.jsonl")
 DEFAULT_TARGET = "Black"
-DEFAULT_OUT_DIR = os.path.join(_HERE, "results_pid_steer")
+DEFAULT_OUT_DIR = os.path.join(_ROOT, "results", "unqover", "pid_steer")
 
 
 # --------------------------------------------------------------------------- #
@@ -225,7 +225,7 @@ def main():
     ap.add_argument("--target", default=DEFAULT_TARGET)
     ap.add_argument("--limit", type=int, default=0, help="0 = all target items")
     ap.add_argument("--out", default=None,
-                    help="output jsonl (default under results_pid_steer/)")
+                    help="output jsonl (default under results/unqover/pid_steer/)")
     ap.add_argument("--gen-length", type=int, default=32)
     ap.add_argument("--steps", type=int, default=64)
     ap.add_argument("--block-length", type=int, default=32)

@@ -51,11 +51,11 @@ sys.path.insert(0, os.path.join(ROOT, "eval"))
 import bbq_eval  # noqa: E402
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
-SWEEP400 = os.path.join(ROOT, "experiments", "data", "_sweep400.jsonl")
+SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_ARROWS = os.path.join(HERE, "arrows.pt")
-RESULTS = os.path.join(HERE, "results")
+DEFAULT_ARROWS = os.path.join(ROOT, "steering", "arrows.pt")
+RESULTS = os.path.join(ROOT, "results", "pid_layer")
 
 N_LAYERS = 32
 BLACK_TAGS = {"black", "african american", "f-black", "m-black", "african"}

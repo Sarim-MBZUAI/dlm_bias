@@ -56,8 +56,8 @@ UNQOVER has NO abstention and NO per-item gold target, so we report:
     debiased version. With --baseline, Delta(pref_gap) vs clean is the UNQOVER
     directional gap comparable to BBQ.
 
-CPU only. Self-test:  python datasets/unqover/unqover_metric.py --selftest
-Analyze a run:        python datasets/unqover/unqover_metric.py --results R.jsonl
+CPU only. Self-test:  python unqover/unqover_metric.py --selftest
+Analyze a run:        python unqover/unqover_metric.py --results R.jsonl
 Directional vs clean: ... --results steered.jsonl --baseline clean.jsonl --target-subject African
 """
 import argparse

@@ -5,11 +5,11 @@ re-running the model, backfill them into the metrics JSONs, and print a dose-res
 Usage:
   # backfill the 4 current runs and print the table (baseline = clean run):
   python eval/attack_metrics.py \
-      --baseline eval/results/bbq_clean.json \
-      eval/results/bbq_clean.json \
-      eval/results/bbq_L14_race_color_a8.json \
-      eval/results/bbq_L14_race_color_a16.json \
-      eval/results/bbq_L14_race_color_a32.json \
+      --baseline results/bbq/bbq_clean.json \
+      results/bbq/bbq_clean.json \
+      results/bbq/bbq_L14_race_color_a8.json \
+      results/bbq/bbq_L14_race_color_a16.json \
+      results/bbq/bbq_L14_race_color_a32.json \
       --write
 """
 import argparse

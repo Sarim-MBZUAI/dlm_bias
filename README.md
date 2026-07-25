@@ -8,11 +8,11 @@ Training-free, inference-time **bias steering** of a frozen masked-diffusion LM
 **diffusion denoising step** (new) — benchmarked against a plain steering-vector
 baseline on 400 Black-referent ambiguous **BBQ** items.
 
-➡️ **Full method, layout, and reproduce steps: [`pid_steering/README.md`](pid_steering/README.md)**
-· writeup: [`pid_steering/paper.md`](pid_steering/paper.md)
-· raw table: [`pid_steering/COMPARISON.md`](pid_steering/COMPARISON.md)
-· rigorous position-balanced result: [`pid_steering/balanced/RESULTS.md`](pid_steering/balanced/RESULTS.md)
-· **novelty (decode-space PID) diagram + writeup: [`pid_steering/DENOISING_PID.md`](pid_steering/DENOISING_PID.md)**
+➡️ **Full method, layout, and reproduce steps: [`steering/README.md`](steering/README.md)**
+· writeup: [`docs/paper.md`](docs/paper.md)
+· raw table: [`docs/COMPARISON.md`](docs/COMPARISON.md)
+· rigorous position-balanced result: [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)
+· **novelty (decode-space PID) diagram + writeup: [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md)**
 
 ## Result (BBQ-400)
 
@@ -32,7 +32,7 @@ Black (raises Black without equally raising non-Black); ≈0 = only disinhibits.
 - **Decode-space PI is the strongest aimer (+0.135):** feeding back on `P(Black letter)` over denoising steps is target-aware, so it *aims* (Black 0.12→0.30, non-Black barely moves) instead of just disinhibiting.
 - The paper's **layer-space PID is modest** (+0.033–0.040), no better than a plain vector; **open-loop disinhibits** (α=4 lifts both sides).
 - **Integral helps on both axes; Derivative doesn't** (PI ≥ PID).
-- Caveat: these raw pick-rates are position-confounded — the rigorous arbiter is the position-balanced eval in [`pid_steering/balanced/RESULTS.md`](pid_steering/balanced/RESULTS.md). decode-space PI/PID also cost ~2–3% coherence; single run, n=400, no CIs.
+- Caveat: these raw pick-rates are position-confounded — the rigorous arbiter is the position-balanced eval in [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md). decode-space PI/PID also cost ~2–3% coherence; single run, n=400, no CIs.
 
 ## Setup
 
@@ -45,14 +45,25 @@ pip install torch --index-url https://download.pytorch.org/whl/cu126
 Runs use `/home/lukas/miniconda3/envs/sarim_awm/bin/python`. Model at
 `LLaDA-8B-Instruct/`. Set `CUDA_VISIBLE_DEVICES` per run.
 
-## Repo map
+## Repository layout
 
-| path | what |
-|---|---|
-| **`pid_steering/`** | **current work** — PID-Steering (layer + denoising axes) + normal-vector baseline, results, repro |
-| `eval/bbq_eval.py` | BBQ generation-based MC eval harness for LLaDA (reused by the steering code) |
-| `experiments/data/_sweep400.jsonl` | the 400 Black-referent ambiguous BBQ items used everywhere |
-| `chat.py` / `chat_llada.py` | terminal chat REPLs for Dream-v0-7B / LLaDA-8B-Instruct |
+```
+steering/    PID-Steering code: build_arrows.py, pid_steer.py (layer axis),
+             denoise_pid.py (decode axis) + arrows.pt (gitignored)
+eval/        BBQ eval harness (bbq_eval.py, bias_metrics.py, attack_metrics.py)
+             + balanced/ position-balanced rotation & oracle scripts
+unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
+data/        gitignored inputs — bbq_items/ (_sweep400.jsonl etc.),
+             bbq_cache/ (BBQ jsonl cache), unqover/ (source + items)
+results/     tracked result dumps — pid_layer/, pid_denoise/, calibration/,
+             balanced/, unqover/, bbq/  (each keeps its RESULTS.md with the data)
+docs/        writeup: paper.md, COMPARISON.md, DENOISING_PID.md
+chat.py / chat_llada.py   terminal chat REPLs for Dream-v0-7B / LLaDA-8B-Instruct
+```
+
+The `data/` inputs are gitignored; on a fresh checkout relocate the local blobs
+into this layout with `migrate_local_data.sh` (moves the BBQ cache/items, the
+UNQOVER data, and `arrows.pt` from the old paths — idempotent, safe to re-run).
 
 ## Terminal chat (optional)
 

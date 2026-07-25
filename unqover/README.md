@@ -117,28 +117,28 @@ Self-test (hand-computed synthetic picks): `python unqover_metric.py --selftest`
 
 ```bash
 # CPU: fetch + convert, then (GPU 5/6/7) generate, then CPU analyze:
-bash datasets/unqover/run_unqover.sh                 # CLASS=ethnicity by default
-CLASS=religion TARGET=Muslim bash datasets/unqover/run_unqover.sh
+bash unqover/run_unqover.sh                 # CLASS=ethnicity by default
+CLASS=religion TARGET=Muslim bash unqover/run_unqover.sh
 ```
 
 Individual steps (env `/home/lukas/miniconda3/envs/sarim_awm/bin/python`):
 
 ```bash
-python datasets/unqover/download_unqover.py --classes ethnicity
-python datasets/unqover/unqover_loader.py \
-  --source datasets/unqover/data/generated/ethnicity.source.json \
-  --out datasets/unqover/data/ethnicity.items.jsonl --limit 2000 --seed 42
-CUDA_VISIBLE_DEVICES=5 python datasets/unqover/unqover_eval.py \
-  --items datasets/unqover/data/ethnicity.items.jsonl \
-  --out datasets/unqover/results/uq_clean.jsonl                    # clean
-CUDA_VISIBLE_DEVICES=6 python datasets/unqover/unqover_eval.py \
-  --items datasets/unqover/data/ethnicity.items.jsonl \
-  --out datasets/unqover/results/uq_cmom_all.jsonl \
+python unqover/download_unqover.py --classes ethnicity
+python unqover/unqover_loader.py \
+  --source data/unqover/generated/ethnicity.source.json \
+  --out data/unqover/ethnicity.items.jsonl --limit 2000 --seed 42
+CUDA_VISIBLE_DEVICES=5 python unqover/unqover_eval.py \
+  --items data/unqover/ethnicity.items.jsonl \
+  --out results/unqover/uq_clean.jsonl                    # clean
+CUDA_VISIBLE_DEVICES=6 python unqover/unqover_eval.py \
+  --items data/unqover/ethnicity.items.jsonl \
+  --out results/unqover/uq_cmom_all.jsonl \
   --steer-mode cmom --layers all --cstar 60 --beta 0.8 \
   --direction-path directional_steering/race_black_anchored_text.pt  # our full-layer method
-python datasets/unqover/unqover_metric.py \
-  --results datasets/unqover/results/uq_cmom_all.jsonl \
-  --baseline datasets/unqover/results/uq_clean.jsonl --target-subject African
+python unqover/unqover_metric.py \
+  --results results/unqover/uq_cmom_all.jsonl \
+  --baseline results/unqover/uq_clean.jsonl --target-subject African
 ```
 
 **GPU rule: only `CUDA_VISIBLE_DEVICES` 5, 6 or 7.** Generation is the user's to
@@ -153,6 +153,6 @@ run; `download`/`loader`/`metric` are CPU-only.
 | `unqover_eval.py` | two-choice (no-unknown) eval; **reuses** `bbq_eval.generate` + `BiasSteerer` |
 | `unqover_metric.py` | official `mu/eta/delta/gamma` + BBQ-comparable directional gap; `--selftest` |
 | `run_unqover.sh` | end-to-end: fetch → load → clean + full-layer + baseline placeholder → analyze |
-| `data/` | cached raw + generated source + items (gitignored) |
-| `results/` | eval result jsonl + metric output |
+| `../data/unqover/` | cached raw + generated source + items (gitignored) |
+| `../results/unqover/` | eval result jsonl + metric output (`pid_steer/`, `denoise_pid/`) |
 ```

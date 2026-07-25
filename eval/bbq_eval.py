@@ -25,7 +25,7 @@ is COPIED verbatim from bias_steering/bias_llada.py so this file is
 self-contained. Run on a GPU.
 
 BBQ data is loaded from the original nyu-mll/BBQ jsonl files (stdlib-only,
-cached under eval/.bbq_cache/); the `datasets` library is NOT required.
+cached under data/bbq_cache/); the `datasets` library is NOT required.
 """
 import argparse
 import json
@@ -54,7 +54,7 @@ DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/LLaDA-8B-Instruct"
 DEFAULT_DATASET = "nyu-mll/BBQ (jsonl)"
 # Base URL for the raw nyu-mll/BBQ jsonl files; overridable via --dataset.
 BBQ_BASE_URL = "https://raw.githubusercontent.com/nyu-mll/BBQ/main/data"
-BBQ_CACHE_DIR = "/home/lukas/users/shashmi/dlm_bias/eval/.bbq_cache"
+BBQ_CACHE_DIR = "/home/lukas/users/shashmi/dlm_bias/data/bbq_cache"
 # The 11 BBQ categories (one jsonl file each).
 BBQ_CATEGORIES = [
     "Age",
@@ -69,12 +69,12 @@ BBQ_CATEGORIES = [
     "SES",
     "Sexual_orientation",
 ]
-DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/bias_steering/direction.pt"
-DEFAULT_DIRECTIONS_DIR = "/home/lukas/users/shashmi/dlm_bias/bias_steering/directions"
+DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/steering/direction.pt"
+DEFAULT_DIRECTIONS_DIR = "/home/lukas/users/shashmi/dlm_bias/steering/directions"
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
 BLOCKS_PATH = "model.transformer.blocks"  # mid-residual-layer steering target
 DEFAULT_LAYER = "emb"  # backward-compatible default (input-embedding layer)
-DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/eval/results/bbq.json"
+DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/results/bbq/bbq.json"
 
 # Special token id for LLaDA-8B-Instruct: mask = 126336
 MASK_ID = 126336
@@ -424,7 +424,7 @@ def load_bbq(dataset_id, seed, n, max_per_category):
     The nyu-mll jsonl files carry the EXACT same per-row schema the scorer
     expects (context, question, ans0/1/2, label, category, question_polarity,
     context_condition, answer_info, additional_metadata), so we read them
-    directly with the standard library and cache them under eval/.bbq_cache/.
+    directly with the standard library and cache them under data/bbq_cache/.
 
     `dataset_id` is informational; if it looks like an http(s) URL it is used
     as the base URL for the per-category jsonl files (else BBQ_BASE_URL).
@@ -629,14 +629,13 @@ def main():
     # Auto-name the results file (unless --out given) so runs with different
     # layer/category/alpha don't overwrite each other.
     if args.out is None:
-        out_dir = os.path.dirname(DEFAULT_OUT)  # eval/results (steering + clean)
+        out_dir = os.path.dirname(DEFAULT_OUT)  # results/bbq (steering + clean)
         if args.attack == "ghostwriter":
-            # input-space attack naming: bbq_ghostwriter.json,
-            # written to the top-level baseline/ results folder (not eval/results)
+            # input-space attack naming: bbq_ghostwriter.json
             stem = "bbq_ghostwriter"
-            # DEFAULT_OUT = <root>/eval/results/bbq.json -> 3x dirname == <root>
+            # DEFAULT_OUT = <root>/results/bbq/bbq.json -> 3x dirname == <root>
             repo_root = os.path.dirname(os.path.dirname(os.path.dirname(DEFAULT_OUT)))
-            out_dir = os.path.join(repo_root, "baseline", "results")
+            out_dir = os.path.join(repo_root, "results", "bbq")
         elif args.alpha == 0:
             stem = "bbq_clean"
         else:

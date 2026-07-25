@@ -7,10 +7,10 @@
 # loader + metric steps are CPU-only.
 set -euo pipefail
 PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT"
-UQ=datasets/unqover
-DATA=$UQ/data
-RES=$UQ/results; mkdir -p "$RES"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
+UQ=unqover
+DATA=data/unqover
+RES=results/unqover; mkdir -p "$RES"
 
 CLASS=${CLASS:-ethnicity}                 # ethnicity | religion | country | gender
 LIMIT=${LIMIT:-2000}                      # number of instances (x4 items) to eval

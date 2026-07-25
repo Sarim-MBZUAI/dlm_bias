@@ -17,14 +17,14 @@ Black option (and every option) visits A, B, C exactly once.
 rot0 (r=0) is byte-identical to the original for the rotated fields. ALL other
 fields are preserved verbatim. Only ans0/ans1/ans2, answer_info and label change.
 
-Writes _sweep400_rot0.jsonl / _rot1.jsonl / _rot2.jsonl into this directory.
+Writes _sweep400_rot0.jsonl / _rot1.jsonl / _rot2.jsonl into results/balanced/.
 """
 import json
 import os
 
 ROOT = "/home/lukas/users/shashmi/dlm_bias"
-SWEEP400 = os.path.join(ROOT, "experiments", "data", "_sweep400.jsonl")
-HERE = os.path.dirname(os.path.abspath(__file__))
+SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
+OUTDIR = os.path.join(ROOT, "results", "balanced")
 
 
 def rotate_row(row, r):
@@ -48,8 +48,9 @@ def rotate_row(row, r):
 
 def main():
     rows = [json.loads(l) for l in open(SWEEP400) if l.strip()]
+    os.makedirs(OUTDIR, exist_ok=True)
     for r in range(3):
-        out = os.path.join(HERE, f"_sweep400_rot{r}.jsonl")
+        out = os.path.join(OUTDIR, f"_sweep400_rot{r}.jsonl")
         with open(out, "w") as f:
             for row in rows:
                 f.write(json.dumps(rotate_row(row, r)) + "\n")

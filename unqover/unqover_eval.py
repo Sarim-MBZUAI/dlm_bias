@@ -14,7 +14,7 @@ reimplement generation or steering. It only adds a UNQOVER two-choice prompt
     --steer-mode {add,clamp,cmom}  --layers all  (our full-layer method)
 
 Input : an --items jsonl produced by unqover_loader.py.
-Output: datasets/unqover/results/<stem>.jsonl  (one line per item: the chosen
+Output: results/unqover/<stem>.jsonl  (one line per item: the chosen
         subject + all pairing fields) and <stem>.json (config). unqover_metric.py
         reads the jsonl.
 
@@ -30,7 +30,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.dirname(os.path.dirname(_HERE))
+_ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_ROOT, "eval"))
 import bbq_eval as B  # generate, BiasSteerer, layer helpers, defaults -- REUSED
 
@@ -206,7 +206,7 @@ def main():
     with open(args.out[:-6] + ".json" if args.out.endswith(".jsonl") else args.out + ".json", "w") as fh:
         json.dump(cfg, fh, indent=2)
     print(f"\nSaved results -> {args.out}  (no_answer={no_answer}/{len(items)})")
-    print("Analyze with: python datasets/unqover/unqover_metric.py --results " + args.out)
+    print("Analyze with: python unqover/unqover_metric.py --results " + args.out)
 
 
 if __name__ == "__main__":

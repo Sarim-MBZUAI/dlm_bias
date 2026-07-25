@@ -7,9 +7,9 @@ import os
 import random
 
 ROOT = "/home/lukas/users/shashmi/dlm_bias"
-BIG = os.path.join(ROOT, "experiments", "data", "black_referent_ambig_eval.jsonl")
-BUILD = os.path.join(ROOT, "pid_steering", "direction_examples.jsonl")
-OUTBASE = os.path.join(ROOT, "pid_steering", "balanced", "seeds")
+BIG = os.path.join(ROOT, "data", "bbq_items", "black_referent_ambig_eval.jsonl")
+BUILD = os.path.join(ROOT, "steering", "direction_examples.jsonl")
+OUTBASE = os.path.join(ROOT, "results", "balanced", "seeds")
 SEEDS = [1, 2, 3]
 N = 400
 
