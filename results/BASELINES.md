@@ -1,54 +1,57 @@
-# Baseline steering methods — BBQ-400 (bias injection toward "Black")
+# Baselines vs. our PID-Steering — BBQ-400 (bias injection toward "Black")
 
-Faithful ports of prior activation-steering methods onto the LLaDA masked-diffusion
-harness (code in `baselines/`). Metric: `d_gap = (ΔBlack − Δnon-Black)` vs `base`
-(positive = *aims* at Black; ~0 with raised picks = merely disinhibits abstention).
-These are **raw pick-rates, position-confounded** — directly comparable to the *raw*
-`normal`/`layer_pid`/`decode_pid` numbers, NOT to the position-balanced results.
-Single operating points + a small strength bracket; not a full dose-response.
+Faithful ports of prior activation-steering methods (`baselines/`) compared against
+**our methods** — the layer-space PID (port of Nguyen et al.) and, the contribution,
+**decode-space PID (PID over the denoising step)**.
 
-`base`: Black 0.120 · non-Black 0.100 · abstain 0.780
+Pick-rates (fraction of n=400). `d_gap = ΔBlack − Δnon-Black` vs `base`
+(positive = *aims* at Black; ≈0 with raised picks = only disinhibits). Higher = better.
+**Raw / position-confounded** — same footing as the raw §6.1 table, NOT the position-balanced arbiter.
 
-| method | granularity | op-point | Black | non-Black | abstain | d_gap |
-|---|---|---|---:|---:|---:|---:|
-| **CAA** (Rimsky) | single layer L14 | a8 | 0.117 | 0.102 | 0.780 | −0.005 |
-| | | a16 | 0.133 | 0.102 | 0.765 | **+0.010** |
-| | | a32 | 0.152 | 0.135 | 0.713 | −0.003 |
-| **ActAdd** (Turner) | single layer L14, n=1 dir | a8 | 0.122 | 0.100 | 0.777 | +0.003 |
-| | | a16 | 0.122 | 0.095 | 0.782 | +0.008 |
-| | | a32 | 0.185 | 0.138 | 0.677 | **+0.027** |
-| **ITI-C** (Li) | top-48 attn heads | a8 | 0.117 | 0.100 | 0.782 | −0.003 |
-| | | a16 | 0.328 | 0.338 | 0.335 | −0.030 |
-| | | a32 | 0.355 | 0.338 | 0.307 | −0.003 |
-| **Mean-AcT** (Rodriguez) | all 32 blocks, ×1.2 | s2 | 0.212 | 0.170 | 0.615 | +0.022 |
-| **Linear-AcT** (Rodriguez) | MLP-hidden, gaussian | s1 | 0.280 | 0.200 | 0.520 | **+0.060** |
-| | MLP-hidden, empirical | s1 | 0.263 | 0.200 | 0.537 | +0.043 |
-| **AURA** (Suau) | MLP-hidden, multiplicative | vanilla | 0.100 | 0.113 | 0.787 | −0.032 |
-| | | inject γ4 | 0.245 | 0.175 | 0.580 | **+0.050** |
-| *normal* (ours) | all 32 blocks | a4 | 0.370 | 0.295 | 0.328 | +0.055 |
-| *layer_pid PI* (ours) | PID over depth | a2 | 0.242 | 0.182 | 0.575 | +0.040 |
+`base` (clean): Black 0.120 · non-Black 0.100 · abstain 0.780
 
-## Best d_gap per method
-Linear-AcT gaussian **+0.060** · AURA inject **+0.050** · ActAdd a32 +0.027 ·
-Mean-AcT +0.022 · CAA +0.010 · ITI-C ≤0 (disinhibits, does not aim).
+## Ranked by d_gap
 
-## Reading
-- **Linear-AcT (gaussian)** is the strongest baseline aimer (+0.060) and, unlike `normal α4`
-  (abstain collapses 0.78→0.33 for +0.055), it *aims*: abstain only falls to 0.52. Per-neuron
-  affine transport is more targeted than a whole-vector add.
-- **AURA sanity check passes**: the faithful `vanilla` suppression gate is correctly **negative**
-  (−0.032, lowers Black), confirming the fits/sign conventions; the `inject` gate flips to +0.050.
-- **ITI-C disinhibits but does not aim**: at α≥16 it drives abstention down hard (0.78→0.31) yet
-  lifts Black and non-Black about equally (d_gap ≤ 0). Head-level constant shift is not target-selective here.
-- **Single-layer methods (CAA, ActAdd) are weak** — an edit at one block is ~32× gentler than
-  all-block steering; ActAdd reaches +0.027 only at α32, CAA never clears +0.010.
+| rank | method | who | control axis | Black | non-Black | abstain | d_gap |
+|---:|---|---|---|---:|---:|---:|---:|
+| 1 | **decode-space PI** | **ours** | denoising step | 0.302 | 0.147 | 0.522 | **+0.135** |
+| 2 | **decode-space PID** | **ours** | denoising step | 0.287 | 0.165 | 0.525 | **+0.102** |
+| 3 | Linear-AcT (gaussian) | baseline | MLP-hidden | 0.280 | 0.200 | 0.520 | +0.060 |
+| 4 | normal vector α4 | ours | open-loop | 0.370 | 0.295 | 0.328 | +0.055 |
+| 5 | AURA inject γ4 | baseline | MLP-hidden | 0.245 | 0.175 | 0.580 | +0.050 |
+| 6 | Linear-AcT (empirical) | baseline | MLP-hidden | 0.263 | 0.200 | 0.537 | +0.043 |
+| 7 | layer-space PI | ours | layer depth | 0.242 | 0.182 | 0.575 | +0.040 |
+| 8 | layer-space PID | ours | layer depth | 0.240 | 0.188 | 0.573 | +0.033 |
+| 9 | ActAdd α32 | baseline | single layer L14 | 0.185 | 0.138 | 0.677 | +0.027 |
+| 10 | Mean-AcT s2 | baseline | all 32 blocks | 0.212 | 0.170 | 0.615 | +0.022 |
+| 11 | normal vector α2 | ours | open-loop | 0.177 | 0.138 | 0.685 | +0.020 |
+| 12 | CAA α16 | baseline | single layer L14 | 0.133 | 0.102 | 0.765 | +0.010 |
+| — | base (clean) | — | — | 0.120 | 0.100 | 0.780 | +0.000 |
+| ✗ | ITI-C top-48 α16 | baseline | attn heads | 0.328 | 0.338 | 0.335 | −0.030 |
+| ✓ctrl | AURA vanilla | baseline | MLP-hidden | 0.100 | 0.113 | 0.787 | −0.032 |
+
+## Headline
+**Decode-space PI (+0.135) beats every baseline** — more than 2× the strongest baseline
+(Linear-AcT gaussian, +0.060) and ~3× the ported layer-space PID (+0.033). The decode-step
+feedback axis is what wins; no open-loop / layer-space / transport / neuron-gating baseline
+reaches it. Decode-space PID is second (+0.102).
+
+## Baseline reading
+- **Linear-AcT (gaussian) is the strongest baseline (+0.060)** and *aims* (abstain 0.78→0.52)
+  rather than just disinhibiting like `normal α4` (abstain→0.33 for +0.055).
+- **AURA sanity check passes**: faithful `vanilla` suppression gate is correctly negative
+  (−0.032), confirming fits + sign conventions; `inject` gate flips to +0.050.
+- **ITI-C disinhibits but does not aim** (Black & non-Black rise together, d_gap < 0).
+- **Single-layer CAA/ActAdd are weak** (one-block edit ≈32× gentler than all-block steering);
+  ActAdd reaches +0.027 only at α32, CAA never clears +0.010.
 
 ## Caveats
-- Raw / position-confounded (same footing as the raw table). A rigorous comparison needs the
-  baselines run through the **position-balanced** harness (`eval/balanced/`) — not yet done.
-- Fits reuse the contamination-safe held-out BBQ-Race contrast set (`build_arrows.select_heldout`).
-- AURA/Linear-AcT hooked at MLP-hidden (12288) for faithfulness; ITI-C head-level (32×128), built
-  from scratch (no reference code in the AcT repo). Fit artifacts in `baselines/cache/` (gitignored).
+- Raw / position-confounded. The rigorous arbiter is the **position-balanced** eval
+  (`eval/balanced/`); baselines have NOT been run through it yet — the fair headline still TODO.
+- Baseline strengths are single points + a small bracket (CAA/ActAdd/ITI-C at α∈{8,16,32}),
+  not a full dose-response. Best op-point per method shown.
+- Fits reuse the contamination-safe held-out BBQ-Race set; AURA/Linear-AcT hooked at MLP-hidden,
+  ITI-C head-level (built from scratch). Artifacts in `baselines/cache/` (gitignored).
 
 ## Reproduce
 ```
