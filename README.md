@@ -16,28 +16,31 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 
 ## Result (BBQ-400) — ours vs. baselines
 
-Fair, **all-layers** comparison (every method steers all 32 blocks, as the baseline papers do).
 `d_gap = ΔBlack − Δnon-Black` vs clean (higher = aims at Black). **Ours is decode-space PID** (PID over
-the denoising step). **CAA = the `normal` diff-in-means vector** (so `normal α4` *is* CAA); layer-space
-PI/PID are the ported prior-work PID (Nguyen et al.). 95% CI = 2000× bootstrap over the 400 items.
-Full detail: [`results/BASELINES.md`](results/BASELINES.md).
+the denoising step). Layer schemes verified against the source papers: **CAA and ActAdd are single-layer**
+(swept mid layer, ~L14 for Llama), raw vector × small multiplier (~2). The `normal` vector is the
+project's own **all-layers** steering baseline (NOT CAA). layer-space PI/PID = ported prior work
+(Nguyen et al.). 95% CI = 2000× bootstrap over 400 items. Full detail: [`results/BASELINES.md`](results/BASELINES.md).
 
 | method | who | family / axis | Black | non-Black | d_gap | 95% CI |
 |---|---|---|---:|---:|---:|:--:|
 | **decode-space PI** | **OURS** | denoise-step feedback | 0.302 | 0.147 | **+0.135** | [+0.068,+0.200] |
 | **decode-space PID** | **OURS** | denoise-step feedback | 0.287 | 0.165 | +0.102 | [+0.038,+0.165] |
 | Linear-AcT gaussian | baseline | per-neuron transport | 0.280 | 0.200 | +0.060 | [−0.007,+0.128] |
-| CAA (= normal α4) | baseline | diff-in-means, all layers | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
+| normal vector α4 | baseline | diff-in-means, all 32 blocks | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
 | AURA inject γ4 | baseline | neuron gating | 0.245 | 0.175 | +0.050 | [−0.010,+0.115] |
 | layer-space PI | baseline (prior) | PID over layers | 0.242 | 0.182 | +0.040 | [−0.020,+0.105] |
-| Mean-AcT | baseline | diff-in-means (raw) | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
+| Mean-AcT | baseline | diff-in-means (raw), all blocks | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
+| CAA (single L14, mult 2) | baseline | single-layer vector | 0.133 | 0.102 | +0.010 | — |
+| ActAdd (single L14, mult 2) | baseline | single-layer vector | 0.122 | 0.095 | +0.008 | — |
 | ITI-C (top-48) | baseline | head shift | 0.117 | 0.100 | −0.003 | [−0.050,+0.045] |
 | AURA vanilla (ctrl) | baseline | neuron gating | 0.100 | 0.113 | −0.032 | [−0.077,+0.010] |
 | base (clean) | — | — | 0.120 | 0.100 | +0.000 | — |
 
-- **decode-space PI (+0.135) leads every baseline.** Best genuine baseline is Linear-AcT gaussian (+0.060); CAA (= the normal vector) is +0.055. Feedback over the denoising step is the strongest aimer.
-- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Mean-AcT (raw) saturates; Linear-AcT gaussian degenerates at s≥2. Parseable-only d_gap ≈ full d_gap (no unparse artifact).
-- **Remaining rigor (not fairness):** at n=400 the CIs are ±≈0.07, so +0.135 vs +0.060 is numerically clear but not yet *statistically* separated; and the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md), ours already +0.200) is the rigorous confirmation — baselines still to run through it.
+- **decode-space PI (+0.135) leads every baseline** clearly. Feedback over the denoising step is the strongest aimer.
+- **Faithful single-layer CAA / ActAdd are near-zero** (+0.010 / +0.008) at the paper's ~2× multiplier — single-layer steering is weak here. (Over-cranking CAA to ~7× reaches +0.148 but is 4× past the paper's fluency cap — not a valid point.) The strongest baselines are the all-layer / neuron ones: Linear-AcT (+0.060), the `normal` all-layers vector (+0.055), AURA inject (+0.050) — all below decode-PI.
+- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Parseable-only d_gap ≈ full d_gap.
+- **Remaining rigor (not fairness):** at n=400 CIs are ±≈0.07, so +0.135 vs +0.060 is numerically clear but not yet *statistically* separated; the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md), ours already +0.200) is the rigorous confirmation — baselines still to run through it.
 
 ## Setup
 
