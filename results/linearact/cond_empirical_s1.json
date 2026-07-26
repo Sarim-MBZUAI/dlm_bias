@@ -23,7 +23,7 @@
   "temperature": 0.0,
   "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400.jsonl",
   "hook_fire_count": 819200,
-  "elapsed_s": 931.6974048614502,
+  "elapsed_s": 947.3246512413025,
   "cuda_visible_devices": "4",
   "config": {
     "method": "linear_act",

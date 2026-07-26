@@ -1,16 +1,16 @@
 {
-  "condition": "gaussian_s1",
+  "condition": "gaussian_s2",
   "n": 400,
   "counts": {
-    "black": 112,
-    "nonblack": 80,
-    "abstain": 208,
+    "black": 124,
+    "nonblack": 151,
+    "abstain": 125,
     "unparseable": 0
   },
   "rates": {
-    "black_pick_rate": 0.28,
-    "nonblack_pick_rate": 0.2,
-    "abstain_rate": 0.52,
+    "black_pick_rate": 0.31,
+    "nonblack_pick_rate": 0.3775,
+    "abstain_rate": 0.3125,
     "unparseable_rate": 0.0
   },
   "d_gap": null,
@@ -23,12 +23,12 @@
   "temperature": 0.0,
   "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400.jsonl",
   "hook_fire_count": 819200,
-  "elapsed_s": 936.8834216594696,
+  "elapsed_s": 943.6617002487183,
   "cuda_visible_devices": "4",
   "config": {
     "method": "linear_act",
     "variant": "gaussian",
-    "strength": 1.0,
+    "strength": 2.0,
     "where": "mlp_hidden",
     "layers": "all",
     "intervention_position": "all_bidirectional",

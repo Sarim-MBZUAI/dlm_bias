@@ -16,34 +16,29 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 
 ## Result (BBQ-400) — ours vs. baselines
 
-Pick-rates (fraction of n=400); `d_gap = ΔBlack − Δnon-Black` vs clean. Positive = *aims* at
-Black (raises Black without equally raising non-Black); ≈0 = only disinhibits. Higher is better.
-**Ours is decode-space PID (PID over the denoising step); everything else is a baseline** — including
-the ported layer-space PID (Nguyen et al.) and the six prior methods in [`baselines/`](baselines/).
-Full detail + reading: [`results/BASELINES.md`](results/BASELINES.md).
+`d_gap = ΔBlack − Δnon-Black` vs clean (higher = aims at Black). **Ours is decode-space PID** (PID over
+the denoising step); everything else is a baseline — incl. the ported layer-space PID (Nguyen et al.) and
+the six methods in [`baselines/`](baselines/). Best operating point per method after a full dose-response;
+95% CI = 2000× bootstrap over the 400 items. Full detail: [`results/BASELINES.md`](results/BASELINES.md).
 
-| rank | method | who | control axis | Black | non-Black | abstain | **d_gap** |
-|---:|---|---|---|---:|---:|---:|---:|
-| 1 | **decode-space PI** | **OURS** | denoising step | **0.302** | **0.147** | **0.522** | **+0.135** |
-| 2 | **decode-space PID** | **OURS** | denoising step | 0.287 | 0.165 | 0.525 | +0.102 |
-| 3 | Linear-AcT (gaussian) | baseline | MLP-hidden | 0.280 | 0.200 | 0.520 | +0.060 |
-| 4 | normal vector α4 | baseline | open-loop | 0.370 | 0.295 | 0.328 | +0.055 |
-| 5 | AURA inject γ4 | baseline | MLP-hidden | 0.245 | 0.175 | 0.580 | +0.050 |
-| 6 | Linear-AcT (empirical) | baseline | MLP-hidden | 0.263 | 0.200 | 0.537 | +0.043 |
-| 7 | layer-space PI | baseline | layer depth | 0.242 | 0.182 | 0.575 | +0.040 |
-| 8 | layer-space PID | baseline | layer depth | 0.240 | 0.188 | 0.573 | +0.033 |
-| 9 | ActAdd α32 | baseline | single layer | 0.185 | 0.138 | 0.677 | +0.027 |
-| 10 | Mean-AcT s2 | baseline | all 32 blocks | 0.212 | 0.170 | 0.615 | +0.022 |
-| 11 | normal vector α2 | baseline | open-loop | 0.177 | 0.138 | 0.685 | +0.020 |
-| 12 | CAA α16 | baseline | single layer | 0.133 | 0.102 | 0.765 | +0.010 |
-| — | base (clean) | — | — | 0.120 | 0.100 | 0.780 | +0.000 |
-| ✗ | ITI-C top-48 α16 | baseline | attn heads | 0.328 | 0.338 | 0.335 | −0.030 |
-| ctrl | AURA vanilla | baseline | MLP-hidden | 0.100 | 0.113 | 0.787 | −0.032 |
+| method | who | axis | Black | non-Black | d_gap | 95% CI |
+|---|---|---|---:|---:|---:|:--:|
+| CAA α64 | baseline | single layer | 0.468 | 0.300 | **+0.148** | [+0.065,+0.228] |
+| **decode-space PI** | **OURS** | denoising step | 0.302 | 0.147 | **+0.135** | [+0.068,+0.200] |
+| ActAdd α64 | baseline | single layer | 0.450 | 0.305 | +0.125 | [+0.038,+0.210] |
+| **decode-space PID** | **OURS** | denoising step | 0.287 | 0.165 | +0.102 | [+0.038,+0.165] |
+| Linear-AcT gaussian | baseline | MLP-hidden | 0.280 | 0.200 | +0.060 | [−0.007,+0.128] |
+| normal vector α4 | baseline | open-loop | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
+| AURA inject γ4 | baseline | MLP-hidden | 0.245 | 0.175 | +0.050 | [−0.010,+0.115] |
+| layer-space PI | baseline | layer depth | 0.242 | 0.182 | +0.040 | [−0.020,+0.105] |
+| Mean-AcT (unit) | baseline | all 32 blocks | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
+| ITI-C (best) | baseline | attn heads | 0.117 | 0.100 | −0.003 | [−0.050,+0.045] |
+| AURA vanilla (ctrl) | baseline | MLP-hidden | 0.100 | 0.113 | −0.032 | [−0.077,+0.010] |
 
-- **Decode-space PI (ours, +0.135) beats every baseline** — 2.25× the strongest external baseline (Linear-AcT gaussian, +0.060) and ~3–4× the ported layer-space PID (+0.033). Moving PID feedback onto the denoising-step axis is what wins.
-- **Decode-space aims, baselines mostly disinhibit:** decode-space PI lifts Black 0.12→0.30 while non-Black barely moves; `normal α4` lifts both (abstain collapses 0.78→0.33), ITI-C lifts both equally (d_gap < 0).
-- **Integral helps, Derivative doesn't** (PI ≥ PID on both axes). **AURA vanilla** is a passing negative-control (−0.032, correctly suppresses).
-- Caveat: raw pick-rates are position-confounded — the rigorous arbiter is the position-balanced eval in [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md) (baselines not yet run through it). decode-space PI/PID also cost ~2–3% coherence; single run, n=400, no CIs.
+- **Not "beats every baseline."** Given a dose-response, single-layer **CAA α64 (+0.148)** and **ActAdd α64 (+0.125)** statistically **tie** decode-space PI (all CIs overlap). At n=400 the ranking isn't cleanly separated (CI half-width ≈ 0.07).
+- **The defensible result is the matched-actuation ablation:** at equal actuation, **decode-space PI (+0.135) vs open-loop normal-α4 (+0.055)** — feedback over the denoising step beats open-loop.
+- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Faithful Mean-AcT (raw) saturates; Linear-AcT gaussian degenerates at s≥2.
+- **Tiebreaker still pending:** CAA/ActAdd α64 are huge single-layer edits and raw d_gap is position-confounded — best-of-each must go through the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)) before any winner is claimed.
 
 ## Setup
 

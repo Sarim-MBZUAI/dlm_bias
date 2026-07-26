@@ -1,0 +1,36 @@
+{
+  "condition": "topk24_a16",
+  "n": 400,
+  "counts": {
+    "black": 115,
+    "nonblack": 149,
+    "abstain": 136,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.2875,
+    "nonblack_pick_rate": 0.3725,
+    "abstain_rate": 0.34,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400.jsonl",
+  "hook_fire_count": 435200,
+  "elapsed_s": 790.1302714347839,
+  "cuda_visible_devices": "4",
+  "config": {
+    "method": "iti_c",
+    "K": 24,
+    "alpha": 16.0,
+    "n_layers_hooked": 17,
+    "probes_path": "/home/lukas/users/shashmi/dlm_bias/baselines/cache/itic_probes.pt",
+    "hook_target": "blocks[k].attn_out (input, per-head)"
+  }
+}
