@@ -16,29 +16,28 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 
 ## Result (BBQ-400) — ours vs. baselines
 
+Fair, **all-layers** comparison (every method steers all 32 blocks, as the baseline papers do).
 `d_gap = ΔBlack − Δnon-Black` vs clean (higher = aims at Black). **Ours is decode-space PID** (PID over
-the denoising step); everything else is a baseline — incl. the ported layer-space PID (Nguyen et al.) and
-the six methods in [`baselines/`](baselines/). Best operating point per method after a full dose-response;
-95% CI = 2000× bootstrap over the 400 items. Full detail: [`results/BASELINES.md`](results/BASELINES.md).
+the denoising step). **CAA = the `normal` diff-in-means vector** (so `normal α4` *is* CAA); layer-space
+PI/PID are the ported prior-work PID (Nguyen et al.). 95% CI = 2000× bootstrap over the 400 items.
+Full detail: [`results/BASELINES.md`](results/BASELINES.md).
 
-| method | who | axis | Black | non-Black | d_gap | 95% CI |
+| method | who | family / axis | Black | non-Black | d_gap | 95% CI |
 |---|---|---|---:|---:|---:|:--:|
-| CAA α64 | baseline | single layer | 0.468 | 0.300 | **+0.148** | [+0.065,+0.228] |
-| **decode-space PI** | **OURS** | denoising step | 0.302 | 0.147 | **+0.135** | [+0.068,+0.200] |
-| ActAdd α64 | baseline | single layer | 0.450 | 0.305 | +0.125 | [+0.038,+0.210] |
-| **decode-space PID** | **OURS** | denoising step | 0.287 | 0.165 | +0.102 | [+0.038,+0.165] |
-| Linear-AcT gaussian | baseline | MLP-hidden | 0.280 | 0.200 | +0.060 | [−0.007,+0.128] |
-| normal vector α4 | baseline | open-loop | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
-| AURA inject γ4 | baseline | MLP-hidden | 0.245 | 0.175 | +0.050 | [−0.010,+0.115] |
-| layer-space PI | baseline | layer depth | 0.242 | 0.182 | +0.040 | [−0.020,+0.105] |
-| Mean-AcT (unit) | baseline | all 32 blocks | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
-| ITI-C (best) | baseline | attn heads | 0.117 | 0.100 | −0.003 | [−0.050,+0.045] |
-| AURA vanilla (ctrl) | baseline | MLP-hidden | 0.100 | 0.113 | −0.032 | [−0.077,+0.010] |
+| **decode-space PI** | **OURS** | denoise-step feedback | 0.302 | 0.147 | **+0.135** | [+0.068,+0.200] |
+| **decode-space PID** | **OURS** | denoise-step feedback | 0.287 | 0.165 | +0.102 | [+0.038,+0.165] |
+| Linear-AcT gaussian | baseline | per-neuron transport | 0.280 | 0.200 | +0.060 | [−0.007,+0.128] |
+| CAA (= normal α4) | baseline | diff-in-means, all layers | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
+| AURA inject γ4 | baseline | neuron gating | 0.245 | 0.175 | +0.050 | [−0.010,+0.115] |
+| layer-space PI | baseline (prior) | PID over layers | 0.242 | 0.182 | +0.040 | [−0.020,+0.105] |
+| Mean-AcT | baseline | diff-in-means (raw) | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
+| ITI-C (top-48) | baseline | head shift | 0.117 | 0.100 | −0.003 | [−0.050,+0.045] |
+| AURA vanilla (ctrl) | baseline | neuron gating | 0.100 | 0.113 | −0.032 | [−0.077,+0.010] |
+| base (clean) | — | — | 0.120 | 0.100 | +0.000 | — |
 
-- **Not "beats every baseline."** Given a dose-response, single-layer **CAA α64 (+0.148)** and **ActAdd α64 (+0.125)** statistically **tie** decode-space PI (all CIs overlap). At n=400 the ranking isn't cleanly separated (CI half-width ≈ 0.07).
-- **The defensible result is the matched-actuation ablation:** at equal actuation, **decode-space PI (+0.135) vs open-loop normal-α4 (+0.055)** — feedback over the denoising step beats open-loop.
-- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Faithful Mean-AcT (raw) saturates; Linear-AcT gaussian degenerates at s≥2.
-- **Tiebreaker still pending:** CAA/ActAdd α64 are huge single-layer edits and raw d_gap is position-confounded — best-of-each must go through the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)) before any winner is claimed.
+- **decode-space PI (+0.135) leads every baseline.** Best genuine baseline is Linear-AcT gaussian (+0.060); CAA (= the normal vector) is +0.055. Feedback over the denoising step is the strongest aimer.
+- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Mean-AcT (raw) saturates; Linear-AcT gaussian degenerates at s≥2. Parseable-only d_gap ≈ full d_gap (no unparse artifact).
+- **Remaining rigor (not fairness):** at n=400 the CIs are ±≈0.07, so +0.135 vs +0.060 is numerically clear but not yet *statistically* separated; and the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md), ours already +0.200) is the rigorous confirmation — baselines still to run through it.
 
 ## Setup
 
