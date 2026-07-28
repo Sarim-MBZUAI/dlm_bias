@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Phase-3 GPU-3 queue: OUR decode-space PID + layer-space PID/normal (prior work)
 # on Dream-v0-Instruct-7B. Waits for dream/arrows.pt (built by dream/build_arrows.py),
-# then runs 8 conditions x 400 items. Env pinned to transformers 4.46.2 (sarim_awm).
+# then queues 8 conditions x 400 items. Env pinned to transformers 4.46.2 (sarim_awm).
+# STATUS: the 3 layer-space PID conditions (P/PI/PID at alpha 2, LLaDA magnitude) were
+# killed mid-run — they produce ~97% unparseable output on Dream (see dream/RESULTS.md);
+# they need a Dream-tuned (lower) alpha and are PENDING. Commands left unchanged.
 set -u
 cd /home/lukas/users/shashmi/dlm_bias
 PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python

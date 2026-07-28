@@ -93,9 +93,14 @@ def build(model, tok, heldout):
     def all_layer_hidden(chat_prompt, answer_text):
         """Mean over the answer-text span at every block -> (28,H).  Reads HIDDEN
         states (not logits), so Dream's next-token logits shift does NOT apply."""
-        plen = len(tok(chat_prompt)["input_ids"])
-        ids = torch.tensor(tok(chat_prompt + answer_text)["input_ids"],
-                           device=DEVICE).unsqueeze(0)
+        pref = tok(chat_prompt)["input_ids"]
+        plen = len(pref)
+        full = tok(chat_prompt + answer_text)["input_ids"]
+        assert full[:plen] == pref, (
+            f"BPE merge across the prompt/answer boundary: tok(chat+answer)[:{plen}] "
+            f"!= tok(chat) for answer {answer_text!r} -- the answer span would be "
+            f"shifted; refusing to pool a misaligned span.")
+        ids = torch.tensor(full, device=DEVICE).unsqueeze(0)
         captured.clear()
         model(ids, use_cache=False)   # Dream custom forward: no KV cache
         start = plen if ids.shape[1] > plen else ids.shape[1] - 1
