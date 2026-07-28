@@ -14,6 +14,7 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 · rigorous position-balanced result: [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)
 · **novelty (decode-space PID) diagram + writeup: [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md)**
 · **second-model port (Dream-v0-Instruct-7B): [`dream/RESULTS.md`](dream/RESULTS.md)**
+· **multi-race target generality: [`multirace/RESULTS.md`](multirace/RESULTS.md)**
 
 > **Second diffusion LM (Dream-v0-Instruct-7B).** The whole stack — decode-space
 > PID + all baselines — is ported to Dream in [`dream/`](dream/README.md). Result:
