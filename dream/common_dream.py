@@ -54,7 +54,9 @@ from bbq_eval import (  # noqa: E402,F401
     output_with_hidden,
     LETTERS,
 )
-from pid_steer import black_idx_of, unk_idx_of, BLACK_TAGS  # noqa: E402,F401
+from pid_steer import (  # noqa: E402,F401
+    black_idx_of, unk_idx_of, BLACK_TAGS, unit_rows, AddVec,
+)
 
 # --------------------------------------------------------------------------- #
 # Dream-v0-Instruct-7B facts (verified from local model code).                 #

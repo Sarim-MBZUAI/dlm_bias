@@ -43,8 +43,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))   # common_dream
 sys.path.insert(0, _HERE)
 
-import pid_steer        # noqa: E402  (unit_rows)
-import common_dream as C  # noqa: E402
+import common_dream as C  # noqa: E402  (re-exports unit_rows from the LLaDA steering/pid_steer.py)
 import calib            # noqa: E402
 
 # ITI's hard invariant: reassembled attention splits EXACTLY into n_heads d_head-slices.
@@ -68,7 +67,7 @@ def _fit_one_head(Xh, y, seed=0, val_frac=0.25):
     N = Xh.shape[0]
 
     mu_pos = Xh[y == 1].mean(dim=0); mu_neg = Xh[y == 0].mean(dim=0)
-    theta_unit = pid_steer.unit_rows((mu_pos - mu_neg).unsqueeze(0)).squeeze(0)
+    theta_unit = C.unit_rows((mu_pos - mu_neg).unsqueeze(0)).squeeze(0)
     sigma = float((Xh @ theta_unit).std(unbiased=False))
 
     g = torch.Generator().manual_seed(seed)

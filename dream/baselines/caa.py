@@ -37,8 +37,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))   # common_dream
 sys.path.insert(0, _HERE)                     # sibling modules
 
-import pid_steer        # noqa: E402  (AddVec reference for the selftest cross-check)
-import common_dream as C  # noqa: E402
+import common_dream as C  # noqa: E402  (re-exports AddVec from the LLaDA steering/pid_steer.py)
 import directions       # noqa: E402  (load_arrows -> the CAA contrastive vector)
 
 DEFAULT_LAYER = 14
@@ -137,7 +136,7 @@ def _selftest():
 
     # Cross-check against pid_steer.AddVec (repo's own additive edit).
     fired = {}
-    ref = pid_steer.AddVec(layer, vec, fired)
+    ref = C.AddVec(layer, vec, fired)
     ref_out = ref._hook(None, None, (h.clone(), "c"))
     check("matches pid_steer.AddVec reference edit",
           torch.allclose(ref_out[0], r[0], atol=1e-6) and fired[layer] == 1)

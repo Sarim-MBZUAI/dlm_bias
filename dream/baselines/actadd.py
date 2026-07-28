@@ -33,8 +33,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))   # common_dream
 sys.path.insert(0, _HERE)
 
-import pid_steer        # noqa: E402  (unit_rows)
-import common_dream as C  # noqa: E402
+import common_dream as C  # noqa: E402  (re-exports unit_rows from the LLaDA steering/pid_steer.py)
 import calib            # noqa: E402
 
 DEFAULT_LAYER = 14
@@ -103,7 +102,7 @@ def build_injection(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None, path=DIR_P
     assert r.shape == (C.N_LAYERS, C.D_MODEL), \
         f"expected r shape ({C.N_LAYERS},{C.D_MODEL}), got {tuple(r.shape)}"
     assert 0 <= layer < C.N_LAYERS, f"layer {layer} out of range"
-    return alpha * pid_steer.unit_rows(r)[layer]     # (3584,)
+    return alpha * C.unit_rows(r)[layer]     # (3584,)
 
 
 def make_attach_fn(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None, path=DIR_PATH):
