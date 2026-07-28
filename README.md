@@ -73,6 +73,10 @@ unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
 baselines/   faithful prior-method baselines on the same harness: caa, meanact,
              actadd, linearact, aura, itic (+ common/calib/directions infra, run_all.py).
              Fit artifacts cached in baselines/cache/ (gitignored); results/<method>/.
+multirace/   multi-race generalization of the steering TARGET (white/asian/latino/
+             arab; black = existing reference): targets.py registry, make_items.py
+             (per-target eval/heldout splits + items_manifest.json),
+             build_arrows.py --target T -> arrows_<target>.pt (gitignored)
 data/        gitignored inputs — bbq_items/ (_sweep400.jsonl etc.),
              bbq_cache/ (BBQ jsonl cache), unqover/ (source + items)
 results/     tracked result dumps — base/, normal/ (+ alpha_sweep/), layer_pid/,
