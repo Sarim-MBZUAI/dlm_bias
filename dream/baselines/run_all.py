@@ -49,10 +49,14 @@ METHODS = {
     "caa": {"module": "caa", "needs_fit": False,
             "strength_param": "alpha", "run_defaults": {},
             "ref": "Contrastive Activation Addition (diff-in-means residual add)"},
+    # meanact: needs_fit stays True (fit builds the mean-diff artifact), but the
+    # default run (direction="unit") does not consume that fitted artifact.
+    # strength default matches meanact's own CLI default (run() requires one).
     "meanact": {"module": "meanact", "needs_fit": True,
-                "strength_param": "strength", "run_defaults": {},
+                "strength_param": "strength", "run_defaults": {"strength": 2.0},
                 "ref": "Mean-AcT: per-neuron mean-shift (transport.py:259)"},
-    "actadd": {"module": "actadd", "needs_fit": False,
+    # actadd: run() REQUIRES cache/actadd_dir.pt (build_injection raises if absent).
+    "actadd": {"module": "actadd", "needs_fit": True,
                "strength_param": "alpha", "run_defaults": {},
                "ref": "ActAdd: single-pair residual direction add"},
     "linearact": {"module": "linearact", "needs_fit": True,
@@ -124,41 +128,60 @@ def _run_candidates(method, out_dir, strength_val, limit, model, tok):
     return cand
 
 
+def _ensure_block_calib(model, tok):
+    """meanact.fit() loads cache/calib_block.pt; build that calib here (reusing
+    the shared model) if it is missing."""
+    import calib  # noqa: E402  (deferred: imports torch)
+    path = os.path.join(calib.CACHE_DIR, "calib_block.pt")
+    if not os.path.exists(path):
+        print(f"[run_all] building missing block calib -> {path}", flush=True)
+        calib.collect_activations("block", model=model, tok=tok, save=True)
+
+
 def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok):
     summary = []
     for method in methods:
         modname = METHODS[method]["module"]
-        mod = importlib.import_module(modname)
         out_dir = results_dir(method)
-        os.makedirs(out_dir, exist_ok=True)
+        status, fit_ran, result = "OK", False, None
+        try:
+            mod = importlib.import_module(modname)
+            os.makedirs(out_dir, exist_ok=True)
 
-        fit_ran = False
-        if do_fit and _module_needs_fit(method, mod):
-            if hasattr(mod, "fit") and callable(mod.fit):
-                print(f"[run_all] FIT  {method} ({modname}.fit) ...", flush=True)
-                _call_filtered(mod.fit, {"model": model, "tok": tok})
-                fit_ran = True
-            else:
-                print(f"[run_all] FIT  {method}: SKIP (needs a fit but exposes no fit())",
-                      flush=True)
+            if do_fit and _module_needs_fit(method, mod):
+                if hasattr(mod, "fit") and callable(mod.fit):
+                    if method == "meanact":
+                        _ensure_block_calib(model, tok)
+                    print(f"[run_all] FIT  {method} ({modname}.fit) ...", flush=True)
+                    _call_filtered(mod.fit, {"model": model, "tok": tok})
+                    fit_ran = True
+                else:
+                    print(f"[run_all] FIT  {method}: SKIP (needs a fit but exposes no fit())",
+                          flush=True)
 
-        result = None
-        if do_run:
-            if not (hasattr(mod, "run") and callable(mod.run)):
-                raise SystemExit(f"[run_all] {method}: module '{modname}' exposes no run()")
-            cand = _run_candidates(method, out_dir, strength_val, limit, model, tok)
-            missing = _unsatisfied_required(mod.run, cand)
-            if missing:
-                print(f"[run_all] RUN  {method}: SKIP -- run() needs {missing}", flush=True)
-            else:
-                sp = METHODS[method].get("strength_param")
-                print(f"[run_all] RUN  {method} ({modname}.run) "
-                      f"{sp}={cand.get(sp) if sp else None} limit={limit} -> {out_dir}",
-                      flush=True)
-                result = _call_filtered(mod.run, cand)
+            if do_run:
+                if not (hasattr(mod, "run") and callable(mod.run)):
+                    raise RuntimeError(f"module '{modname}' exposes no run()")
+                cand = _run_candidates(method, out_dir, strength_val, limit, model, tok)
+                missing = _unsatisfied_required(mod.run, cand)
+                if missing:
+                    status = "SKIP"
+                    print(f"[run_all] RUN  {method}: SKIP -- run() needs argument(s) "
+                          f"{missing} the orchestrator cannot supply generically; "
+                          f"add them to METHODS['{method}']['run_defaults'].", flush=True)
+                else:
+                    sp = METHODS[method].get("strength_param")
+                    print(f"[run_all] RUN  {method} ({modname}.run) "
+                          f"{sp}={cand.get(sp) if sp else None} limit={limit} -> {out_dir}",
+                          flush=True)
+                    result = _call_filtered(mod.run, cand)
+        except Exception as exc:  # noqa: BLE001 -- one method must not abort the rest
+            status = "FAIL"
+            print(f"[run_all] FAIL {method}: {exc}", flush=True)
+            traceback.print_exc()
 
         summary.append({"method": method, "module": modname, "out_dir": out_dir,
-                        "fit_ran": fit_ran, "result": result})
+                        "fit_ran": fit_ran, "result": result, "status": status})
     return summary
 
 
@@ -182,6 +205,11 @@ def _selftest():
     except SystemExit:
         bad = True
     check("parse_methods rejects unknown", bad)
+    # Facts fixed by review: actadd's run() REQUIRES its fit artifact, and
+    # meanact's run() requires a strength (supplied via run_defaults).
+    check("actadd registered needs_fit=True", METHODS["actadd"]["needs_fit"] is True)
+    check("meanact run_defaults supplies strength=2.0",
+          METHODS["meanact"]["run_defaults"].get("strength") == 2.0)
 
     for method in METHOD_ORDER:
         modname = METHODS[method]["module"]
@@ -206,7 +234,15 @@ def _selftest():
             missing = _unsatisfied_required(mod.run, cand)
             check(f"{method}: adapter satisfies run() required args", not missing)
             if missing:
-                print(f"[selftest-run_all]   -> unsatisfied: {missing}")
+                print(f"[selftest-run_all]   -> unsatisfied: {missing} "
+                      f"(add to METHODS['{method}']['run_defaults'])")
+            # Same check with --strength omitted (regression: meanact must not
+            # SKIP just because no strength was passed).
+            cand_none = _run_candidates(method, results_dir(method),
+                                        strength_val=None, limit=0,
+                                        model=object(), tok=object())
+            check(f"{method}: run() satisfied with --strength omitted",
+                  not _unsatisfied_required(mod.run, cand_none))
         rows.append((method, modname, "OK", "Y" if has_fit else "n",
                      "Y" if needs_fit else "n", results_dir(method)))
 
@@ -227,11 +263,11 @@ def _print_write_map(rows):
 
 def _print_dispatch_summary(summary):
     print("\n[run_all] SUMMARY")
-    print("  method     module      fit_ran  writes")
+    print("  method     module      status  fit_ran  writes")
     print("  " + "-" * 64)
     for s in summary:
         rel = os.path.relpath(s["out_dir"], _TREE)
-        print(f"  {s['method']:<10} {s['module']:<11} "
+        print(f"  {s['method']:<10} {s['module']:<11} {s['status']:<7} "
               f"{'yes' if s['fit_ran'] else 'no ':<8} {rel}/")
     print()
 
@@ -244,7 +280,10 @@ def main():
     ap.add_argument("--fit", action="store_true", help="build fitted artifacts first; NEEDS GPU.")
     ap.add_argument("--run", action="store_true", help="evaluate steered condition(s); NEEDS GPU.")
     ap.add_argument("--strength", type=float, default=None,
-                    help="generic strength; mapped per-method (strength/alpha/gamma).")
+                    help="generic strength; mapped per-method (strength/alpha/gamma). "
+                         "Omit to use each method's own default; NOTE meanact's "
+                         "run() REQUIRES a strength -- run_defaults supplies 2.0 "
+                         "when omitted, and an explicit --strength overrides it.")
     ap.add_argument("--alpha", type=float, default=None, help="alias for --strength.")
     ap.add_argument("--limit", type=int, default=0, help="cap BBQ items (0 = all sweep400).")
     ap.add_argument("--selftest", action="store_true",
@@ -268,16 +307,16 @@ def main():
         print("[run_all] loading Dream-v0-Instruct-7B once (shared)...", flush=True)
         model, tok = common_dream.load_model_tok()
 
-    try:
-        summary = dispatch(methods, do_fit=args.fit, do_run=args.run,
-                           strength_val=strength_val, limit=args.limit,
-                           model=model, tok=tok)
-    except Exception:  # noqa: BLE001
-        traceback.print_exc()
-        sys.exit(1)
+    summary = dispatch(methods, do_fit=args.fit, do_run=args.run,
+                       strength_val=strength_val, limit=args.limit,
+                       model=model, tok=tok)
 
     _print_dispatch_summary(summary)
-    print(f"[run_all] DONE ({len(summary)} method(s)).", flush=True)
+    failed = [s["method"] for s in summary if s["status"] == "FAIL"]
+    print(f"[run_all] DONE ({len(summary)} method(s), {len(failed)} failed).",
+          flush=True)
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
