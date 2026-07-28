@@ -70,6 +70,13 @@ steering/    PID-Steering code: build_arrows.py, pid_steer.py (layer axis),
 eval/        BBQ eval harness (bbq_eval.py, bias_metrics.py, attack_metrics.py)
              + balanced/ position-balanced rotation & oracle scripts
 unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
+multirace/   target-parameterized LLaDA runners (--target white/asian/latino/arab/black):
+             denoise_pid.py (decode-space PID, math imported from steering/denoise_pid.py),
+             normal.py (open-loop all-32-blocks vector, alpha 4), caa.py (single-layer,
+             default L14 alpha 2), common_eval.py (shared target registry + open-loop eval).
+             Expects Lane A's targets.py / _sweep400_<target>.jsonl / arrows_<target>.pt;
+             falls back to a labelled tag registry until targets.py lands.
+             Results -> results/multirace/<target>/{decode_pid,normal,caa}.
 baselines/   faithful prior-method baselines on the same harness: caa, meanact,
              actadd, linearact, aura, itic (+ common/calib/directions infra, run_all.py).
              Fit artifacts cached in baselines/cache/ (gitignored); results/<method>/.
