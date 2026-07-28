@@ -70,7 +70,7 @@ N_HEADS = 28           # attention heads
 HEAD_DIM = 128         # head_dim (N_HEADS*HEAD_DIM = 3584 = o_proj input)
 MASK_ID = 151666
 
-BLOCKS_PATH = "model.model.layers"   # ModuleList of DreamDecoderLayer
+BLOCKS_PATH = "model.layers"   # ModuleList of DreamDecoderLayer (DreamModel.model.layers)
 
 # Generation defaults for BBQ eval (short letter answer, greedy).
 GEN_DEFAULTS = dict(max_new_tokens=32, steps=64, temperature=0.0,

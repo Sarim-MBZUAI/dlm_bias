@@ -26,3 +26,6 @@ new_idea_sanity_test/HANDOFF.md
 # Dream port: built artifacts stay local (large tensors, eval caches)
 dream/arrows.pt
 dream/cache/
+dream/direction_examples.jsonl
+dream/baselines/cache/
+results/dream/
