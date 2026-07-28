@@ -91,6 +91,14 @@ CUDA_VISIBLE_DEVICES=3 $PY dream/denoise_pid.py --cond PI --limit 400
 - **`ROOT` stays the main tree.** Model, BBQ data, and the LLaDA harness live in the
   main checkout; built artifacts (`arrows.pt`, `cache/`) are written under `dream/`
   and gitignored.
+- **`alpha_traj` indexing (decode-PID).** The command computed after observing step
+  `t` drives forward `t+1`: forward 0 is always unsteered, and the final command
+  (`alpha_traj[-1]`) is computed but **never applied**. Actuation stats
+  (`alpha_sum`/`mean_alpha`/`alpha_final`) therefore aren't directly comparable to
+  the LLaDA decode-PID numbers.
+- **`parse_letter` hazard.** The parser (shared with LLaDA) can match a lowercase
+  article "a" in verbose output as answer A. Kept unchanged for comparability with
+  the LLaDA runs — flagged as a known metric hazard.
 
 ## Smoke observations
 

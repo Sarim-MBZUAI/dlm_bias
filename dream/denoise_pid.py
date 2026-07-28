@@ -236,6 +236,7 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
     per_item, counts = [], {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
     dis_n = dis_correct = 0
     alpha_sums, alpha_means, alpha_finals, sat_fracs = [], [], [], []
+    hook_fires = 0                  # run total (steerer.fires is reset per item)
     t0 = time.time()
     try:
         for idx, row in enumerate(rows):
@@ -245,6 +246,9 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
             ids = build_input(tok, row, model.device)
             seq, a, pb, sat = controlled_generate(
                 model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=steer_on)
+            hook_fires += steerer.fires   # counts EVERY invocation (bump precedes the
+                                          # alpha==0 short-circuit): expect n*steps*28
+                                          # in ALL conditions, base included.
             gen = tok.batch_decode(seq, skip_special_tokens=True)[0].strip()
             letter = C.parse_letter(gen, row)
             pred = LETTERS.index(letter) if letter else None
@@ -313,8 +317,11 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
     result = {
         "condition": cond, "model": "Dream-v0-Instruct-7B", "n": n,
         "counts": counts, "rates": rates,
-        # d_gap computed the SAME way as steering/denoise_pid.py (black - nonblack).
-        "d_gap": rates["black_pick_rate"] - rates["nonblack_pick_rate"],
+        # gap_within = within-run aim (black - nonblack). d_gap keeps the run_items /
+        # baselines/common.py semantics (black - baseline_black_rate); no baseline is
+        # passed here, so it is null -- compare gap_within across conditions instead.
+        "gap_within": rates["black_pick_rate"] - rates["nonblack_pick_rate"],
+        "d_gap": None, "baseline_black_rate": None,
         "acc_disambig": (dis_correct / dis_n) if dis_n else None, "n_disambig": dis_n,
         "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
         "actuator": f"all_{C.N_LAYERS}_layers", "anti_windup": True,
@@ -323,6 +330,7 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
         "mean_alpha": float(np.mean(alpha_means)) if alpha_means else 0.0,
         "mean_final_alpha": float(np.mean(alpha_finals)) if alpha_finals else 0.0,
         "mean_sat_frac": float(np.mean(sat_fracs)) if sat_fracs else 0.0,
+        "hook_fire_count": hook_fires,
         "gen_defaults": C.GEN_DEFAULTS, "steps": STEPS, "dummy_arrows": bool(dummy_arrows),
         "items_path": items_path, "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "elapsed_s": time.time() - t0,
@@ -333,9 +341,9 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
     with open(os.path.join(out_dir, f"cond_{stem}_samples.jsonl"), "w") as f:
         for it in per_item:
             f.write(json.dumps(it) + "\n")
-    print(f"[{cond}] DONE rates={rates} d_gap={result['d_gap']:.3f} "
+    print(f"[{cond}] DONE rates={rates} gap_within={result['gap_within']:.3f} "
           f"mean_alpha={result['mean_alpha']:.2f} final_alpha={result['mean_final_alpha']:.2f} "
-          f"sat={result['mean_sat_frac']:.2f} -> cond_{stem}.json", flush=True)
+          f"sat={result['mean_sat_frac']:.2f} fires={hook_fires} -> cond_{stem}.json", flush=True)
     return result
 
 

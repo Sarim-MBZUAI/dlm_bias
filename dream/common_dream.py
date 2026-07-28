@@ -225,6 +225,8 @@ def _chat_ids(tok, prompt, device):
     ids = tok.apply_chat_template(
         [{"role": "user", "content": prompt}],
         return_tensors="pt", add_generation_prompt=True)
+    if hasattr(ids, "input_ids"):   # transformers 5.x returns a BatchEncoding
+        ids = ids.input_ids
     return ids.to(device)
 
 
@@ -328,12 +330,16 @@ def run_items(
         "abstain_rate": counts["abstain"] / n,
         "unparseable_rate": counts["unparseable"] / n,
     }
+    # gap_within = within-run aim (black - nonblack), always defined.
+    # d_gap = shift vs a supplied clean baseline (baselines/common.py convention).
+    gap_within = rates["black_pick_rate"] - rates["nonblack_pick_rate"]
     d_gap = (rates["black_pick_rate"] - baseline_black_rate
              if baseline_black_rate is not None else None)
     acc_disambig = (dis_correct / dis_n) if dis_n else None
     result = {
         "condition": tag, "model": "Dream-v0-Instruct-7B", "n": n,
-        "counts": counts, "rates": rates, "d_gap": d_gap,
+        "counts": counts, "rates": rates,
+        "gap_within": gap_within, "d_gap": d_gap,
         "baseline_black_rate": baseline_black_rate,
         "acc_disambig": acc_disambig, "n_disambig": dis_n,
         "gen_defaults": {**GEN_DEFAULTS, **(gen_overrides or {})},
@@ -348,7 +354,8 @@ def run_items(
     with open(os.path.join(out_dir, f"cond_{tag}_samples.jsonl"), "w") as f:
         for it in per_item:
             f.write(json.dumps(it) + "\n")
-    print(f"[{tag}] DONE rates={rates} d_gap={d_gap} acc_dis={acc_disambig} "
+    print(f"[{tag}] DONE rates={rates} gap_within={gap_within:.3f} d_gap={d_gap} "
+          f"acc_dis={acc_disambig} "
           f"fire_count={n_fired} -> {outp}", flush=True)
     return result
 

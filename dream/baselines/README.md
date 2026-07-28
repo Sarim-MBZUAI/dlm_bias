@@ -49,16 +49,30 @@ Offline (no GPU):
 python dream/baselines/run_all.py --selftest      # asserts the 6-method contract
 python dream/baselines/caa.py --selftest          # (…and each method)
 ```
-GPU (use the pinned env — `requirements.txt` transformers==4.46.2):
+
+### Per-method CLIs (canonical)
+The shipped/verified flow drives each method's own CLI (fit → run) at its own
+strength — this is what produced `dream/RESULTS.md`, scripted end-to-end in
+**`dream/run_dream_gpu4.sh`** (the reference for the exact per-method picks).
+GPU, pinned env (`requirements.txt` transformers==4.46.2):
 ```
 # arrows prerequisite (caa/meanact):
 CUDA_VISIBLE_DEVICES=N python dream/build_arrows.py
-# fit + eval all 6:
-CUDA_VISIBLE_DEVICES=N python dream/baselines/run_all.py --fit --run --method all
-# one method:
+# one method, its own fit + strength:
 CUDA_VISIBLE_DEVICES=N python dream/baselines/aura.py --fit
-CUDA_VISIBLE_DEVICES=N python dream/baselines/aura.py --run --mode inject --gamma 2
+CUDA_VISIBLE_DEVICES=N python dream/baselines/aura.py --run --mode inject --gamma 4
+# all six at the RESULTS.md picks:
+bash dream/run_dream_gpu4.sh
 ```
+
+### `run_all.py` (convenience only)
+`run_all.py --fit --run --method all` batches all six under one model load, with
+per-method error isolation (one failure doesn't abort the rest), `meanact` default
+strength 2.0, and an automatic `actadd` fit before its run. Constraint: it applies
+**one global `--strength`/`--alpha` to every method**, so it cannot reproduce the
+per-method strengths behind `dream/RESULTS.md` — use the per-method CLIs (or
+`run_dream_gpu4.sh`) for anything you intend to report.
+
 Fitted artifacts land in `dream/baselines/cache/` (gitignored); eval output in
 `results/dream/<method>/` (gitignored).
 
