@@ -39,6 +39,7 @@ did not yield a parseable A/B/C letter — the **coherence** gauge.
 | method | who | family | black | non-Black | d_gap | unparse |
 |---|---|---|---:|---:|:--:|---:|
 | **decode-PI amax1.0** | **OURS** | denoise-step feedback | 0.258 | 0.172 | **+0.055** | 0.000 |
+| **decode-PID amax1.0** | **OURS** | denoise-step feedback | 0.258 | 0.172 | **+0.055** | 0.000 |
 | CAA (L14, mult 2) | baseline | single-layer vector | 0.253 | 0.175 | +0.048 | 0.000 |
 | ActAdd (L14, α8) | baseline | single-pair vector | 0.240 | 0.170 | +0.040 | 0.000 |
 | AURA inject (γ4) | baseline | neuron gating | 0.390 | 0.325 | +0.035 | 0.000 |
@@ -48,9 +49,11 @@ did not yield a parseable A/B/C letter — the **coherence** gauge.
 | Linear-AcT gaussian (s2) | baseline | per-neuron OT | 0.347 | 0.340 | −0.023 | 0.000 |
 | AURA vanilla (ctrl) | baseline | neuron gating | 0.228 | 0.235 | −0.037 | 0.000 |
 
-- **decode-PI amax1.0 leads every coherent baseline** — same qualitative result as
-  LLaDA (feedback over the denoising step is the strongest aimer), at a ~6× smaller
+- **decode-PI / PID amax1.0 lead every coherent baseline** — same qualitative result
+  as LLaDA (feedback over the denoising step is the strongest aimer), at a ~6× smaller
   actuation magnitude. Margins are modest at n=400 (no CIs yet — see caveats).
+- **PI == PID (+0.055, identical)** at amax1.0 — the derivative term adds nothing,
+  replicating the LLaDA finding that the Integral helps but the Derivative does not.
 - **AURA inject** moves the Black rate most (0.225→0.390) but lifts non-Black almost
   as much (disinhibition), so its *aim* is only +0.035.
 - **Linear-AcT** raises both rates together (broad disinhibition), near-zero aim.
@@ -89,5 +92,6 @@ meaningful operating point.
   (as on LLaDA).
 - Dream's base **abstains** far more than LLaDA (0.58 "unknown"), so absolute pick
   rates are lower; d_gap (the aim) is the comparable quantity.
-- Only decode-**PI** was dose-swept; decode-PID at amax1.0 + a coherent low-α
-  layer-space PID / normal point are the immediate follow-ups.
+- Only decode-**PI** was dose-swept (decode-PID confirmed at the amax1.0 optimum,
+  == PI); a coherent low-α layer-space PID / normal-vector point is the immediate
+  follow-up to complete the prior-work comparison on Dream.
