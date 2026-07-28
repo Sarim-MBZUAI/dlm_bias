@@ -22,3 +22,7 @@ data/unqover/
 handoff.md
 new_idea_sanity_test/HANDOFF.md
 .local_notes/
+
+# Dream port: built artifacts stay local (large tensors, eval caches)
+dream/arrows.pt
+dream/cache/
