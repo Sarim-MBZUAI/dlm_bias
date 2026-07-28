@@ -29,3 +29,4 @@ dream/cache/
 dream/direction_examples.jsonl
 dream/baselines/cache/
 results/dream/
+logs/
