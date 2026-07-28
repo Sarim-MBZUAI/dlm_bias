@@ -228,10 +228,11 @@ def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
         layers=None, limit=0, model=None, tok=None, baseline_black_rate=None):
     """Run the full sweep400 BBQ injection for one variant/strength.
 
-    Writes out_dir/cond_<tag>.json (+ _samples.jsonl); default tag=<variant> so
-    the file is cond_<variant>.json (== the spec's cond_VARIANT).  NEEDS A GPU."""
+    Writes out_dir/cond_<tag>.json (+ _samples.jsonl); default tag encodes the
+    strength (<variant>_s<strength>) so sweeps at different strengths don't
+    overwrite each other.  NEEDS A GPU."""
     assert variant in VARIANTS, f"variant must be one of {VARIANTS}"
-    tag = tag or variant
+    tag = tag or f"{variant}_s{strength:g}"
     stats = load_stats()
 
     def _attach(m):

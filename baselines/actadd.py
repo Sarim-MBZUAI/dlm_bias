@@ -189,15 +189,17 @@ def make_attach_fn(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None,
 
 
 def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
-        limit=0, baseline_black_rate=None, model=None, tok=None, **kw):
+        limit=0, baseline_black_rate=None, model=None, tok=None, tag=None, **kw):
     """Run the ActAdd BBQ-injection condition end-to-end.  NEEDS A GPU.
 
-    Writes cond_actadd.json / cond_actadd_samples.jsonl under out_dir via the
+    Writes cond_<tag>.json / cond_<tag>_samples.jsonl under out_dir via the
     shared common.run_baseline driver (identical scoring & file format to every
-    other baseline)."""
+    other baseline).  Default tag encodes alpha (actadd_a<alpha>) so sweeps at
+    different alphas don't overwrite each other."""
+    tag = tag or f"actadd_a{alpha:g}"
     attach_fn = make_attach_fn(alpha=alpha, layer=layer)
     return run_baseline(
-        attach_fn, out_dir=out_dir, tag="actadd", limit=limit,
+        attach_fn, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra={"method": "actadd_single_pair", "alpha": alpha,
                       "layer": layer, "n_items_fit": 1,
