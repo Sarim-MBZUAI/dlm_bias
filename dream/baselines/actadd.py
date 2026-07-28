@@ -116,11 +116,15 @@ def make_attach_fn(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None, path=DIR_PA
 
 
 def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
-        limit=0, baseline_black_rate=None, model=None, tok=None):
-    """Run the ActAdd BBQ-injection condition end-to-end.  NEEDS A GPU."""
+        limit=0, baseline_black_rate=None, model=None, tok=None, tag=None):
+    """Run the ActAdd BBQ-injection condition end-to-end.  NEEDS A GPU.
+
+    Default tag encodes alpha (actadd_a<alpha>) so sweeps at different alphas
+    don't overwrite each other; an explicit tag still wins."""
+    tag = tag or f"actadd_a{alpha:g}"
     return C.run_items(
         attach_fn=make_attach_fn(alpha=alpha, layer=layer),
-        out_dir=out_dir, tag="actadd", limit=limit,
+        out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra={"method": "actadd_single_pair", "alpha": alpha,
                       "layer": layer, "n_items_fit": 1,

@@ -138,9 +138,12 @@ def attach_fn(model, variant="empirical", strength=1.0, stats=None, layers=None)
 
 def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
         layers=None, limit=0, model=None, tok=None, baseline_black_rate=None):
-    """Run the sweep400 BBQ injection for one variant/strength.  NEEDS A GPU."""
+    """Run the sweep400 BBQ injection for one variant/strength.  NEEDS A GPU.
+
+    Default tag encodes the strength (<variant>_s<strength>) so sweeps at
+    different strengths don't overwrite each other; an explicit tag still wins."""
     assert variant in VARIANTS, f"variant must be one of {VARIANTS}"
-    tag = tag or variant
+    tag = tag or f"{variant}_s{strength:g}"
     stats = load_stats()
 
     def _attach(m):
