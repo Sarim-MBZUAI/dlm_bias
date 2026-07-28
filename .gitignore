@@ -30,3 +30,7 @@ dream/direction_examples.jsonl
 dream/baselines/cache/
 results/dream/
 logs/
+
+# multirace: built artifacts stay local (large tensors, contrast dumps)
+multirace/arrows_*.pt
+multirace/direction_examples_*.jsonl
