@@ -13,6 +13,15 @@ baseline on 400 Black-referent ambiguous **BBQ** items.
 · raw table: [`docs/COMPARISON.md`](docs/COMPARISON.md)
 · rigorous position-balanced result: [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)
 · **novelty (decode-space PID) diagram + writeup: [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md)**
+· **second-model port (Dream-v0-Instruct-7B): [`dream/RESULTS.md`](dream/RESULTS.md)**
+
+> **Second diffusion LM (Dream-v0-Instruct-7B).** The whole stack — decode-space
+> PID + all baselines — is ported to Dream in [`dream/`](dream/README.md). Result:
+> decode-space PID **transfers to a second diffusion LM** and is again the strongest
+> *coherent* aimer (d_gap **+0.055** at `amax≈1.0`, vs CAA +0.048 / ActAdd +0.040 /
+> AURA-inject +0.035) — but the actuation magnitude is **model-specific**: LLaDA's
+> `amax=6` drives Dream to 97.5 % incoherent output. Dose-response + baselines:
+> [`dream/RESULTS.md`](dream/RESULTS.md).
 
 ## Result (BBQ-400) — ours vs. baselines
 

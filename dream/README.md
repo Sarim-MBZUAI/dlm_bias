@@ -8,6 +8,22 @@ Lane A: the shared infra (`common_dream.py`) and the direction builder
 `pid_steer.py`), which import the shared infra here and the pure PID math from the
 LLaDA `steering/` files.
 
+## Results (BBQ-400) — see [`RESULTS.md`](RESULTS.md)
+
+Our **decode-space PID transfers to Dream**, but the actuation magnitude is
+model-specific: at LLaDA's `amax=6` it collapses Dream to 97.5 % unparseable;
+swept down it recovers coherence and **peaks at `amax≈1.0`, d_gap +0.055 — the
+strongest aim among all coherent methods** (CAA +0.048, ActAdd +0.040, AURA-inject
++0.035). Every all-28-block config tuned on LLaDA (normal α4, Mean-AcT, ITI-C)
+collapses — Dream is far more perturbation-sensitive. Clean dose-response:
+
+| decode-PI amax | 0.25 | 0.5 | **1.0** | 1.5 | 6 |
+|---|---|---|---|---|---|
+| d_gap | −0.008 | +0.027 | **+0.055** | −0.048 | collapse (0.975 unparse) |
+
+Single run, n=400, no CIs yet — margins between the top coherent methods are not
+yet statistically separated. Full table, baselines, and caveats in `RESULTS.md`.
+
 ## What's here
 
 | file | role |
