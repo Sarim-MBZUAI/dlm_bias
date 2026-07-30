@@ -73,6 +73,7 @@ from common import (  # noqa: E402
     run_baseline,       # the shared GPU eval loop
     load_model,
     CACHE_DIR,
+    SWEEP400,           # default BBQ items file
     N_LAYERS,           # 32
     N_HEADS,            # 32
     D_HEAD,             # 128
@@ -290,7 +291,8 @@ def attach_fn(model, injection):
 
 
 def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
-        limit=0, model=None, tok=None, baseline_black_rate=None, probes=None):
+        limit=0, model=None, tok=None, baseline_black_rate=None, probes=None,
+        items_path=SWEEP400):
     """RUN stage (NEEDS A GPU).  Build the top-K injection and evaluate on the
     400-item BBQ sweep via the shared run_baseline loop."""
     inj = build_injection(K=K, alpha=alpha, probes=probes)
@@ -298,6 +300,7 @@ def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         tag = f"itic_K{inj['K']}_a{alpha:g}"
     return run_baseline(
         attach_fn=lambda m: attach_fn(m, inj),
+        items_path=items_path,
         out_dir=out_dir, tag=tag, limit=limit, model=model, tok=tok,
         baseline_black_rate=baseline_black_rate,
         config_extra={"method": "iti_c", "K": inj["K"], "alpha": float(alpha),
@@ -414,6 +417,8 @@ def main():
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA,
                     help=f"constant injection strength (default {DEFAULT_ALPHA})")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--items", default=SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     args = ap.parse_args()
@@ -425,7 +430,7 @@ def main():
         return
     if args.run:
         run(K=args.topk, alpha=args.alpha, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit)
+            limit=args.limit, items_path=args.items)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit or --run (GPU)")
 

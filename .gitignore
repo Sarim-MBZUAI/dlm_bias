@@ -34,3 +34,8 @@ logs/
 # multirace: built artifacts stay local (large tensors, contrast dumps)
 multirace/arrows_*.pt
 multirace/direction_examples_*.jsonl
+
+# balanced_all: raw per-rotation result JSONs / samples / rotation files stay
+# local; only summary markdown under results/balanced_all/ is tracked.
+results/balanced_all/**
+!results/balanced_all/*.md

@@ -79,6 +79,12 @@ multirace/   multi-race generalization of the steering TARGET (white/asian/latin
              steering/denoise_pid.py), normal.py (open-loop all-32-blocks, alpha 4),
              caa.py (single-layer L14 alpha 2), common_eval.py (shared eval loop).
              Results -> results/multirace/<target>/{decode_pid,normal,caa}.
+balanced_all/ position-balanced eval for EVERY headline condition: generalized
+             make_rotations.py / oracle_test.py (any items file, any target via
+             multirace/targets.py), aggregate.py (pools 3 rotation results, either
+             schema, per-position gaps), GPU queue scripts for the 7 Black baselines,
+             decode-PID (Black) and arab/white base/decode-PI/normal. Raw outputs
+             land in results/balanced_all/ (gitignored except *.md). See its README.
 baselines/   faithful prior-method baselines on the same harness: caa, meanact,
              actadd, linearact, aura, itic (+ common/calib/directions infra, run_all.py).
              Fit artifacts cached in baselines/cache/ (gitignored); results/<method>/.

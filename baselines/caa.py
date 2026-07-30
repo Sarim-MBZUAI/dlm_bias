@@ -288,6 +288,8 @@ def main():
                     help="steering strength (positive -> inject toward Black); sweepable")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help=f"single block to steer (default {DEFAULT_LAYER})")
+    ap.add_argument("--items", default=SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -301,7 +303,8 @@ def main():
         return
     if args.run:
         run(alpha=args.alpha, layer=args.layer, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            items_path=args.items, limit=args.limit,
+            baseline_black_rate=args.baseline_black_rate)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (verify arrows), "
              "or --run (GPU eval)")

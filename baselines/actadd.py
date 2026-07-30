@@ -296,6 +296,8 @@ def main():
                     help="injection strength (positive -> toward Black)")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help="block layer to add the vector at (native: residual)")
+    ap.add_argument("--items", default=common.SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out-dir", default=RESULTS_DIR)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--baseline-black-rate", type=float, default=None)
@@ -308,7 +310,8 @@ def main():
         return
     if args.run:
         run(out_dir=args.out_dir, alpha=args.alpha, layer=args.layer,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            limit=args.limit, baseline_black_rate=args.baseline_black_rate,
+            items_path=args.items)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU) or --run (GPU)")
 

@@ -165,7 +165,8 @@ def build_attach_fn(strength, layers=None, direction="unit", gain=GAIN,
 # End-to-end run (NEEDS GPU + model).                                          #
 # --------------------------------------------------------------------------- #
 def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
-        gain=GAIN, limit=0, baseline_black_rate=None, model=None, tok=None):
+        gain=GAIN, limit=0, baseline_black_rate=None, model=None, tok=None,
+        items_path=common.SWEEP400):
     """Run one Mean-AcT injection condition end-to-end via common.run_baseline.
 
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl) in the pid_steer format.
@@ -175,7 +176,7 @@ def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
     attach_fn = build_attach_fn(strength, layers=layers, direction=direction,
                                 gain=gain)
     return common.run_baseline(
-        attach_fn, out_dir=out_dir, tag=tag, limit=limit,
+        attach_fn, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra={
             "method": "mean_act",
@@ -375,6 +376,8 @@ def main():
                          "diff-in-means magnitude), fitted (per-neuron from calib)")
     ap.add_argument("--where", default="block",
                     help="calib granularity for --fit (default block/residual)")
+    ap.add_argument("--items", default=common.SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out-dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -389,7 +392,8 @@ def main():
     if args.run:
         run(args.strength, out_dir=args.out_dir, tag=args.tag,
             direction=args.direction, limit=args.limit,
-            baseline_black_rate=args.baseline_black_rate)
+            baseline_black_rate=args.baseline_black_rate,
+            items_path=args.items)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU cache), "
              "or --run (GPU)")
