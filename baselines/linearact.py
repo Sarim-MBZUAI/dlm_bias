@@ -225,7 +225,8 @@ def attach_fn(model, variant="empirical", strength=1.0, stats=None, layers=None)
 # RUN one BBQ condition (NEEDS GPU).                                           #
 # --------------------------------------------------------------------------- #
 def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
-        layers=None, limit=0, model=None, tok=None, baseline_black_rate=None):
+        layers=None, limit=0, model=None, tok=None, baseline_black_rate=None,
+        items_path=common.SWEEP400):
     """Run the full sweep400 BBQ injection for one variant/strength.
 
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl); default tag encodes the
@@ -240,7 +241,7 @@ def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
                          stats=stats, layers=layers)
 
     return run_baseline(
-        _attach, out_dir=out_dir, tag=tag, limit=limit,
+        _attach, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         model=model, tok=tok, baseline_black_rate=baseline_black_rate,
         config_extra={"method": "linear_act", "variant": variant,
                       "strength": strength, "where": WHERE,
@@ -354,6 +355,8 @@ def main():
                     help="AcT transport strength; 1=full OT, >1 extrapolates")
     ap.add_argument("--cap", type=int, default=calib.CAP)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--items", default=common.SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     args = ap.parse_args()
@@ -365,7 +368,8 @@ def main():
         return
     if args.run:
         run(variant=args.variant, strength=args.strength,   # NEEDS GPU
-            out_dir=args.out_dir, tag=args.tag, limit=args.limit)
+            out_dir=args.out_dir, tag=args.tag, limit=args.limit,
+            items_path=args.items)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit or --run (GPU)")
 

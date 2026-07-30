@@ -205,7 +205,8 @@ def attach_fn(mode, gamma=1.0, auroc=None):
 # RUN: one full BBQ condition end-to-end (NEEDS GPU).                          #
 # --------------------------------------------------------------------------- #
 def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
-        baseline_black_rate=None, model=None, tok=None, auroc=None):
+        baseline_black_rate=None, model=None, tok=None, auroc=None,
+        items_path=common.SWEEP400):
     """Evaluate one AURA condition on the sweep-400 BBQ items.
 
     mode='vanilla' -> suppression gate (negative control, lowers Black rate).
@@ -220,7 +221,7 @@ def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
            "hook": "mul_vec_pre_hook on blocks[k].ff_out INPUT (12288-d MLP-hidden)",
            "note": "vanilla=suppression(1-2max(auroc-.5,0)); inject=amplify(1+g*2max(auroc-.5,0))"}
     return common.run_baseline(
-        af, out_dir=out_dir, tag=tag, limit=limit,
+        af, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra=cfg)
 
@@ -335,6 +336,8 @@ def main():
                     help="vanilla=suppression (neg. control); inject=amplification (headline)")
     ap.add_argument("--gamma", type=float, default=1.0,
                     help="amplification strength for --mode inject (>=0; 0=identity)")
+    ap.add_argument("--items", default=common.SWEEP400,
+                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
     ap.add_argument("--out-dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -348,7 +351,8 @@ def main():
         return
     if args.run:
         run(args.mode, gamma=args.gamma, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            limit=args.limit, baseline_black_rate=args.baseline_black_rate,
+            items_path=args.items)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU), or --run (GPU)")
 
