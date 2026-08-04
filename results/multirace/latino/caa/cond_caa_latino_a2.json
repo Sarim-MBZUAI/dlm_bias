@@ -1,0 +1,55 @@
+{
+  "method": "caa",
+  "target": "latino",
+  "alpha": 2.0,
+  "config": {
+    "target": "latino",
+    "target_tags": [
+      "f-latino",
+      "hispanic",
+      "latino",
+      "m-latino"
+    ],
+    "fallback_registry": false,
+    "layers": [
+      14
+    ],
+    "vhat_layer": 14,
+    "arrows": {
+      "n_items": 400,
+      "source": "multirace_manifest_heldout_seed42_disjoint_black_seed42_and_sweep400"
+    },
+    "items_path": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400_latino.jsonl",
+    "mode": "caa_single_layer_14",
+    "caa_layer": 14,
+    "dummy_arrows": false
+  },
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 45,
+    "nontarget": 32,
+    "abstain": 323,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.1125,
+    "nontarget_pick_rate": 0.08,
+    "abstain_rate": 0.8075,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": 0.0325,
+  "d_gap": null,
+  "baseline_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "hooks_fired_layers": 1,
+  "hook_fire_counts": [
+    25600
+  ],
+  "cuda_visible_devices": "3",
+  "elapsed_s": 761.8926417827606
+}

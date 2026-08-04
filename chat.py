@@ -10,7 +10,7 @@ import argparse
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/Dream-v0-Base-7B"
+DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/Dream-v0-Instruct-7B"
 
 # Special token ids for Dream-v0-Base-7B (for reference):
 #   eos / pad / bos = 151643
