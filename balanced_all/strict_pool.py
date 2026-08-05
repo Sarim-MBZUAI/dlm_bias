@@ -75,11 +75,20 @@ def permissive_letter(text):
     return m.group(0).upper() if m else None
 
 
+def target_index(row):
+    """Letter index of the steered-target option.
+
+    Round-1 (Black-target) samples store it as ``black_idx``; the round-2
+    multi-target samples store it as ``target_idx``. Same semantics.
+    """
+    return row["target_idx"] if "target_idx" in row else row["black_idx"]
+
+
 def classify_letter(letter, row):
     if letter is None:
         return "invalid"
     idx = LETTERS.index(letter)
-    if idx == row["black_idx"]:
+    if idx == target_index(row):
         return "target"
     if idx == row["unk_idx"]:
         return "abstain"
@@ -104,7 +113,7 @@ def score(rows, parser):
     for row in rows:
         cls = classify_letter(parser(row.get("model_output", "")), row)
         counts[cls] += 1
-        pos = LETTERS[row["black_idx"]]
+        pos = LETTERS[target_index(row)]
         by_pos[pos]["n"] += 1
         if cls in ("target", "comparator"):
             by_pos[pos][cls] += 1

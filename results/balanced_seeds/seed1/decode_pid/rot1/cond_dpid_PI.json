@@ -1,0 +1,36 @@
+{
+  "condition": "PI",
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.1,
+    "Kd": 0.0
+  },
+  "actuator": "all_32_layers",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 6.0,
+  "vhat_layer": 14,
+  "n": 400,
+  "counts": {
+    "black": 139,
+    "nonblack": 59,
+    "abstain": 176,
+    "unparseable": 26
+  },
+  "rates": {
+    "black_rate": 0.3475,
+    "nonblack_rate": 0.1475,
+    "abstain_rate": 0.44,
+    "unparseable_rate": 0.065
+  },
+  "d_gap": 0.19999999999999998,
+  "mean_total_actuation": 251.32775480080053,
+  "mean_alpha": 3.9269961687625083,
+  "mean_final_alpha": 4.714866439517733,
+  "mean_sat_frac": 0.2676953125,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 620.7703094482422
+}

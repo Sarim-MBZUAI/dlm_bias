@@ -1,0 +1,55 @@
+{
+  "condition": "PI",
+  "target": "asian",
+  "config": {
+    "target": "asian",
+    "target_tags": [
+      "asian",
+      "f-asian",
+      "m-asian"
+    ],
+    "fallback_registry": false,
+    "arrows": {
+      "n_items": 400,
+      "source": "multirace_manifest_heldout_seed42_disjoint_black_seed42_and_sweep400"
+    },
+    "items_path": "results/balanced_all/rotations/_sweep400_asian_rot2.jsonl"
+  },
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.1,
+    "Kd": 0.0
+  },
+  "actuator": "all_32_layers",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 6.0,
+  "vhat_layer": 14,
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 24,
+    "nontarget": 2,
+    "abstain": 0,
+    "unparseable": 374
+  },
+  "rates": {
+    "target_pick_rate": 0.06,
+    "nontarget_pick_rate": 0.005,
+    "abstain_rate": 0.0,
+    "unparseable_rate": 0.935
+  },
+  "gap_within": 0.055,
+  "d_gap": null,
+  "baseline_rate": null,
+  "mean_total_actuation": 294.81533186083414,
+  "mean_alpha": 4.606489560325533,
+  "mean_final_alpha": 5.663836972567509,
+  "mean_sat_frac": 0.3806640625,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "dummy_arrows": false,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 618.2273790836334
+}

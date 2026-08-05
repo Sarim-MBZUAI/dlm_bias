@@ -48,3 +48,21 @@ results/balanced_all/**
 !results/balanced_all/black/**/
 !results/balanced_all/black/**/cond_*.json
 !results/balanced_all/black/**/cond_*_samples.jsonl
+# round 2: multi-target balanced runs (arab/asian/latino/white) are tracked
+# the same way (rotation item files stay local).
+!results/balanced_all/arab/
+!results/balanced_all/arab/**/
+!results/balanced_all/arab/**/cond_*.json
+!results/balanced_all/arab/**/cond_*_samples.jsonl
+!results/balanced_all/asian/
+!results/balanced_all/asian/**/
+!results/balanced_all/asian/**/cond_*.json
+!results/balanced_all/asian/**/cond_*_samples.jsonl
+!results/balanced_all/latino/
+!results/balanced_all/latino/**/
+!results/balanced_all/latino/**/cond_*.json
+!results/balanced_all/latino/**/cond_*_samples.jsonl
+!results/balanced_all/white/
+!results/balanced_all/white/**/
+!results/balanced_all/white/**/cond_*.json
+!results/balanced_all/white/**/cond_*_samples.jsonl
