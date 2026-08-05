@@ -35,6 +35,8 @@ sys.path.insert(0, os.path.join(_ROOT, "eval"))
 import bbq_eval as B  # generate, BiasSteerer, layer helpers, defaults -- REUSED
 
 LETTERS = ["A", "B"]  # two subjects, NO unknown
+ARROWS_VHAT_LAYER = 14  # row of an arrows-format blob used as the direction
+                        # (repo-wide vhat convention, cf. steering/denoise_pid.py)
 
 
 def build_prompt(item):
@@ -49,25 +51,77 @@ def build_prompt(item):
     )
 
 
+# Punctuation that may FOLLOW an answer letter (closers/separators, no letters).
+_AFTER_LETTER_PUNCT = ".,;:!?)]}\"'"
+
+
 def parse_choice(text, item):
     """Return 0 (subj0/A) or 1 (subj1/B) or None.
 
-    Order matters here (unlike BBQ) because subject names often START with A/B
-    ("African", "Black", "Arab", "Asian"), so a blind any-A/B-char scan misfires.
-    We use: (1) a leading option letter, (2) any STANDALONE A/B token, then
-    (3) subject-name substring (earliest occurrence wins). No blind char fallback.
+    STRICT + SYMMETRIC rules (position-debiasing benchmark: the parser itself
+    must not favor either option letter):
+      (1) Answer letter, ONLY when anchored at the start of the (stripped)
+          response, optionally wrapped in ( / [, and followed by whitespace,
+          punctuation, or end-of-string.  Uppercase A/B is always accepted
+          there; lowercase 'a'/'b' is accepted ONLY when it is the whole
+          response or is followed by punctuation -- a lowercase 'a' followed
+          by whitespace + a word is the English ARTICLE ("a Jewish man") and
+          must NOT be read as choice A (that would inject first-position bias).
+      (2) Subject-name substring fallback, earliest occurrence of either
+          option's surface text wins (symmetric in A/B).
+    There is deliberately NO mid-string standalone-letter rule (a former
+    \\b[ABab]\\b scan also matched the article "a") and no blind char fallback.
     """
     t = text.strip()
-    m = re.match(r"\s*[\(\[]?([ABab])\b", t)      # leading "A", "B)", "[A]" ...
+    m = re.match(r"[\(\[]?([ABab])(?=$|[\s.,;:!?)\]}\"'])", t)
     if m:
-        return LETTERS.index(m.group(1).upper())
-    m = re.search(r"\b([ABab])\b", t)             # any standalone A/B token
-    if m:
-        return LETTERS.index(m.group(1).upper())
+        letter = m.group(1)
+        if letter in ("A", "B"):
+            return LETTERS.index(letter)
+        rest = t[m.end(1):]                       # text right after the letter
+        if rest == "" or rest[0] in _AFTER_LETTER_PUNCT:
+            return LETTERS.index(letter.upper())  # bare "a"/"b" or "a." / "b)"
+        # lowercase letter + whitespace + more text: article, fall through
     low = t.lower()                               # subject-name substring
     hits = [(low.find(str(item[f"subj{k}"]).strip().lower()), k) for k in (0, 1)]
     hits = [(p, k) for p, k in hits if p >= 0]
     return min(hits)[1] if hits else None
+
+
+def selftest_parse_choice():
+    """Unit tests for parse_choice (CPU, no model). Returns True iff all pass."""
+    it = {"subj0": "African", "subj1": "European"}       # A=African, B=European
+    it_j = {"subj0": "European", "subj1": "Jewish man"}  # B's text starts with 'J'
+    cases = [
+        # -- rule (1): anchored answer letter ------------------------------- #
+        ("A", it, 0), (" B.", it, 1), ("B", it, 1), ("A.", it, 0),
+        ("a", it, 0), ("b", it, 1),                  # whole reply = bare letter
+        ("a.", it, 0), ("b)", it, 1),                # lowercase + punctuation
+        ("(A)", it, 0), ("[b]", it, 1), ("B:", it, 1),
+        ("A European man", it, 0),                   # uppercase at start: letter wins
+        # -- the article 'a' must NEVER be read as choice A ----------------- #
+        ("a Jewish man", it, None),                  # article + non-subject text
+        ("a Jewish man", it_j, 1),                   # article -> subject fallback (B!)
+        ("a European man", it, 1),                   # article -> subject fallback (B!)
+        # -- mid-string letters are no longer accepted ---------------------- #
+        ("The answer is B", it, None),               # no subject text -> None
+        ("The answer is B, the European", it, 1),    # -> subject fallback
+        # -- rule (2): symmetric subject-name fallback ---------------------- #
+        ("African", it, 0), ("European", it, 1),
+        ("The African person did it.", it, 0),
+        ("Either African or European", it, 0),       # earliest occurrence wins
+        # -- no answer ------------------------------------------------------ #
+        ("", it, None), ("Cannot decide", it, None), ("ABBA", it, None),
+    ]
+    ok_all = True
+    for text, item, want in cases:
+        got = parse_choice(text, item)
+        ok = got == want
+        ok_all &= ok
+        print(f"[selftest] parse_choice({text!r:35s}) -> {got!s:4s} "
+              f"(want {want!s:4s}): {'PASS' if ok else 'FAIL'}")
+    print(f"[selftest] parse_choice OVERALL: {'PASS' if ok_all else 'FAIL'}")
+    return ok_all
 
 
 def attach_steering(model, args, spec):
@@ -82,7 +136,13 @@ def attach_steering(model, args, spec):
         return steerers, False
 
     saved = torch.load(args.direction_path, map_location="cpu")
-    direction = saved["direction"].to(torch.float32).to(args.device)
+    if "direction" in saved:
+        direction = saved["direction"].to(torch.float32).to(args.device)
+    else:  # arrows-format blob (e.g. steering/arrows.pt): per-layer rows under "r"
+        r = saved["r"][ARROWS_VHAT_LAYER].to(torch.float32)
+        direction = (r / r.norm().clamp(min=1e-12)).to(args.device)
+        print(f"Direction: arrows-format {args.direction_path} -> "
+              f"unit(r[{ARROWS_VHAT_LAYER}]) (vhat convention).")
     if args.normalize_direction:
         direction = direction / direction.norm()
 
@@ -117,9 +177,11 @@ def attach_steering(model, args, spec):
 
 def parse_args():
     p = argparse.ArgumentParser(description="UNQOVER steering eval for LLaDA-8B-Instruct.")
+    p.add_argument("--selftest", action="store_true",
+                   help="run parse_choice unit tests (CPU, no model/items) and exit")
     p.add_argument("--model-path", default=B.DEFAULT_MODEL_PATH)
-    p.add_argument("--items", required=True, help="jsonl from unqover_loader.py")
-    p.add_argument("--out", required=True, help="output results jsonl")
+    p.add_argument("--items", default=None, help="jsonl from unqover_loader.py")
+    p.add_argument("--out", default=None, help="output results jsonl")
     p.add_argument("--seed", type=int, default=42)
     # generation (same knobs/defaults as bbq_eval)
     p.add_argument("--gen-length", type=int, default=32)
@@ -138,11 +200,16 @@ def parse_args():
     p.add_argument("--normalize-direction", action="store_true")
     p.add_argument("--direction-path", default=B.DEFAULT_DIRECTION_PATH)
     p.add_argument("--hook-module", default=B.DEFAULT_HOOK_MODULE)
-    return p.parse_args()
+    args = p.parse_args()
+    if not args.selftest and (args.items is None or args.out is None):
+        p.error("--items and --out are required (or use --selftest)")
+    return args
 
 
 def main():
     args = parse_args()
+    if args.selftest:
+        sys.exit(0 if selftest_parse_choice() else 1)
     torch.manual_seed(args.seed)
     spec = B.parse_layer_spec(args.layer)
 

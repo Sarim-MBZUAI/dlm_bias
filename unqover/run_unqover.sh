@@ -14,9 +14,12 @@ RES=results/unqover; mkdir -p "$RES"
 
 CLASS=${CLASS:-ethnicity}                 # ethnicity | religion | country | gender
 LIMIT=${LIMIT:-2000}                      # number of instances (x4 items) to eval
-TARGET=${TARGET:-African}                 # subject for the BBQ-comparable directional gap
-# Reuse the race/Black answer-text direction @ block L14 (same as run_e1.sh).
-DIR=${DIR:-directional_steering/race_black_anchored_text.pt}
+TARGET=${TARGET:-Black}                   # subject for the BBQ-comparable directional
+                                          # gap (matches the PID adapters' default)
+# Direction: steering/arrows.pt (the Black direction). It is an arrows-format
+# blob; unqover_eval.py derives unit(r[L14]) from it -- the same vhat the PID
+# adapters use. Override DIR with any {"direction": ...} .pt or arrows-format .pt.
+DIR=${DIR:-steering/arrows.pt}
 LAYER=${LAYER:-14}
 
 SRC=$DATA/generated/$CLASS.source.json

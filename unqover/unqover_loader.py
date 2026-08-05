@@ -123,18 +123,17 @@ def main():
     complete = [i for i in insts if len(by_inst[i]) == 2]
     dropped = len(insts) - len(complete)
     random.Random(args.seed).shuffle(complete)
-    if args.limit is not None:
-        complete = complete[:args.limit]
+    kept = complete[:args.limit] if args.limit is not None else complete
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     n = 0
     with open(args.out, "w") as fh:
-        for iid in complete:
+        for iid in kept:
             for item in emit(data, bclass, by_inst[iid], iid):
                 fh.write(json.dumps(item) + "\n")
                 n += 1
     print(f"class={bclass}  instances(total/complete/kept)="
-          f"{len(insts)}/{len(complete) + 0}/{len(complete)}  "
+          f"{len(insts)}/{len(complete)}/{len(kept)}  "
           f"(dropped incomplete={dropped})")
     print(f"wrote {n} items ({n // 4} quadruples) -> {args.out}")
 

@@ -8,6 +8,8 @@ THIN ADAPTER. All control machinery is IMPORTED from steering.denoise_pid:
     p_black_from_logits  -- P(target letter) = P(plain)+P(space) at gen pos 0
     letter_token_ids     -- letter -> (plain_id, space_id)
     load_model_tok / load_vhat / attach_all_layers  -- model & actuator setup
+    (direction is loaded here via load_vhat_from -- same unit(r[layer]) recipe,
+     but --arrows/--vhat-layer let a non-Black target use its own arrows file)
     COND_MASK/SETPOINT/ALPHA_MAX/STEPS/N_LAYERS      -- controller config
 Nothing about the controller/actuator changes; only the BBQ glue is swapped for
 UNQOVER glue (2-choice A/B prompt, per-item target letter, UNQOVER record schema).
@@ -64,6 +66,19 @@ DEFAULT_OUT_DIR = os.path.join(_ROOT, "results", "unqover", "denoise_pid")
 ITEM_FIELDS = ("id", "instance_id", "uqid", "bias_class", "qid", "polarity",
                "subj0", "subj1", "tid", "act_cluster", "obj0", "obj1",
                "s_cluster0", "s_cluster1")
+
+DEFAULT_ARROWS = D.DEFAULT_ARROWS          # steering/arrows.pt (Black direction)
+DEFAULT_VHAT_LAYER = D.LAYER               # 14
+
+
+def load_vhat_from(arrows_path=DEFAULT_ARROWS, layer=DEFAULT_VHAT_LAYER):
+    """Same recipe as denoise_pid.load_vhat -- unit(r[layer]) -- but for an
+    arbitrary arrows file/row, so a non-Black target can use its own direction
+    (e.g. multirace/arrows_arab.pt). With the defaults this reproduces
+    load_vhat() byte-for-byte (steering/arrows.pt row 14)."""
+    blob = torch.load(arrows_path, map_location="cpu")
+    r = blob["r"][layer].to(torch.float32)
+    return r / r.norm().clamp(min=1e-12)
 
 
 # --------------------------------------------------------------------------- #
@@ -134,14 +149,15 @@ def make_record(item, target, pick, gen, diag):
 # --------------------------------------------------------------------------- #
 # GPU eval (NOT run by the gate; mirrors denoise_pid.run with UNQOVER glue).
 # --------------------------------------------------------------------------- #
-def run(cond, kp, ki, kd, amax, limit, items_path, target, out_path):
+def run(cond, kp, ki, kd, amax, limit, items_path, target, out_path,
+        arrows_path=DEFAULT_ARROWS, vhat_layer=DEFAULT_VHAT_LAYER):
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
     eff_kd = kd if use_kd else 0.0
     steer_on = cond != "base"
 
     model, tok = load_model_tok()
-    vhat = load_vhat().to(model.device)
+    vhat = load_vhat_from(arrows_path, vhat_layer).to(model.device)
     plain, space = letter_token_ids(tok)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, eff_ki, eff_kd, SETPOINT, amax, antiwindup=True)
@@ -150,7 +166,8 @@ def run(cond, kp, ki, kd, amax, limit, items_path, target, out_path):
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     print(f"[{cond}] items={items_path} target={target!r} n={len(items)} "
           f"dev={torch.cuda.get_device_name(0)} CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
-          f"actuator=all{N_LAYERS} Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} "
+          f"actuator=all{N_LAYERS} vhat={arrows_path}[L{vhat_layer}] "
+          f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} "
           f"amax={amax} steer_on={steer_on} AW=on", flush=True)
 
     no_answer = 0
@@ -183,6 +200,7 @@ def run(cond, kp, ki, kd, amax, limit, items_path, target, out_path):
 
     cfg = {"condition": cond, "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
            "actuator": f"all_{N_LAYERS}_layers", "anti_windup": True,
+           "arrows": arrows_path, "vhat_layer": vhat_layer,
            "setpoint": SETPOINT, "alpha_max": amax, "target_subject": target,
            "items": items_path, "n_items": len(items), "no_answer": no_answer,
            "steer_on": steer_on, "gen_length": D.GEN_LENGTH, "steps": STEPS,
@@ -199,8 +217,24 @@ def run(cond, kp, ki, kd, amax, limit, items_path, target, out_path):
 # --------------------------------------------------------------------------- #
 # Offline self-test (NO model, NO GPU).
 # --------------------------------------------------------------------------- #
-def selftest(items_path, target):
+def selftest(items_path, target, arrows_path=DEFAULT_ARROWS,
+             vhat_layer=DEFAULT_VHAT_LAYER):
     ok_all = True
+
+    # (0) direction loader: local load_vhat_from == imported load_vhat -------- #
+    if os.path.exists(arrows_path):
+        v = load_vhat_from(arrows_path, vhat_layer)
+        unit_ok = abs(float(v.norm()) - 1.0) < 1e-5
+        ok_all &= unit_ok
+        print(f"[selftest] vhat from {arrows_path}[L{vhat_layer}]: "
+              f"shape={tuple(v.shape)} unit-norm: {'PASS' if unit_ok else 'FAIL'}")
+        if arrows_path == DEFAULT_ARROWS and vhat_layer == DEFAULT_VHAT_LAYER:
+            same = torch.equal(v, load_vhat())
+            ok_all &= same
+            print(f"[selftest] load_vhat_from(defaults) == denoise_pid.load_vhat(): "
+                  f"{'PASS' if same else 'FAIL'}")
+    else:
+        print(f"[selftest] vhat: arrows file missing ({arrows_path}); SKIPPED")
 
     # (1) target-letter logic ------------------------------------------------ #
     a_item = {"subj0": target, "subj1": "Other"}
@@ -286,16 +320,23 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="0 = all target items")
     ap.add_argument("--items", default=DEFAULT_ITEMS)
     ap.add_argument("--target", default=DEFAULT_TARGET)
+    ap.add_argument("--arrows", default=DEFAULT_ARROWS,
+                    help="arrows .pt whose row supplies vhat (default: "
+                         "steering/arrows.pt = Black direction; e.g. "
+                         "multirace/arrows_arab.pt for TARGET=Arab)")
+    ap.add_argument("--vhat-layer", type=int, default=DEFAULT_VHAT_LAYER,
+                    help="arrows row used as vhat (default 14)")
     ap.add_argument("--out", default=None, help="output jsonl (default under results/unqover/denoise_pid/)")
     args = ap.parse_args()
 
     if args.selftest:
-        sys.exit(0 if selftest(args.items, args.target) else 1)
+        sys.exit(0 if selftest(args.items, args.target,
+                               args.arrows, args.vhat_layer) else 1)
     if not args.cond:
         ap.error("--cond required (or use --selftest)")
     out_path = args.out or os.path.join(DEFAULT_OUT_DIR, f"dpid_{args.cond}.jsonl")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
-        args.items, args.target, out_path)
+        args.items, args.target, out_path, args.arrows, args.vhat_layer)
 
 
 if __name__ == "__main__":
