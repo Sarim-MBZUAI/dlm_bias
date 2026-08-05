@@ -195,7 +195,7 @@ def p_black_from_logits(logits, prompt_len, tgt_plain, tgt_space):
 # --------------------------------------------------------------------------- #
 @torch.no_grad()
 def controlled_generate(model, steerer, controller, prompt, tgt_plain, tgt_space,
-                        steer_on):
+                        steer_on, steps=STEPS):
     mask_id = B.MASK_ID
     plen = prompt.shape[1]
     x = torch.full((1, plen + GEN_LENGTH), mask_id, dtype=torch.long, device=model.device)
@@ -203,13 +203,13 @@ def controlled_generate(model, steerer, controller, prompt, tgt_plain, tgt_space
 
     assert GEN_LENGTH % BLOCK_LENGTH == 0
     num_blocks = GEN_LENGTH // BLOCK_LENGTH
-    assert STEPS % num_blocks == 0
-    steps_per_block = STEPS // num_blocks
+    assert steps % num_blocks == 0
+    steps_per_block = steps // num_blocks
 
     controller.reset()
-    alpha_traj = np.zeros(STEPS, dtype=np.float64)
-    pblack_traj = np.zeros(STEPS, dtype=np.float64)
-    sat_traj = np.zeros(STEPS, dtype=bool)
+    alpha_traj = np.zeros(steps, dtype=np.float64)
+    pblack_traj = np.zeros(steps, dtype=np.float64)
+    sat_traj = np.zeros(steps, dtype=bool)
 
     # Seed measurement: one unsteered probe on the initial all-masked sequence.
     steerer.alpha = 0.0
@@ -347,7 +347,7 @@ def attach_all_layers(model, vhat):
 # --------------------------------------------------------------------------- #
 # GPU smoke.
 # --------------------------------------------------------------------------- #
-def smoke(n_items, kp, ki, kd, amax):
+def smoke(n_items, kp, ki, kd, amax, steps=STEPS):
     assert torch.cuda.is_available(), "CUDA not available"
     print(f"[smoke] CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
           f"dev={torch.cuda.get_device_name(0)}", flush=True)
@@ -365,19 +365,22 @@ def smoke(n_items, kp, ki, kd, amax):
             ids = build_input(tok, row, model.device)
             steerer.fires = 0
             x, a, pb, sat = controlled_generate(
-                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=True)
+                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=True,
+                steps=steps)
             gen = tok.batch_decode(x[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
             letter = B.parse_letter(gen, row)
             print(f"\n[smoke] item {n} ex={row.get('example_id')} target={tgt}", flush=True)
             print(f"[smoke]   forwards this item = {steerer.fires // N_LAYERS} "
-                  f"(x{N_LAYERS} hooks; expect 1 probe + {STEPS} = {STEPS + 1})", flush=True)
+                  f"(x{N_LAYERS} hooks; expect 1 probe + {steps} = {steps + 1})", flush=True)
+            assert steerer.fires // N_LAYERS == 1 + steps, (
+                f"forward count {steerer.fires // N_LAYERS} != 1 + steps ({1 + steps})")
             print(f"[smoke]   steps={len(a)} parsed='{letter}' gen={gen!r}", flush=True)
             if n == 0:
                 print(f"[smoke]   alpha(t) : {[round(v,2) for v in a.tolist()]}", flush=True)
                 print(f"[smoke]   p_black(t): {[round(v,3) for v in pb.tolist()]}", flush=True)
                 print(f"[smoke]   alpha varies? min={a.min():.2f} max={a.max():.2f} "
                       f"n_distinct={len(set(round(v,3) for v in a.tolist()))} "
-                      f"sat_steps={int(sat.sum())}/{STEPS} "
+                      f"sat_steps={int(sat.sum())}/{steps} "
                       f"-> {'YES' if a.max()-a.min() > 1e-3 else 'NO'}", flush=True)
     finally:
         steerer.detach()
@@ -387,7 +390,8 @@ def smoke(n_items, kp, ki, kd, amax):
 # --------------------------------------------------------------------------- #
 # Full / limited eval over the sweep400.
 # --------------------------------------------------------------------------- #
-def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400):
+def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
+        steps=STEPS):
     os.makedirs(out_dir, exist_ok=True)
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -404,7 +408,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400):
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{N_LAYERS} "
           f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} amax={amax} "
-          f"steer_on={steer_on} AW=on", flush=True)
+          f"steps={steps} steer_on={steer_on} AW=on", flush=True)
 
     per_item, counts = [], {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
     alpha_sums, alpha_means, alpha_finals, sat_fracs = [], [], [], []
@@ -415,7 +419,8 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400):
             tgt = chr(65 + bidx) if bidx is not None else "A"
             ids = build_input(tok, row, model.device)
             x, a, pb, sat = controlled_generate(
-                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=steer_on)
+                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=steer_on,
+                steps=steps)
             gen = tok.batch_decode(x[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
             letter = B.parse_letter(gen, row)
             pred = LETTERS.index(letter) if letter else None
@@ -472,7 +477,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400):
         "mean_alpha": float(np.mean(alpha_means)) if alpha_means else 0.0,
         "mean_final_alpha": float(np.mean(alpha_finals)) if alpha_finals else 0.0,
         "mean_sat_frac": float(np.mean(sat_fracs)) if sat_fracs else 0.0,
-        "gen_length": GEN_LENGTH, "steps": STEPS, "block_length": BLOCK_LENGTH,
+        "gen_length": GEN_LENGTH, "steps": steps, "block_length": BLOCK_LENGTH,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "elapsed_s": time.time() - t0,
     }
@@ -498,6 +503,10 @@ def main():
     ap.add_argument("--ki", type=float, default=0.1)
     ap.add_argument("--kd", type=float, default=1.0)
     ap.add_argument("--amax", type=float, default=ALPHA_MAX)
+    ap.add_argument("--steps", type=int, default=STEPS,
+                    help=f"denoising steps (default {STEPS}); must be a multiple "
+                         f"of gen_length/block_length blocks; {BLOCK_LENGTH} = "
+                         f"1 token committed per step")
     ap.add_argument("--limit", type=int, default=0, help="0 = all 400")
     ap.add_argument("--items", default=SWEEP400,
                     help="input jsonl (default sweep400; point at a rotation file)")
@@ -508,12 +517,13 @@ def main():
     if args.selftest:
         sys.exit(0 if selftest() else 1)
     if args.smoke:
-        smoke(args.smoke_items, args.kp, args.ki, args.kd, args.amax)
+        smoke(args.smoke_items, args.kp, args.ki, args.kd, args.amax,
+              steps=args.steps)
         return
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
-        args.out_dir, args.tag, args.items)
+        args.out_dir, args.tag, args.items, steps=args.steps)
 
 
 if __name__ == "__main__":
