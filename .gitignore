@@ -39,7 +39,12 @@ logs/
 multirace/arrows_*.pt
 multirace/direction_examples_*.jsonl
 
-# balanced_all: raw per-rotation result JSONs / samples / rotation files stay
-# local; only summary markdown under results/balanced_all/ is tracked.
+# balanced_all: rotation item files stay local; summary markdown plus the
+# per-rotation condition result JSONs and samples under black/ are tracked
+# (the paper's reproducibility statement requires the committed samples).
 results/balanced_all/**
 !results/balanced_all/*.md
+!results/balanced_all/black/
+!results/balanced_all/black/**/
+!results/balanced_all/black/**/cond_*.json
+!results/balanced_all/black/**/cond_*_samples.jsonl

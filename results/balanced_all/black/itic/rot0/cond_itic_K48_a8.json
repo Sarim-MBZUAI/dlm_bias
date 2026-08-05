@@ -1,0 +1,36 @@
+{
+  "condition": "itic_K48_a8",
+  "n": 400,
+  "counts": {
+    "black": 67,
+    "nonblack": 66,
+    "abstain": 267,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.1675,
+    "nonblack_pick_rate": 0.165,
+    "abstain_rate": 0.6675,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "results/balanced/_sweep400_rot0.jsonl",
+  "hook_fire_count": 537600,
+  "elapsed_s": 606.5643885135651,
+  "cuda_visible_devices": "0",
+  "config": {
+    "method": "iti_c",
+    "K": 48,
+    "alpha": 8.0,
+    "n_layers_hooked": 21,
+    "probes_path": "/shared/home/sarim.hashmi/dlm_bias/baselines/cache/itic_probes.pt",
+    "hook_target": "blocks[k].attn_out (input, per-head)"
+  }
+}
