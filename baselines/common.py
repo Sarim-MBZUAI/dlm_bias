@@ -38,7 +38,7 @@ import torch
 # Harness import (ROOT = MAIN tree on purpose -- model/arrows/data live there). #
 # Mirrors steering/pid_steer.py:49-51.                                          #
 # --------------------------------------------------------------------------- #
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
 

@@ -39,7 +39,7 @@ import numpy as np
 import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))               # unqover
-_ROOT = "/home/lukas/users/shashmi/dlm_bias"
+_ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Reuse the decode-space PID machinery verbatim (adds eval/ to path via denoise_pid).
 sys.path.insert(0, os.path.join(_ROOT, "steering"))

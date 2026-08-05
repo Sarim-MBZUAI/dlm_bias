@@ -11,8 +11,8 @@
 #                                                -> <target>/normal/rot{r}
 set -euo pipefail
 
-ROOT=/home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+ROOT="${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES="${BAL_GPU:-4}"   # override with BAL_GPU=<id> to run elsewhere
 cd "$ROOT"
 

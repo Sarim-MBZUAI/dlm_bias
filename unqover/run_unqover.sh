@@ -6,7 +6,7 @@
 # Generation is the USER's to run (needs a GPU + LLaDA weights). The download +
 # loader + metric steps are CPU-only.
 set -euo pipefail
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+PY="${PY:-python}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 UQ=unqover
 DATA=data/unqover

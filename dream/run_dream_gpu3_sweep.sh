@@ -5,8 +5,8 @@
 # preserving aim. cond=PI (the LLaDA headline). Kp=3 default => alpha pins near
 # amax, so amax is the effective per-block injection magnitude.
 set -u
-cd /home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+cd "${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=3
 L=logs/gpu3sweep; mkdir -p "$L"
 OUT=results/dream/decode_pid

@@ -33,7 +33,7 @@ import time
 import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))               # unqover
-_ROOT = "/home/lukas/users/shashmi/dlm_bias"
+_ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Reuse the layer-space PID / normal-vector machinery verbatim (adds eval/ to path).
 sys.path.insert(0, os.path.join(_ROOT, "steering"))

@@ -19,7 +19,7 @@ import os
 import sys
 from collections import Counter
 
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "steering"))  # steering/ (denoise_pid.py)
 from denoise_pid import black_idx_of, unk_idx_of   # noqa: E402  (reuse, don't reimplement)

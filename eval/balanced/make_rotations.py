@@ -22,7 +22,7 @@ Writes _sweep400_rot0.jsonl / _rot1.jsonl / _rot2.jsonl into results/balanced/.
 import json
 import os
 
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 OUTDIR = os.path.join(ROOT, "results", "balanced")
 

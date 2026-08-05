@@ -38,7 +38,7 @@ import sys
 import torch
 
 # ---- heavy inputs live in the MAIN tree (absolute paths) -------------------- #
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
 

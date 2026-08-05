@@ -21,8 +21,8 @@
 # Aggregate afterwards with balanced_all/aggregate.py (see README.md).
 set -euo pipefail
 
-ROOT=/home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+ROOT="${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=2
 cd "$ROOT"
 

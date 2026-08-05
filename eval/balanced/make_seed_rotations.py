@@ -6,7 +6,7 @@ import json
 import os
 import random
 
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIG = os.path.join(ROOT, "data", "bbq_items", "black_referent_ambig_eval.jsonl")
 BUILD = os.path.join(ROOT, "steering", "direction_examples.jsonl")
 OUTBASE = os.path.join(ROOT, "results", "balanced", "seeds")

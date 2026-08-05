@@ -30,7 +30,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 
 # ---- all heavy inputs live in the MAIN tree (absolute paths) ---------------- #
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 import bbq_eval  # noqa: E402  (build_prompt/load_bbq/get_answer_info/unknown_index/resolve_module...)
 

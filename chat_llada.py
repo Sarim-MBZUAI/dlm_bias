@@ -8,11 +8,13 @@ sequence starts as `prompt + gen_length` MASK tokens, and over a fixed number of
 are progressively unmasked one block at a time.
 """
 import argparse
+import os
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/LLaDA-8B-Instruct"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.abspath(__file__))
+DEFAULT_MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 
 # Special token id for LLaDA-8B-Instruct:
 #   mask = 126336

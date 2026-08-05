@@ -2,8 +2,8 @@
 # Dose-response for the targets that collapsed/strained at LLaDA defaults:
 # GPU-3 queue = ASIAN decode-PI amax sweep {1,2,3,4} (amax 6 = 0.93 unparseable).
 set -u
-cd /home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+cd "${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=3
 L=logs/dose_gpu3; mkdir -p "$L"
 for A in 1 2 3 4; do

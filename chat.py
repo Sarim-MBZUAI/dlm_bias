@@ -6,11 +6,13 @@ follow chat-style instructions and stay aligned to the conversation is limited.
 This is a diffusion LM, not a standard causal LM: we call model.diffusion_generate().
 """
 import argparse
+import os
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/Dream-v0-Instruct-7B"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.abspath(__file__))
+DEFAULT_MODEL_PATH = os.path.join(ROOT, "Dream-v0-Instruct-7B")
 
 # Special token ids for Dream-v0-Base-7B (for reference):
 #   eos / pad / bos = 151643

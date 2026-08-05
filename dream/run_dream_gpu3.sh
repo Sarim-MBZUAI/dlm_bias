@@ -6,8 +6,8 @@
 # killed mid-run — they produce ~97% unparseable output on Dream (see dream/RESULTS.md);
 # they need a Dream-tuned (lower) alpha and are PENDING. Commands left unchanged.
 set -u
-cd /home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+cd "${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=3
 L=logs/gpu3; mkdir -p "$L"
 

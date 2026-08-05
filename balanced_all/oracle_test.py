@@ -26,7 +26,7 @@ import os
 import sys
 from collections import Counter
 
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _load_targets():

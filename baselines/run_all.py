@@ -44,7 +44,7 @@ kwarg is then filtered to the names run()/fit() actually declare
 (inspect.signature), so a method never receives a knob it didn't ask for.
 
 CRITICAL: each method's own run() defaults out_dir to the MAIN tree
-(/home/lukas/users/shashmi/dlm_bias/results/<m>).  This orchestrator ALWAYS
+(<repo root>/results/<m>).  This orchestrator ALWAYS
 passes out_dir=<worktree>/results/<m> so evaluation output lands in the worktree,
 never in the main tree.
 

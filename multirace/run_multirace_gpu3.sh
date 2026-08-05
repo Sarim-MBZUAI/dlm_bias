@@ -3,8 +3,8 @@
 # Per target: build arrows, then base / decode-PI (ours) / normal a4 / CAA a2.
 # Env pinned to sarim_awm (transformers 4.46.2).
 set -u
-cd /home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+cd "${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=3
 L=logs/mr_gpu3; mkdir -p "$L"
 

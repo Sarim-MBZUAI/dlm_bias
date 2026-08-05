@@ -3,8 +3,8 @@
 # plus fair lower-alpha normal-vector points where alpha 4 collapsed
 # (asian 0.998 / white 0.988 unparseable).
 set -u
-cd /home/lukas/users/shashmi/dlm_bias
-PY=/home/lukas/miniconda3/envs/sarim_awm/bin/python
+cd "${DLM_BIAS_ROOT:-$(dirname "$0")/..}"
+PY="${PY:-python}"
 export CUDA_VISIBLE_DEVICES=4
 L=logs/dose_gpu4; mkdir -p "$L"
 for A in 2 3 4; do

@@ -30,7 +30,7 @@ import sys
 
 import torch
 
-ROOT = "/home/lukas/users/shashmi/dlm_bias"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)                    # ensure `import common_dream` resolves here
 

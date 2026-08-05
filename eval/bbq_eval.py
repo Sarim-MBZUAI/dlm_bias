@@ -50,11 +50,12 @@ except ImportError:
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-DEFAULT_MODEL_PATH = "/home/lukas/users/shashmi/dlm_bias/LLaDA-8B-Instruct"
+ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 DEFAULT_DATASET = "nyu-mll/BBQ (jsonl)"
 # Base URL for the raw nyu-mll/BBQ jsonl files; overridable via --dataset.
 BBQ_BASE_URL = "https://raw.githubusercontent.com/nyu-mll/BBQ/main/data"
-BBQ_CACHE_DIR = "/home/lukas/users/shashmi/dlm_bias/data/bbq_cache"
+BBQ_CACHE_DIR = os.path.join(ROOT, "data", "bbq_cache")
 # The 11 BBQ categories (one jsonl file each).
 BBQ_CATEGORIES = [
     "Age",
@@ -69,12 +70,12 @@ BBQ_CATEGORIES = [
     "SES",
     "Sexual_orientation",
 ]
-DEFAULT_DIRECTION_PATH = "/home/lukas/users/shashmi/dlm_bias/steering/direction.pt"
-DEFAULT_DIRECTIONS_DIR = "/home/lukas/users/shashmi/dlm_bias/steering/directions"
+DEFAULT_DIRECTION_PATH = os.path.join(ROOT, "steering", "direction.pt")
+DEFAULT_DIRECTIONS_DIR = os.path.join(ROOT, "steering", "directions")
 DEFAULT_HOOK_MODULE = "model.transformer.wte"
 BLOCKS_PATH = "model.transformer.blocks"  # mid-residual-layer steering target
 DEFAULT_LAYER = "emb"  # backward-compatible default (input-embedding layer)
-DEFAULT_OUT = "/home/lukas/users/shashmi/dlm_bias/results/bbq/bbq.json"
+DEFAULT_OUT = os.path.join(ROOT, "results", "bbq", "bbq.json")
 
 # Special token id for LLaDA-8B-Instruct: mask = 126336
 MASK_ID = 126336
