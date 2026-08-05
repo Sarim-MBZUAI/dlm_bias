@@ -105,7 +105,7 @@ def main():
         "seed": SEED,
         "n_eval": N_EVAL,
         "n_heldout_cap": N_HELDOUT_CAP,
-        "cache": os.path.join(ROOT, "data", "bbq_cache", "Race_ethnicity.jsonl"),
+        "cache": os.path.join("data", "bbq_cache", "Race_ethnicity.jsonl"),  # ROOT-relative (portable)
         "exclusions": {"black_seed42_race_keys": len(seed_keys),
                        "black_sweep400_keys": len(sw_keys)},
         "targets": {},
@@ -134,7 +134,7 @@ def main():
             "n_usable_after_exclusion": n,
             "n_eval": len(ev),
             "n_heldout": len(held),
-            "eval_file": out,
+            "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
             "heldout_keys": sorted([list(k) for k in held_keys]),
         }
         print(f"[items] {target:6s} usable={n:4d} eval={len(ev)} "

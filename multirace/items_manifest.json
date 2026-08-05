@@ -2,7 +2,7 @@
   "seed": 42,
   "n_eval": 400,
   "n_heldout_cap": 400,
-  "cache": "/home/lukas/users/shashmi/dlm_bias/data/bbq_cache/Race_ethnicity.jsonl",
+  "cache": "data/bbq_cache/Race_ethnicity.jsonl",
   "exclusions": {
     "black_seed42_race_keys": 125,
     "black_sweep400_keys": 400
@@ -19,7 +19,7 @@
       "n_usable_after_exclusion": 810,
       "n_eval": 400,
       "n_heldout": 400,
-      "eval_file": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400_white.jsonl",
+      "eval_file": "data/bbq_items/_sweep400_white.jsonl",
       "heldout_keys": [
         [
           16,
@@ -1632,7 +1632,7 @@
       "n_usable_after_exclusion": 934,
       "n_eval": 400,
       "n_heldout": 400,
-      "eval_file": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400_asian.jsonl",
+      "eval_file": "data/bbq_items/_sweep400_asian.jsonl",
       "heldout_keys": [
         [
           72,
@@ -3246,7 +3246,7 @@
       "n_usable_after_exclusion": 1217,
       "n_eval": 400,
       "n_heldout": 400,
-      "eval_file": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400_latino.jsonl",
+      "eval_file": "data/bbq_items/_sweep400_latino.jsonl",
       "heldout_keys": [
         [
           0,
@@ -4860,7 +4860,7 @@
       "n_usable_after_exclusion": 1040,
       "n_eval": 400,
       "n_heldout": 400,
-      "eval_file": "/home/lukas/users/shashmi/dlm_bias/data/bbq_items/_sweep400_arab.jsonl",
+      "eval_file": "data/bbq_items/_sweep400_arab.jsonl",
       "heldout_keys": [
         [
           34,

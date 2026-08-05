@@ -184,7 +184,9 @@ def _selftest():
         check(f"{target}: heldout resolves ({len(triples)} triples)",
               len(triples) == tinfo["n_heldout"])
         keys = {row_key(r) for r, _, _ in triples}
-        with open(tinfo["eval_file"]) as f:
+        # eval_file is ROOT-relative in portable manifests; join() is a no-op
+        # for legacy absolute paths.
+        with open(os.path.join(ROOT, tinfo["eval_file"])) as f:
             ev_keys = {row_key(json.loads(l)) for l in f if l.strip()}
         check(f"{target}: heldout disjoint from eval file", keys.isdisjoint(ev_keys))
         check(f"{target}: heldout disjoint from Black-exp keys", keys.isdisjoint(exclude))
