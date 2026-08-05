@@ -19,7 +19,7 @@ DREAM specifics (verified in common_dream.py):
   * n_heads=28, d_model=3584 => d_head=128 (28*128=3584).  GQA has 4 kv heads, but
     the o_proj INPUT is the full 3584-d concat of the 28 QUERY-head outputs, so the
     per-head reshape is (...,28,128) over query heads (NOT kv heads).
-  * the per-head activation is the INPUT to model.model.layers[k].self_attn.o_proj
+  * the per-head activation is the INPUT to model.layers[k].self_attn.o_proj
     (o_proj is the output projection P^l), the same submodule
     calib.collect_activations('attn_head') pools.  We steer it via a forward_pre_hook.
   * hook fires once per diffusion step over ALL positions, bidirectional.
@@ -179,13 +179,15 @@ def attach_fn(model, injection):
 
 
 def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
-        limit=0, model=None, tok=None, baseline_black_rate=None, probes=None):
+        items_path=None, limit=0, model=None, tok=None, baseline_black_rate=None,
+        probes=None):
     """Build the top-K injection and evaluate on the BBQ sweep.  NEEDS A GPU."""
     inj = build_injection(K=K, alpha=alpha, probes=probes)
     if tag is None:
         tag = f"itic_K{inj['K']}_a{alpha:g}"
     return C.run_items(
         attach_fn=lambda m: attach_fn(m, inj),
+        items_path=items_path or C.SWEEP400,
         out_dir=out_dir, tag=tag, limit=limit, model=model, tok=tok,
         baseline_black_rate=baseline_black_rate,
         config_extra={"method": "iti_c", "K": inj["K"], "alpha": float(alpha),
@@ -286,6 +288,8 @@ def main():
     ap.add_argument("--run", action="store_true", help="evaluate ITI-C (NEEDS GPU)")
     ap.add_argument("--topk", type=int, default=DEFAULT_TOPK)
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
@@ -297,7 +301,7 @@ def main():
         fit(); return
     if args.run:
         run(K=args.topk, alpha=args.alpha, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit)
+            items_path=args.items, limit=args.limit)
         return
     ap.error("nothing to do: pass --selftest, --fit or --run (GPU)")
 

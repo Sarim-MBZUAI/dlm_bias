@@ -86,11 +86,13 @@ def build_attach_fn(strength, layers=None, direction="unit", gain=GAIN,
 
 
 def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
-        gain=GAIN, limit=0, baseline_black_rate=None, model=None, tok=None):
+        gain=GAIN, items_path=None, limit=0, baseline_black_rate=None,
+        model=None, tok=None):
     """Run one Mean-AcT injection condition end-to-end.  NEEDS A GPU."""
     tag = tag or f"meanact_{direction}_s{strength:g}"
     return C.run_items(
         attach_fn=build_attach_fn(strength, layers=layers, direction=direction, gain=gain),
+        items_path=items_path or C.SWEEP400,
         out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra={
@@ -228,6 +230,8 @@ def main():
     ap.add_argument("--strength", type=float, default=2.0)
     ap.add_argument("--direction", choices=DIR_CHOICES, default="unit")
     ap.add_argument("--where", default="block")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -240,7 +244,7 @@ def main():
         fit(where=args.where); return
     if args.run:
         run(args.strength, out_dir=args.out_dir, tag=args.tag,
-            direction=args.direction, limit=args.limit,
+            direction=args.direction, items_path=args.items, limit=args.limit,
             baseline_black_rate=args.baseline_black_rate)
         return
     ap.error("nothing to do: pass --selftest, --fit (GPU cache), or --run (GPU)")

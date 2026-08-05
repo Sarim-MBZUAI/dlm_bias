@@ -21,7 +21,7 @@ strength=1 full transport, 0 identity, >1 extrapolates (stronger injection).
 GRANULARITY / HOOK SITE: In Dream's MLP  down_proj(act(gate_proj(x))*up_proj(x))
 there is NO module whose OUTPUT is the 18944-d gated activation -- it is exactly
 the INPUT to down_proj.  So the affine map is applied via common_dream.affine_pre_hook
-on model.model.layers[k].mlp.down_proj (edits input[0]), the SAME activation
+on model.layers[k].mlp.down_proj (edits input[0]), the SAME activation
 calib.collect_activations('mlp_hidden') captures.  Default: ALL 28 layers, all
 positions, every diffusion step.
 
@@ -137,7 +137,8 @@ def attach_fn(model, variant="empirical", strength=1.0, stats=None, layers=None)
 
 
 def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
-        layers=None, limit=0, model=None, tok=None, baseline_black_rate=None):
+        layers=None, items_path=None, limit=0, model=None, tok=None,
+        baseline_black_rate=None):
     """Run the sweep400 BBQ injection for one variant/strength.  NEEDS A GPU.
 
     Default tag encodes the strength (<variant>_s<strength>) so sweeps at
@@ -150,7 +151,8 @@ def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
         return attach_fn(m, variant=variant, strength=strength, stats=stats, layers=layers)
 
     return C.run_items(
-        attach_fn=_attach, out_dir=out_dir, tag=tag, limit=limit,
+        attach_fn=_attach, items_path=items_path or C.SWEEP400,
+        out_dir=out_dir, tag=tag, limit=limit,
         model=model, tok=tok, baseline_black_rate=baseline_black_rate,
         config_extra={"method": "linear_act", "variant": variant,
                       "strength": strength, "where": WHERE,
@@ -250,6 +252,8 @@ def main():
     ap.add_argument("--variant", choices=VARIANTS, default="empirical")
     ap.add_argument("--strength", type=float, default=2.0)
     ap.add_argument("--cap", type=int, default=calib.CAP)
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
@@ -261,7 +265,8 @@ def main():
         fit(cap=args.cap); return
     if args.run:
         run(variant=args.variant, strength=args.strength,
-            out_dir=args.out_dir, tag=args.tag, limit=args.limit)
+            out_dir=args.out_dir, tag=args.tag, items_path=args.items,
+            limit=args.limit)
         return
     ap.error("nothing to do: pass --selftest, --fit or --run (GPU)")
 

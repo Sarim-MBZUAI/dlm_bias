@@ -113,7 +113,7 @@ def attach_fn(mode, gamma=1.0, auroc=None):
     return _attach
 
 
-def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
+def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, items_path=None, limit=0,
         baseline_black_rate=None, model=None, tok=None, auroc=None):
     """Evaluate one AURA condition on the sweep-400 BBQ items.  NEEDS A GPU."""
     assert mode in MODES, f"mode must be one of {MODES}"
@@ -125,6 +125,7 @@ def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
            "note": "vanilla=suppression(1-2max(auroc-.5,0)); inject=amplify(1+g*2max(auroc-.5,0))"}
     return C.run_items(
         attach_fn=attach_fn(mode, gamma=gamma, auroc=auroc),
+        items_path=items_path or C.SWEEP400,
         out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra=cfg)
@@ -203,6 +204,8 @@ def main():
     ap.add_argument("--run", action="store_true", help="evaluate one condition (NEEDS GPU)")
     ap.add_argument("--mode", choices=MODES, default="inject")
     ap.add_argument("--gamma", type=float, default=1.0)
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -215,7 +218,8 @@ def main():
         fit(); return
     if args.run:
         run(args.mode, gamma=args.gamma, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            items_path=args.items, limit=args.limit,
+            baseline_black_rate=args.baseline_black_rate)
         return
     ap.error("nothing to do: pass --selftest, --fit (GPU), or --run (GPU)")
 

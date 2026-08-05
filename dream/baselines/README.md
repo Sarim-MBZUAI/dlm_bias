@@ -91,7 +91,8 @@ Fitted artifacts land in `dream/baselines/cache/` (gitignored); eval output in
   recover full faithfulness, same as the LLaDA port.
 - **`actadd`** refuses to substitute `arrows.pt` when its n=1 artifact is missing
   (that would be CAA), identical to the LLaDA guard.
-- **`run_all` registry** mirrors the LLaDA one; `actadd` is listed `needs_fit=False`
-  for parity (its trivial single-pair artifact must still be built with `--fit`).
+- **`run_all` registry** mirrors the LLaDA one; `actadd` is listed `needs_fit=True`
+  (its `run()` refuses to start without the single-pair artifact `cache/actadd_dir.pt`,
+  so `run_all --fit` builds it automatically before the run).
 - No `logits` shift is applied anywhere: all granularities read hidden states, and
   Dream's next-token shift applies only to logits.

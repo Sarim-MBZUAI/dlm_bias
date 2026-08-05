@@ -16,7 +16,7 @@ DEVIATIONS from the LLaDA common.py (see README):
   * Model load is AutoModel(trust_remote_code) as before, but the sampler is
     Dream's OWN model.diffusion_generate (generation_utils.py) -- NOT the copied
     LLaDA block-diffusion generate(). Full bidirectional attention, alg="entropy".
-  * Block list path is model.model.layers (28 DreamDecoderLayer), each returning a
+  * Block list path is model.layers (28 DreamDecoderLayer), each returning a
     TUPLE (hidden,)+... -- handled by the shared hidden_from_output/output_with_hidden.
   * The Dream analogues of LLaDA attn_out / ff_out (pre-residual deltas) are the
     Linear INPUTS o_proj (28x128 concat heads) and down_proj (18944-d gated MLP);

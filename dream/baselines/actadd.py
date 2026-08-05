@@ -12,7 +12,7 @@ of the diff-in-means / CAA family.
 Defining property vs CAA: n=1 contrast pair, NOT the n=400 dataset mean
 (dream/arrows.pt).  We deliberately do NOT auto-substitute arrows.pt: if the fit
 artifact is missing, build_injection RAISES (that would be CAA, not ActAdd).
-NATIVE granularity = residual at ONE block (3584-d), model.model.layers[layer]
+NATIVE granularity = residual at ONE block (3584-d), model.layers[layer]
 OUTPUT[0] via common_dream.add_vec_hook, all positions, every diffusion step.
 
 CLI:
@@ -116,7 +116,8 @@ def make_attach_fn(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None, path=DIR_PA
 
 
 def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
-        limit=0, baseline_black_rate=None, model=None, tok=None, tag=None):
+        items_path=None, limit=0, baseline_black_rate=None, model=None, tok=None,
+        tag=None):
     """Run the ActAdd BBQ-injection condition end-to-end.  NEEDS A GPU.
 
     Default tag encodes alpha (actadd_a<alpha>) so sweeps at different alphas
@@ -124,6 +125,7 @@ def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
     tag = tag or f"actadd_a{alpha:g}"
     return C.run_items(
         attach_fn=make_attach_fn(alpha=alpha, layer=layer),
+        items_path=items_path or C.SWEEP400,
         out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
         config_extra={"method": "actadd_single_pair", "alpha": alpha,
@@ -188,7 +190,10 @@ def main():
     ap.add_argument("--pair-index", type=int, default=0)
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER)
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
+    ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--baseline_black_rate", type=float, default=None)
     args = ap.parse_args()
@@ -199,7 +204,8 @@ def main():
         fit(pair_index=args.pair_index); return
     if args.run:
         run(out_dir=args.out_dir, alpha=args.alpha, layer=args.layer,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            items_path=args.items, limit=args.limit,
+            baseline_black_rate=args.baseline_black_rate, tag=args.tag)
         return
     ap.error("nothing to do: pass --selftest, --fit (GPU) or --run (GPU)")
 

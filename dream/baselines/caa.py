@@ -12,7 +12,7 @@ DREAM MAPPING
     block k (dream/build_arrows.py).  directions.load_arrows() unit-normalizes each
     layer row, so load_arrows()[layer] == unit(r[layer]); positive alpha -> Black.
   * NATIVE granularity = residual at ONE block (3584-d).  We add at
-    model.model.layers[layer] OUTPUT[0] via common_dream.add_vec_hook (Dream block
+    model.layers[layer] OUTPUT[0] via common_dream.add_vec_hook (Dream block
     TUPLE contract preserved, all positions, every diffusion step).
 
 Single-layer, unit-vector, scalar-alpha CAA (Rimsky et al.); layer + alpha are CLI
@@ -65,12 +65,13 @@ def make_attach_fn(layer=DEFAULT_LAYER, alpha=1.0, arrows=None):
 
 
 def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
-        limit=0, baseline_black_rate=None, model=None, tok=None):
+        items_path=None, limit=0, baseline_black_rate=None, model=None, tok=None):
     """Run one CAA condition end-to-end via common_dream.run_items.  NEEDS A GPU."""
     if tag is None:
         tag = f"caa_L{int(layer)}_a{alpha:g}"
     return C.run_items(
         attach_fn=make_attach_fn(layer=layer, alpha=alpha),
+        items_path=items_path or C.SWEEP400,
         out_dir=out_dir, tag=tag, limit=limit, model=model, tok=tok,
         baseline_black_rate=baseline_black_rate,
         config_extra={
@@ -148,17 +149,13 @@ def _selftest():
         def forward(self, x):
             return (x, None)   # Dream block returns a TUPLE
 
-    class Layers(nn.Module):
+    class Inner(nn.Module):
         def __init__(self):
             super().__init__(); self.layers = nn.ModuleList([Blk() for _ in range(L)])
 
-    class Inner(nn.Module):
-        def __init__(self):
-            super().__init__(); self.model = Layers()   # BLOCKS_PATH=model.model.layers
-
     class Model(nn.Module):
         def __init__(self):
-            super().__init__(); self.model = Inner()
+            super().__init__(); self.model = Inner()   # BLOCKS_PATH=model.layers
 
     model = Model()
     C.reset_fire_count()
@@ -166,7 +163,7 @@ def _selftest():
     try:
         check("attach_fn returns exactly ONE handle", len(handles) == 1)
         x0 = torch.randn(1, 3, H)
-        blocks = model.model.model.layers
+        blocks = model.model.layers
         edited = blocks[layer](x0)[0]
         other = blocks[(layer + 1) % L](x0)[0]
         check("target block adds vec", torch.allclose(edited, x0 + vec, atol=1e-5))
@@ -188,6 +185,8 @@ def main():
     ap.add_argument("--run", action="store_true", help="run BBQ eval (NEEDS GPU)")
     ap.add_argument("--alpha", type=float, default=1.0)
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER)
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (default: sweep400; e.g. a position-balance rotation file)")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -200,7 +199,8 @@ def main():
         fit(); return
     if args.run:
         run(alpha=args.alpha, layer=args.layer, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, baseline_black_rate=args.baseline_black_rate)
+            items_path=args.items, limit=args.limit,
+            baseline_black_rate=args.baseline_black_rate)
         return
     ap.error("nothing to do: pass --selftest, --fit, or --run")
 

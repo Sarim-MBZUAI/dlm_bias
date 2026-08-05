@@ -11,7 +11,7 @@ where h_*(k) is the block-k residual (the layer's output hidden state), MEANED
 over the answer-text token span (tokens AFTER the chat prompt) of a single clean
 forward on the fully materialized sequence  chat_prompt + answer_text.  One
 forward per answer-text captures all 28 layers at once via forward hooks on
-model.model.layers.
+model.layers.
 
 CONTAMINATION SAFETY: the held-out contrast items (BBQ Race_ethnicity AMBIGUOUS,
 exactly-one-Black-option, DISJOINT from both the seed-42 n=1000 eval keys and the
