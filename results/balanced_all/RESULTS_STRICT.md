@@ -116,8 +116,8 @@ separated top tier; everything else is <= 0.046.
 **(b) Decode PID vs decode PI (does the derivative term help?).** No
 measurable benefit. PID (Kd=1) gap 0.160 [0.124, 0.195] vs PI gap 0.167
 [0.131, 0.203]: point estimate slightly *lower*, CIs almost coincident.
-PID also spends more actuation (mean_alpha 4.06 vs 3.94 averaged over
-rotations, saturation frac 0.31 vs 0.28) and has a slightly higher
+PID also spends more actuation (mean_alpha 3.99 vs 3.94 averaged over
+rotations, saturation frac 0.29 vs 0.28) and has a slightly higher
 strict-invalid rate (0.088 vs 0.078). The derivative term does not help
 and marginally hurts efficiency; PI remains the preferred controller.
 
