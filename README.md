@@ -1,111 +1,171 @@
-# DLM Bias Steering — PID-Steering on LLaDA-8B-Instruct
+# Closed-Loop Activation Steering Along the Denoising Trajectory of Masked Diffusion Language Models
 
-Training-free, inference-time **bias steering** of a frozen masked-diffusion LM
-(**LLaDA-8B-Instruct**). Current work: a faithful port of **PID-Steering**
-(*"Activation Steering with a Feedback Controller"*,
-[arXiv:2510.04309](https://arxiv.org/abs/2510.04309), ICLR 2026) to LLaDA, across
-**two control axes** — transformer **layer depth** (the paper's axis) and the
-**diffusion denoising step** (new) — benchmarked against a plain steering-vector
-baseline on 400 Black-referent ambiguous **BBQ** items.
+Code and results for the ICLR paper of the same name
+(paper source: [Sarim-MBZUAI/DLM_Bias_overleaf](https://github.com/Sarim-MBZUAI/DLM_Bias_overleaf)).
 
-➡️ **Full method, layout, and reproduce steps: [`steering/README.md`](steering/README.md)**
-· writeup: [`docs/paper.md`](docs/paper.md)
-· raw table: [`docs/COMPARISON.md`](docs/COMPARISON.md)
-· rigorous position-balanced result: [`results/balanced/RESULTS.md`](results/balanced/RESULTS.md)
-· **novelty (decode-space PID) diagram + writeup: [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md)**
-· **second-model port (Dream-v0-Instruct-7B): [`dream/RESULTS.md`](dream/RESULTS.md)**
-· **multi-race target generality: [`multirace/RESULTS.md`](multirace/RESULTS.md)**
+We steer a frozen masked-diffusion LM (**LLaDA-8B-Instruct**, plus a
+**Dream-v0-Instruct-7B** port) at inference time with a PI/PID feedback
+controller that acts along the **denoising trajectory** — the diffusion
+*step* axis — instead of the transformer *layer* axis used by prior
+activation-steering work. An offline stage builds a diff-in-means direction
+("arrow"); at decode time the controller measures how strongly the direction
+is expressed in the partially unmasked sequence and modulates the injection
+strength step by step.
 
-> **Second diffusion LM (Dream-v0-Instruct-7B).** The whole stack — decode-space
-> PID + all baselines — is ported to Dream in [`dream/`](dream/README.md). Result:
-> decode-space PID **transfers to a second diffusion LM** and is again the strongest
-> *coherent* aimer (d_gap **+0.055** at `amax≈1.0`, vs CAA +0.048 / ActAdd +0.040 /
-> AURA-inject +0.035) — but the actuation magnitude is **model-specific**: LLaDA's
-> `amax=6` drives Dream to 97.5 % incoherent output. Dose-response + baselines:
-> [`dream/RESULTS.md`](dream/RESULTS.md).
+> **Adversarial-probe framing.** This is a red-team *measurement* study of a
+> harmful capability — how effectively an attacker can aim a diffusion LM's
+> answers at a demographic group — not a fairness fix.
 
-## Result (BBQ-400) — ours vs. baselines
+![Method pipeline: offline direction extraction, PI/PID feedback loop, and the frozen diffusion LM as the plant](assets/method_pipeline.png)
 
-`d_gap = ΔBlack − Δnon-Black` vs clean (higher = aims at Black). **Ours is decode-space PID** (PID over
-the denoising step). Layer schemes verified against the source papers: **CAA and ActAdd are single-layer**
-(swept mid layer, ~L14 for Llama), raw vector × small multiplier (~2). The `normal` vector is the
-project's own **all-layers** steering baseline (NOT CAA). layer-space PI/PID = ported prior work
-(Nguyen et al.). 95% CI = 2000× bootstrap over 400 items. Full detail: [`results/BASELINES.md`](results/BASELINES.md).
+## Headline results (strict parser, position-balanced)
 
-| method | who | family / axis | Black | non-Black | d_gap | 95% CI |
-|---|---|---|---:|---:|---:|:--:|
-| **decode-space PI** | **OURS** | denoise-step feedback | 0.302 | 0.147 | **+0.135** | [+0.068,+0.200] |
-| **decode-space PID** | **OURS** | denoise-step feedback | 0.287 | 0.165 | +0.102 | [+0.038,+0.165] |
-| Linear-AcT gaussian | baseline | per-neuron transport | 0.280 | 0.200 | +0.060 | [−0.007,+0.128] |
-| normal vector α4 | baseline | diff-in-means, all 32 blocks | 0.370 | 0.295 | +0.055 | [−0.022,+0.130] |
-| AURA inject γ4 | baseline | neuron gating | 0.245 | 0.175 | +0.050 | [−0.010,+0.115] |
-| layer-space PI | baseline (prior) | PID over layers | 0.242 | 0.182 | +0.040 | [−0.020,+0.105] |
-| Mean-AcT | baseline | diff-in-means (raw), all blocks | 0.212 | 0.170 | +0.022 | [−0.038,+0.082] |
-| CAA (single L14, mult 2) | baseline | single-layer vector | 0.133 | 0.102 | +0.010 | — |
-| ActAdd (single L14, mult 2) | baseline | single-layer vector | 0.122 | 0.095 | +0.008 | — |
-| ITI-C (top-48) | baseline | head shift | 0.117 | 0.100 | −0.003 | [−0.050,+0.045] |
-| AURA vanilla (ctrl) | baseline | neuron gating | 0.100 | 0.113 | −0.032 | [−0.077,+0.010] |
-| base (clean) | — | — | 0.120 | 0.100 | +0.000 | — |
+BBQ Race_ethnicity, 400 ambiguous Black-referent items × 3 answer-letter
+rotations (1200 pooled items per condition). Gap = P(target) − P(comparator);
+95% CI = 10,000-resample item-level bootstrap. Full 14-condition table:
+[`results/balanced_all/RESULTS_STRICT.md`](results/balanced_all/RESULTS_STRICT.md).
 
-- **decode-space PI (+0.135) leads every baseline** clearly. Feedback over the denoising step is the strongest aimer.
-- **Faithful single-layer CAA / ActAdd are near-zero** (+0.010 / +0.008) at the paper's ~2× multiplier — single-layer steering is weak here. (Over-cranking CAA to ~7× reaches +0.148 but is 4× past the paper's fluency cap — not a valid point.) The strongest baselines are the all-layer / neuron ones: Linear-AcT (+0.060), the `normal` all-layers vector (+0.055), AURA inject (+0.050) — all below decode-PI.
-- **AURA vanilla** is a passing negative control (−0.032). **ITI-C never aims.** Parseable-only d_gap ≈ full d_gap.
-- **Remaining rigor (not fairness):** at n=400 CIs are ±≈0.07, so +0.135 vs +0.060 is numerically clear but not yet *statistically* separated; the position-balanced arbiter ([`results/balanced/RESULTS.md`](results/balanced/RESULTS.md), ours already +0.200) is the rigorous confirmation — baselines still to run through it.
+| condition | gap | 95% CI |
+|---|---:|:--:|
+| **decode-PI (steps=64) — ours** | **0.167** | [0.131, 0.203] |
+| **decode-PID — ours** | 0.160 | [0.124, 0.195] |
+| **decode-PI (steps=32) — ours** | 0.151 | [0.114, 0.187] |
+| open loop α=4 | 0.046 | [−0.001, 0.091] |
+| ActAdd α=16 (best hook baseline) | 0.041 | [0.013, 0.068] |
+| Mean-AcT unit s=2 | 0.035 | [0.000, 0.071] |
+| open loop α=3.28 (energy-matched) | 0.035 | [−0.001, 0.072] |
+| clean (base) | 0.018 | [−0.010, 0.045] |
 
-## Setup
+**Reading:** the three decode-time conditions form a separated top tier with
+CIs that do not overlap any baseline's; the energy-matched open loop
+(α = 3.28, the controller's own mean actuation) stays near zero — the
+advantage comes from *feedback* (when/where actuation is applied), not from
+steering energy. Regenerate: `python balanced_all/strict_pool.py`.
 
-```bash
-# env: transformers is pinned to 4.46.2 (LLaDA breaks on 4.47+/5.x)
-pip install -r requirements.txt
-# torch must match the GPU driver (gpu-03 driver supports CUDA <= 12.6):
-pip install torch --index-url https://download.pytorch.org/whl/cu126
-```
-Runs use `/home/lukas/miniconda3/envs/sarim_awm/bin/python`. Model at
-`LLaDA-8B-Instruct/`. Set `CUDA_VISIBLE_DEVICES` per run.
+### Round-2: replication, targets, second model, second benchmark
+
+Full tables and caveats: [`results/ROUND2_STRICT.md`](results/ROUND2_STRICT.md);
+regenerate with `python balanced_all/strict_round2.py`.
+
+- **Seed replication.** Three fresh 400-item draws: decode-PI gap
+  **0.162 ± 0.014** (per-seed 0.159 / 0.150 / 0.177; every CI excludes 0),
+  base −0.003 ± 0.006. The original 0.167 sits inside the seed range.
+- **Multi-target (balanced, strict).** Steerability is direction-dependent:
+
+  | target | best coherent Δg vs base | note |
+  |---|---:|---|
+  | arab | **+0.225** [+0.171, +0.280] (decode-PI) | strongest of any target |
+  | latino | +0.110 (decode-PI) — flagged | 59.6% strict-invalid |
+  | asian | +0.010 (normal α2) | decode-PI at amax6 collapses (93.8% invalid) |
+  | white | +0.025 (normal α1) | decode-PI at amax6 collapses (96.1% invalid) |
+
+  Asian/white are *unsteerable* on LLaDA: pushing hard enough to move them
+  destroys output coherence (letter-/name-spam) before it aims — the
+  controller runs hot (mean α 4.6–4.9, saturation 0.38–0.42) without
+  achieving coherent aim.
+- **Cross-model (Dream-v0-Instruct-7B, balanced).** Decode-PI Δg **+0.042**
+  [+0.007, +0.076] vs base, ranking decode-PI > ActAdd (+0.033) > CAA
+  (+0.022), all CIs excluding 0 and zero strict-invalid output. Caveat: at
+  Dream's coherence ceiling (amax = 1.0) the controller is saturated 97% of
+  the time, so the lead over baselines is directional, not resolved.
+- **Cross-benchmark (UnQover v2, fixed parser).** Decode-PI shifts the raw
+  (BBQ-like) Black preference gap by **+0.617** (−0.031 → +0.585). Caveat:
+  negation-debiasing absorbs ~95% of the shift — the push is largely
+  valence-independent. Metric: `unqover/unqover_metric.py`.
+
+The strict parse rule mirrors `tools/strict_reparse.py` in the
+[paper repo](https://github.com/Sarim-MBZUAI/DLM_Bias_overleaf): a response
+counts only if it *starts* with a standalone A/B/C letter; everything else is
+invalid and stays in the denominator.
 
 ## Repository layout
 
 ```
-steering/    PID-Steering code: build_arrows.py, pid_steer.py (layer axis),
-             denoise_pid.py (decode axis) + arrows.pt (gitignored)
-eval/        BBQ eval harness (bbq_eval.py, bias_metrics.py, attack_metrics.py)
-             + balanced/ position-balanced rotation & oracle scripts
-unqover/     UNQOVER benchmark: download / loader / eval / metric + PID adapters
-multirace/   multi-race generalization of the steering TARGET (white/asian/latino/
-             arab; black = existing reference): targets.py registry, make_items.py
-             (per-target eval/heldout splits + items_manifest.json), build_arrows.py
-             --target T -> arrows_<target>.pt (gitignored), plus target-parameterized
-             runners: denoise_pid.py (decode-space PID, math imported from
-             steering/denoise_pid.py), normal.py (open-loop all-32-blocks, alpha 4),
-             caa.py (single-layer L14 alpha 2), common_eval.py (shared eval loop).
-             Results -> results/multirace/<target>/{decode_pid,normal,caa}.
-balanced_all/ position-balanced eval for EVERY headline condition: generalized
-             make_rotations.py / oracle_test.py (any items file, any target via
-             multirace/targets.py), aggregate.py (pools 3 rotation results, either
-             schema, per-position gaps), GPU queue scripts for the 7 Black baselines,
-             decode-PID (Black) and arab/white base/decode-PI/normal. Raw outputs
-             land in results/balanced_all/ (gitignored except *.md). See its README.
-baselines/   faithful prior-method baselines on the same harness: caa, meanact,
-             actadd, linearact, aura, itic (+ common/calib/directions infra, run_all.py).
-             Fit artifacts cached in baselines/cache/ (gitignored); results/<method>/.
-data/        gitignored inputs — bbq_items/ (_sweep400.jsonl etc.),
-             bbq_cache/ (BBQ jsonl cache), unqover/ (source + items)
-results/     tracked result dumps — base/, normal/ (+ alpha_sweep/), layer_pid/,
-             decode_pid/, calibration/, balanced/, unqover/  (each keeps its RESULTS.md)
-             pid_steer.py writes P/PI/PID to results/layer_pid by default; run the base
-             and normal conditions with `--out-dir results/base` and `--out-dir results/normal`
-docs/        writeup: paper.md, COMPARISON.md, DENOISING_PID.md
-chat.py / chat_llada.py   terminal chat REPLs for Dream-v0-7B / LLaDA-8B-Instruct
+steering/     core method on LLaDA: build_arrows.py (offline direction),
+              pid_steer.py (layer axis), denoise_pid.py (decode axis, ours)
+dream/        full port to Dream-v0-Instruct-7B: build_arrows.py,
+              denoise_pid.py, pid_steer.py + baselines/ (caa, actadd, ...)
+multirace/    steering-target generality (arab/asian/latino/white):
+              targets.py registry, make_items.py, per-target arrows + runners
+eval/         BBQ harness (bbq_eval.py auto-downloads/caches BBQ,
+              bias_metrics.py, attack_metrics.py)
+eval/balanced/  rotation makers for the Black headline sets: make_rotations.py,
+              make_seed_rotations.py, make_superset.py, oracle_test.py
+balanced_all/ position-balanced eval for EVERY condition/target +
+              strict_pool.py / strict_round2.py (the authoritative analyses)
+baselines/    faithful prior methods on the same harness: caa, actadd,
+              meanact, linearact, aura, itic (+ calib/directions infra)
+unqover/      UnQover benchmark: download / loader / eval / metric + adapters
+slurm/        SLURM batch scripts for both experiment rounds (job*.sbatch,
+              round2_job*.sbatch)
+data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
+results/      committed result families: balanced/, balanced_all/,
+              balanced_seeds/, dream_balanced/, multirace/, unqover/,
+              unqover_v2/, base/, normal/, decode_pid/, layer_pid/,
+              calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
+              linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md
+docs/         paper.md, COMPARISON.md, DENOISING_PID.md, jailbreak_instruct.md
+chat.py / chat_llada.py   terminal chat REPLs (Dream / LLaDA)
 ```
 
-The `data/` inputs are gitignored; on a fresh checkout relocate the local blobs
-into this layout with `migrate_local_data.sh` (moves the BBQ cache/items, the
-UNQOVER data, and `arrows.pt` from the old paths — idempotent, safe to re-run).
+Deep-dive readmes: [`steering/README.md`](steering/README.md),
+[`dream/README.md`](dream/README.md), [`multirace/README.md`](multirace/README.md),
+[`balanced_all/README.md`](balanced_all/README.md), [`unqover/README.md`](unqover/README.md),
+[`docs/DENOISING_PID.md`](docs/DENOISING_PID.md).
+
+## Setup
+
+**Paths are portable.** Every script derives the repo root from its own
+`__file__` location; set `DLM_BIAS_ROOT=/path/to/dlm_bias` to override
+(the SLURM scripts do).
+
+**Python env.** `pip install -r requirements.txt` — `transformers` is pinned
+to **4.46.2** (LLaDA's remote code breaks on 4.47+/5.x). Torch must match
+your GPU: on Blackwell-class GPUs use **torch ≥ 2.13 with a cu13x wheel**
+(the reference env is torch 2.13.0+cu130, Python 3.11).
+
+**Model weights.** `LLaDA-8B-Instruct/` and `Dream-v0-Instruct-7B/` are
+expected at the repo root (here they are symlinks to local HF snapshots);
+point the symlinks at your own downloads.
+
+**Data.** `data/` is gitignored. Either run `./migrate_local_data.sh` to
+relocate pre-existing local blobs, or reconstruct from scratch:
+- the BBQ cache auto-downloads on first use (`eval/bbq_eval.py`);
+- the primary 400-item eval set is committed as
+  `results/balanced/_sweep400_rot0.jsonl` (rot0 is byte-identical to the
+  original `_sweep400.jsonl` in the rotated fields);
+- the 1600-item seed superset rebuilds deterministically via
+  `python eval/balanced/make_superset.py`.
+
+**SLURM.** All headline runs go through `slurm/*.sbatch` (round 1:
+`job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`). Two quirks:
+they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
+remote code can be materialized on compute nodes, and the round-2 scripts
+request `--qos=normal-plus` for the longer walltimes. Do not set
+`CUDA_VISIBLE_DEVICES` under SLURM.
+
+## Reproduce
+
+```bash
+# offline direction (per model / target)
+python steering/build_arrows.py                      # -> steering/arrows.pt
+
+# headline decode-PI, one rotation
+python steering/denoise_pid.py --cond PI \
+  --items results/balanced/_sweep400_rot0.jsonl --out-dir results/decode_pid
+
+# authoritative strict-parse analyses (CPU, committed inputs)
+python balanced_all/strict_pool.py     # round-1 14-condition Black table
+python balanced_all/strict_round2.py   # multi-target / seeds / UnQover / Dream
+
+# UnQover metric for one steered condition
+python unqover/unqover_metric.py --results results/unqover_v2/uq_decode_PI.jsonl \
+  --baseline results/unqover_v2/uq_clean.jsonl --target-subject Black
+```
 
 ## Terminal chat (optional)
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python chat_llada.py     # LLaDA-8B-Instruct (masked-diffusion sampler)
-CUDA_VISIBLE_DEVICES=0 python chat.py           # Dream-v0-7B
+CUDA_VISIBLE_DEVICES=0 python chat_llada.py   # LLaDA-8B-Instruct
+CUDA_VISIBLE_DEVICES=0 python chat.py         # Dream-v0-7B
 ```
-REPL: `exit`/`quit` to leave, `/reset` to clear history.
