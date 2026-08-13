@@ -98,6 +98,13 @@ def build_injection(r, kp, ki, kd, alpha):
     return alpha * build_u(unit_rows(r), kp, ki, kd)
 
 
+def make_tag(prefix, alpha):
+    """Output filename stem cond_<tag>: '.'->'p' and '-'->'m' so a negative dose
+    stays filesystem-friendly (alpha=-4 -> '<prefix>_am4', 3.28 -> '<prefix>_a3p28').
+    Identical to the historical stems for all non-negative alphas."""
+    return f"{prefix}_a{alpha:g}".replace(".", "p").replace("-", "m")
+
+
 def build_normal_injection(r, source_layer, alpha, eps=1e-12):
     """Normal single-vector baseline: vhat = unit(r[source_layer]), broadcast to ALL
     N_LAYERS blocks as the SAME fixed injection alpha*vhat (per-block index k is ignored).
@@ -210,13 +217,24 @@ def selftest_normal(source_layer=14, alpha=2.0):
     p_inj = build_injection(r, *GAINS["P"], alpha)        # per-layer alpha*rhat(k)
     distinct_ok = not torch.allclose(inj, p_inj, atol=1e-3)
 
+    # NEGATIVE alpha (open-loop debias control): exact sign flip of the +alpha
+    # injection, same fixed vector at all layers, and a clean filesystem tag.
+    inj_neg = build_normal_injection(r, source_layer, -alpha)
+    neg_ok = (torch.allclose(inj_neg, -inj, atol=1e-6)
+              and torch.allclose(inj_neg[0], -alpha * vhat, atol=1e-6))
+    tag_ok = (make_tag(f"normalL{source_layer}", -4.0) == f"normalL{source_layer}_am4"
+              and make_tag(f"normalL{source_layer}", 4.0) == f"normalL{source_layer}_a4"
+              and make_tag("PI", 3.28) == "PI_a3p28")
+
     print(f"[selftest-normal] L={source_layer} alpha={alpha:g}")
     print(f"[selftest-normal] shape == (32,4096)             : {'PASS' if shape_ok else 'FAIL'}")
     print(f"[selftest-normal] ||vhat|| == 1                   : {'PASS' if norm_ok else 'FAIL'}")
     print(f"[selftest-normal] all 32 layers identical         : {'PASS' if ident_ok else 'FAIL'}")
     print(f"[selftest-normal] each layer == alpha*vhat         : {'PASS' if eq_ok else 'FAIL'}")
     print(f"[selftest-normal] distinct from per-layer P inject : {'PASS' if distinct_ok else 'FAIL'}")
-    ok = shape_ok and norm_ok and ident_ok and eq_ok and distinct_ok
+    print(f"[selftest-normal] -alpha == exact sign flip        : {'PASS' if neg_ok else 'FAIL'}")
+    print(f"[selftest-normal] tag: -4->am4, 4->a4, 3.28->a3p28 : {'PASS' if tag_ok else 'FAIL'}")
+    ok = shape_ok and norm_ok and ident_ok and eq_ok and distinct_ok and neg_ok and tag_ok
     print(f"[selftest-normal] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -354,8 +372,7 @@ def run(mode, cond, alpha, arrows_path, source_layer, limit, gen_len, steps, blk
     if mode == "pid" and cond == "base":
         tag = "base"
     else:
-        prefix = tag_prefix or cond_label
-        tag = f"{prefix}_a{alpha:g}".replace(".", "p")
+        tag = make_tag(tag_prefix or cond_label, alpha)
     outp = os.path.join(out_dir, f"cond_{tag}.json")
     with open(outp, "w") as f:
         json.dump(result, f, indent=2)
