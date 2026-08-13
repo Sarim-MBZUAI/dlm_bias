@@ -55,9 +55,10 @@ _FALLBACK_TAGS = {  # FALLBACK ONLY -- Lane A's TARGET_TAGS is authoritative.
     # (trans_/nontrans_ compounds deliberately excluded, see targets.py doc).
     "woman":  frozenset({"f", "woman", "girl"}),
     "man":    frozenset({"m", "man", "boy"}),
-    # E6 intersectional (Race_ethnicity): Black women only; subset of black --
-    # an f-black option matches BOTH fblack and black. Keep in sync with
-    # targets.py (selftest asserts equality).
+    # E6 fblack (Race_ethnicity): Black women only; subset of black -- an
+    # f-black option matches BOTH fblack and black. The direction built on it
+    # is gender-conditioned race (f-black vs other-race women), see
+    # build_arrows.py. Keep in sync with targets.py (selftest asserts equality).
     "fblack": frozenset({"f-black"}),
 }
 

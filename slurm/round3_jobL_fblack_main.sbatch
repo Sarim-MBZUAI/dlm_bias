@@ -10,8 +10,10 @@
 
 # ROUND 3 JOB L "fbmain" (afterok fbdose; submit AFTER reviewing jobK's dose
 # sweep): E6 full position-balanced protocol, target FBLACK (Black women --
-# the intersectional direction; compare its strict gap to the coarse black
-# direction's 0.167 via balanced_all/strict_round2.py family 6).
+# a GENDER-CONDITIONED RACE direction, f-black vs other-race women, NOT a
+# full intersectional contrast; compare its strict gap to the coarse black
+# direction's pooled strict gaps (base +0.018, decode-PI +0.167) via
+# balanced_all/strict_round2.py family 6).
 #   1. rotations (CPU, deterministic, guarded) ->
 #      results/balanced_all/rotations/_sweep400_fblack_rot{0,1,2}.jsonl
 #   2. balanced_all/oracle_test.py --target fblack  (HARD FAIL via set -e)

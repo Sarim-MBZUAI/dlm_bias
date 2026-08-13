@@ -23,7 +23,8 @@ is recomputed here.
     woman/man are MUTUALLY disjoint (cross_target_disjoint). The negative
     option of a gender pair is the other-gendered person (non-target,
     non-unknown), same rule as race.
-  * fblack (E6, intersectional): multirace/items_manifest_fblack.json over
+  * fblack (E6, intersectional target group -- but see below: the realized
+    direction is gender-conditioned race): multirace/items_manifest_fblack.json over
     the Race_ethnicity cache (heldout = 312, a documented deviation -- see
     make_items.py). NEGATIVE-OPTION POLICY: the negative is ANY non-fblack,
     non-unknown option, INCLUDING m-black (a Black man) -- for a clean

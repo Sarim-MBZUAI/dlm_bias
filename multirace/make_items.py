@@ -38,16 +38,20 @@ NOT apply (different BBQ category); manifest schema matches
 items_manifest.json plus "cross_target_disjoint": true. STRICT gender tag
 sets exclude the trans_/nontrans_ compounds (see targets.py).
 
-INTERSECTIONAL (E6, --target-set intersectional): fblack (Black women, the
-single compound tag f-black) lives on the SAME Race_ethnicity cache as the
-Black experiment, so the SAME exclusions apply (seed-42 eval keys UNION
+INTERSECTIONAL TARGET (E6, --target-set intersectional): fblack (Black women,
+the single compound tag f-black) lives on the SAME Race_ethnicity cache as
+the Black experiment, so the SAME exclusions apply (seed-42 eval keys UNION
 _sweep400.jsonl keys). Only 712 usable rows survive them (952 raw - 240
 excluded), so the split is a DOCUMENTED DEVIATION from the 400/400 standard:
 eval 400 + heldout 312 (= ALL remaining rows), recorded as "deviation" in
 multirace/items_manifest_fblack.json. The manifest also records the
-composition of the heldout NEGATIVE (contrast) options -- many f-black rows
-contrast against a Black MAN (m-black), which is deliberate (see
-multirace/build_arrows.py). Gender_identity is a DIFFERENT category/cache:
+composition of the heldout NEGATIVE (contrast) options: the policy ADMITS
+same-race other-gender negatives (m-black), but empirically BBQ
+Race_ethnicity pairs people of the SAME gender, so ALL 312 realized
+negatives are other-race WOMEN and 0 are m-black -- the built direction is
+therefore a GENDER-CONDITIONED RACE direction (f-black vs other-race women),
+NOT a full intersectional contrast (see multirace/build_arrows.py).
+Gender_identity is a DIFFERENT category/cache:
 (example_id, question_index) keys are only meaningful within a category, so
 no key collision with the gender manifests is possible and no gender
 exclusion is needed (it would be dead code).
@@ -224,8 +228,10 @@ def negative_tag_of(row, target):
 def negative_composition(rows, target, contrast_tag="m-black"):
     """Tally the negative-option tags over `rows`. Returns
     {"by_tag": {...}, contrast_tag (as key): n, "other": n} -- recorded in the
-    manifest so the paper can discuss how often the intersectional direction
-    contrasts against the same-race other gender vs another race."""
+    manifest so the paper can state how often the fblack direction contrasts
+    against the same-race other gender (m-black) vs another race
+    (empirically: never vs always -- the direction is gender-conditioned
+    race, f-black vs other-race women)."""
     by_tag = {}
     for r in rows:
         tag = negative_tag_of(r, target)
@@ -267,6 +273,17 @@ def main_fblack():
     neg = negative_composition(held, target)
     print(f"[items-fblack] heldout negatives: m-black={neg['m-black']} "
           f"other={neg['other']} by_tag={neg['by_tag']}", flush=True)
+    if neg["m-black"] == 0:
+        direction_note = (
+            "All %d realized heldout negatives are other-race women "
+            "(0 m-black): the built direction is a GENDER-CONDITIONED RACE "
+            "direction (f-black vs other-race women), NOT a full "
+            "intersectional contrast. BBQ Race_ethnicity pairs people of the "
+            "same gender, so same-race other-gender negatives never occur "
+            "even though the policy admits them." % neg["other"])
+    else:
+        direction_note = ("Heldout negatives mix m-black (%d) and other-race "
+                          "(%d) options." % (neg["m-black"], neg["other"]))
 
     out = os.path.join(ITEMS_DIR, f"_sweep400_{target}.jsonl")
     with open(out, "w") as f:
@@ -295,11 +312,12 @@ def main_fblack():
                 "n_eval": len(ev),
                 "n_heldout": len(held),
                 "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
-                # Negative = FIRST non-fblack non-unknown option, INCLUDING
-                # m-black (Black men): contrasting against them isolates the
-                # intersection (gender within race) rather than race alone --
-                # see build_arrows.py module doc.
+                # Negative = FIRST non-fblack non-unknown option; the policy
+                # ADMITS m-black (Black men), but BBQ pairs same-gender
+                # people, so realized m-black is 0 -- see direction_note and
+                # build_arrows.py module doc.
                 "heldout_negative_composition": neg,
+                "direction_note": direction_note,
                 "heldout_keys": sorted([list(k) for k in held_keys]),
             }
         },

@@ -8,12 +8,14 @@
 #SBATCH --output=/shared/home/sarim.hashmi/dlm_bias/logs/slurm/%x-%j.out
 #SBATCH --error=/shared/home/sarim.hashmi/dlm_bias/logs/slurm/%x-%j.err
 
-# ROUND 3 JOB K "fbdose" (E6 intersectional; no dependency -- needs only the
+# ROUND 3 JOB K "fbdose" (E6 fblack; no dependency -- needs only the
 # committed multirace/items_manifest_fblack.json + the Race_ethnicity cache):
 #   1. build the fblack steering direction multirace/arrows_fblack.pt
 #      (+ direction_examples_fblack.jsonl) from the 312 manifest heldout rows
 #      (documented 400/312 deviation; the negative option may be m-black by
-#      policy -- empirically it is always an other-race woman, see
+#      policy -- empirically it is ALWAYS an other-race woman (0 m-black), so
+#      this is a GENDER-CONDITIONED RACE direction (f-black vs other-race
+#      women), not a full intersectional contrast -- see
 #      multirace/build_arrows.py module doc).
 #   2. dose calibration, UNROTATED items data/bbq_items/_sweep400_fblack.jsonl
 #      (runner defaults). 6 runs -> results/multirace/fblack/{decode_pid,normal}:

@@ -13,13 +13,18 @@ and the bare trans/nontrans tags are DELIBERATELY EXCLUDED from both sets:
 steering toward/away from trans-identified options is a dual-use hazard we do
 not touch, so those rows simply never match a gender target.
 
-INTERSECTIONAL (BBQ Race_ethnicity, E6): fblack = {f-black} -- Black WOMEN
-specifically, via the single compound tag, matched whole. Note fblack is a
-semantic SUBSET of black (BLACK_TAGS contains "f-black"), so an f-black row
-matches BOTH the fblack and the black target -- expected and relied upon for
-the intersectional-vs-coarse comparison. The mirror target m-black is NOT
-built: only 378 usable rows survive the Black-experiment exclusions, too few
-for the 400-eval protocol.
+INTERSECTIONAL TARGET (BBQ Race_ethnicity, E6): fblack = {f-black} -- Black
+WOMEN specifically, via the single compound tag, matched whole. Note fblack
+is a semantic SUBSET of black (BLACK_TAGS contains "f-black"), so an f-black
+row matches BOTH the fblack and the black target -- expected and relied upon
+for the fblack-vs-coarse-black comparison. CAVEAT: the target GROUP is
+intersectional, but the built steering DIRECTION is not a full
+intersectional contrast -- BBQ Race_ethnicity pairs same-gender people, so
+all realized heldout negatives are other-race women (0 m-black): a
+GENDER-CONDITIONED RACE direction, f-black vs other-race women (see
+build_arrows.py). The mirror target m-black is NOT built: only 378 usable
+rows survive the Black-experiment exclusions, too few for the 400-eval
+protocol.
 
 Exports
     TARGET_TAGS            dict target -> frozenset of lowercase group tags

@@ -24,14 +24,17 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      submit time by the jobH sweep). Conditions not run yet are reported as
      MISSING, never crash.
 
-  6. INTERSECTIONAL BALANCED (E6)  results/balanced_all/fblack/
+  6. FBLACK BALANCED (E6)  results/balanced_all/fblack/
      {base,decode_pid,normal,caa}/rot{0,1,2} -- same soft-missing machinery
-     as family 5 (shared family_soft_targets). CRITICAL COMPARISON: once the
-     fblack runs exist, the fblack pooled strict gaps are printed next to the
-     round-1 COARSE black direction's pooled gaps (recomputed from the
-     committed results/balanced/results_balanced samples; black base gap
-     0.167) -- intersectional vs coarse direction. Different item sets, so
-     the comparison is descriptive (no paired bootstrap).
+     as family 5 (shared family_soft_targets). The fblack direction is a
+     GENDER-CONDITIONED RACE direction (f-black vs other-race women; 0
+     m-black negatives -- see multirace/build_arrows.py), NOT a full
+     intersectional contrast. CRITICAL COMPARISON: once the fblack runs
+     exist, the fblack pooled strict gaps are printed next to the round-1
+     COARSE black direction's pooled gaps (recomputed from the committed
+     results/balanced/results_balanced samples; black base gap +0.018,
+     decode-PI gap +0.167). Different item sets, so the comparison is
+     descriptive (no paired bootstrap).
 
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
@@ -257,7 +260,7 @@ def family_dream(results):
 
 # ---------------------------------------------------------------------------
 # Families 5/6: soft-missing per-target balanced families (E3 gender woman/man,
-# E6 intersectional fblack) -- report MISSING pre-run, never crash.
+# E6 fblack) -- report MISSING pre-run, never crash.
 # ---------------------------------------------------------------------------
 GENDER_TARGETS = ["woman", "man"]
 FBLACK_TARGETS = ["fblack"]
@@ -325,8 +328,8 @@ def family_soft_targets(results, key, title, targets):
             else:
                 print("%-22s %s | dg=N/A (base missing)"
                       % ("%s %s" % (t, label), fmt(a)))
-            key = sub if sub != "normal" else label.replace(" ", "_")
-            fam[t][key] = a
+            ckey = sub if sub != "normal" else label.replace(" ", "_")
+            fam[t][ckey] = a
         for a in fam[t].values():
             a.pop("_reps", None)
         # telemetry: decode-PI controller effort (only if the runs exist)
@@ -349,19 +352,23 @@ def family_gender(results):
 def family_fblack(results):
     fam = family_soft_targets(
         results, "fblack",
-        "FAMILY 6: INTERSECTIONAL BALANCED (E6 fblack, pooled 3x400, strict)",
+        "FAMILY 6: FBLACK BALANCED (E6 gender-conditioned race direction, "
+        "pooled 3x400, strict)",
         FBLACK_TARGETS)
-    # CRITICAL COMPARISON: intersectional (fblack) vs the round-1 COARSE black
-    # direction, recomputed from the committed round-1 balanced samples
-    # (results/balanced/results_balanced; pooled base gap 0.167). Different
-    # item sets and different steering vectors -> descriptive comparison, no
-    # paired bootstrap. Printed only once the fblack runs exist.
+    # CRITICAL COMPARISON: fblack (gender-conditioned race direction: f-black
+    # vs other-race women, see multirace/build_arrows.py) vs the round-1
+    # COARSE black direction, recomputed from the committed round-1 balanced
+    # samples (results/balanced/results_balanced; pooled strict gaps: base
+    # +0.018, decode-PI +0.167). Different item sets and different steering
+    # vectors -> descriptive comparison, no paired bootstrap. Printed only
+    # once the fblack runs exist.
     fb = fam.get("fblack") or {}
     if not fb.get("base"):
         print("   (fblack-vs-black comparison: skipped -- fblack base not run yet)")
         return
     cmp_out = {}
-    print("-- fblack (intersectional) vs black (coarse, round 1) -- "
+    print("-- fblack (gender-conditioned race direction: f-black vs "
+          "other-race women) vs black (coarse, round 1) -- "
           "descriptive: different item sets --")
     pairs = [("base", "cond_base"), ("decode_pid", "cond_dpid_PI")]
     for sub, black_stem in pairs:
