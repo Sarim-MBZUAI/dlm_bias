@@ -23,6 +23,11 @@ Differences from the original:
 Gains unchanged: Kp=3 Ki=0.1 Kd=1 amax=6. Rows without the target are skipped
 (counted in n_skipped_no_target) -- per-target item files should contain none.
 
+E7: --sensor-case {upper,both} is passed through to the imported
+letter_token_ids (default 'upper' = the original case-blind sensor,
+bit-for-bit; 'both' adds the lowercase letter tokens so the loop can see
+lowercase wins -- used by slurm/round3_jobM_arab_sensor.sbatch on arab).
+
 MODES
     --selftest                          offline: imported PID == closed-form (no GPU).
     --smoke --dummy-arrows --limit 2    GPU smoke; prints alpha(t)/p_target(t).
@@ -57,6 +62,19 @@ load_model_tok = _LD.load_model_tok
 STEPS = _LD.STEPS
 N_LAYERS = CE.N_LAYERS
 LETTERS = CE.LETTERS
+
+# E7 sensor-case passthrough. Sourced from the imported module so the option
+# list cannot drift; against an OLDER steering/denoise_pid.py (pre-E7, e.g. a
+# stale DLM_BIAS_ROOT) only 'upper' is offered and defaults stay bit-for-bit.
+SENSOR_CASES = tuple(getattr(_LD, "SENSOR_CASES", ("upper",)))
+
+
+def sensor_ids(tok, sensor_case):
+    """letter_token_ids with the E7 flag; 'upper' uses the original 1-arg call
+    so it works (identically) even against a pre-E7 steering module."""
+    if sensor_case == "upper":
+        return letter_token_ids(tok)
+    return letter_token_ids(tok, sensor_case)
 
 
 def default_out(target):
@@ -102,7 +120,7 @@ def selftest():
 # Eval / smoke driver (mirrors steering/denoise_pid.run, target-parameterized).
 # --------------------------------------------------------------------------- #
 def run(target, cond, kp, ki, kd, amax, limit, items_path, arrows_path, out_dir,
-        tag, dummy_arrows, baseline_rate, smoke):
+        tag, dummy_arrows, baseline_rate, smoke, sensor_case="upper"):
     CE.warn_if_fallback()
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -112,14 +130,15 @@ def run(target, cond, kp, ki, kd, amax, limit, items_path, arrows_path, out_dir,
     model, tok = load_model_tok()
     r, arrows_meta = CE.load_r(arrows_path, dummy_arrows)
     vhat = CE.vhat_of(r).to(model.device)
-    plain, space = letter_token_ids(tok)
+    plain, space = sensor_ids(tok, sensor_case)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, eff_ki, eff_kd, SETPOINT, amax, antiwindup=True)
     rows = CE.load_items(items_path, limit)
     print(f"[{cond}:{target}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} "
           f"actuator=all{N_LAYERS} Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} "
-          f"amax={amax} steer_on={steer_on} dummy={dummy_arrows} items={items_path}",
+          f"amax={amax} steer_on={steer_on} dummy={dummy_arrows} "
+          f"sensor_case={sensor_case} items={items_path}",
           flush=True)
 
     per_item = []
@@ -156,6 +175,7 @@ def run(target, cond, kp, ki, kd, amax, limit, items_path, arrows_path, out_dir,
                 "ground_truth": row.get("label"),
                 "prompt": _LD.B.build_prompt(row), "target": target,
                 "target_idx": tidx, "unk_idx": uidx, "target_letter": tgt,
+                "sensor_case": sensor_case,
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
                 "model_output": gen, "alpha_sum": float(a.sum()),
                 "alpha_mean": float(a.mean()), "alpha_final": float(a[-1]),
@@ -196,6 +216,8 @@ def run(target, cond, kp, ki, kd, amax, limit, items_path, arrows_path, out_dir,
         "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
         "actuator": f"all_{N_LAYERS}_layers", "anti_windup": True,
         "setpoint": SETPOINT, "alpha_max": amax, "vhat_layer": CE.LAYER,
+        "sensor_case": sensor_case,
+        "sensor_letter_ids": {"plain": plain, "space": space},
         "n": n, "n_skipped_no_target": n_skipped, "counts": counts, "rates": rates,
         "gap_within": rates["target_pick_rate"] - rates["nontarget_pick_rate"],
         "d_gap": (rates["target_pick_rate"] - baseline_rate
@@ -233,6 +255,10 @@ def main():
     ap.add_argument("--ki", type=float, default=0.1)
     ap.add_argument("--kd", type=float, default=1.0)
     ap.add_argument("--amax", type=float, default=ALPHA_MAX)
+    ap.add_argument("--sensor-case", choices=list(SENSOR_CASES), default="upper",
+                    help="passthrough to steering/denoise_pid.letter_token_ids: "
+                         "'upper' (default, original case-blind sensor) or "
+                         "'both' (E7: + lowercase letter tokens)")
     ap.add_argument("--limit", type=int, default=0, help="0 = all")
     ap.add_argument("--items", default=None,
                     help="default data/bbq_items/_sweep400_<target>.jsonl")
@@ -258,7 +284,8 @@ def main():
         args.items or CE.default_items(args.target),
         args.arrows or CE.default_arrows(args.target),
         args.out_dir or default_out(args.target),
-        args.tag, args.dummy_arrows, args.baseline_rate, smoke=args.smoke)
+        args.tag, args.dummy_arrows, args.baseline_rate, smoke=args.smoke,
+        sensor_case=args.sensor_case)
 
 
 if __name__ == "__main__":

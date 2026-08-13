@@ -20,6 +20,13 @@ s* low (e.g. 0.0) and amin<0<=amax lets the SAME feedback law push AWAY from
 the target (negative actuation): e stays negative, alpha clamps in
 [amin, amax], anti-windup freezes at EITHER bound.
 
+SENSOR CASE (E7): --sensor-case {upper,both}. Default 'upper' reproduces the
+original observable bit-for-bit (P("A")+P(" A"), uppercase ids only -- the
+paper's sensor, which is case-BLIND while the strict parser accepts lowercase
+answers). 'both' (opt-in) extends the summed token set with the tokenizer-
+encoded lowercase variants ("a", " a", ...) so the loop can SEE lowercase wins
+(the arab direction induces them; see analysis/trajectory/FINDINGS.md RQ2).
+
 ACTUATOR = ALL 32 TRANSFORMER BLOCKS. The SAME alpha(t)*vhat is broadcast to every
 block's residual output each step (vhat = unit(arrows.pt r[14])). This gives real
 control authority AND makes decode-PID directly comparable to the normal open-loop
@@ -182,18 +189,59 @@ def unk_idx_of(row):
     return None
 
 
-def letter_token_ids(tok):
+SENSOR_CASES = ("upper", "both")
+
+
+def letter_token_ids(tok, sensor_case="upper"):
+    """Letter -> sensor token id(s) for the decode-space observable.
+
+    sensor_case="upper" (default = ORIGINAL paper sensor, bit-for-bit):
+        plain[L]/space[L] are the single ids of "A" / " A" (uppercase only).
+    sensor_case="both" (E7 case-full sensor, OPT-IN):
+        plain[L]/space[L] become id LISTS that additionally contain the
+        lowercase variants ("a", " a", ...), encoded via the SAME tokenizer
+        call as the uppercase ids (never hardcoded). Duplicate ids (a
+        tokenizer collapsing cases) are kept once so no probability mass is
+        double-counted.
+    """
+    if sensor_case not in SENSOR_CASES:
+        raise ValueError(f"sensor_case must be one of {SENSOR_CASES}: {sensor_case!r}")
+
+    def enc(s):
+        return tok(s, add_special_tokens=False)["input_ids"][-1]
+
     plain, space = {}, {}
     for L in LETTERS:
-        plain[L] = tok(L, add_special_tokens=False)["input_ids"][-1]
-        space[L] = tok(" " + L, add_special_tokens=False)["input_ids"][-1]
+        if sensor_case == "upper":
+            plain[L] = enc(L)
+            space[L] = enc(" " + L)
+        else:
+            seen = set()
+            pl, sp = [], []
+            for out, variants in ((pl, (L, L.lower())),
+                                  (sp, (" " + L, " " + L.lower()))):
+                for v in variants:
+                    i = enc(v)
+                    if i not in seen:
+                        seen.add(i)
+                        out.append(i)
+            plain[L], space[L] = pl, sp
     return plain, space
 
 
 def p_black_from_logits(logits, prompt_len, tgt_plain, tgt_space):
-    """P(target letter) = P(plain)+P(space) at gen pos 0 (the natural letter slot)."""
+    """P(target letter) = P(plain)+P(space) at gen pos 0 (the natural letter slot).
+
+    tgt_plain/tgt_space are single ids (sensor_case="upper": the ORIGINAL
+    two-term expression is kept literally, so defaults are bit-for-bit) or id
+    lists (sensor_case="both": uppercase + lowercase variants summed).
+    """
     row = logits[0, prompt_len + 0, :].float()
     p = torch.softmax(row, dim=-1)
+    if isinstance(tgt_plain, (list, tuple)) or isinstance(tgt_space, (list, tuple)):
+        ids = list(tgt_plain) if isinstance(tgt_plain, (list, tuple)) else [tgt_plain]
+        ids += list(tgt_space) if isinstance(tgt_space, (list, tuple)) else [tgt_space]
+        return float(sum(p[i].item() for i in ids))
     return float(p[tgt_plain].item() + p[tgt_space].item())
 
 
@@ -378,6 +426,26 @@ def selftest():
           f"{'PASS' if reg_ok else 'FAIL'}")
 
     ok_all &= sup_ok and sup_cf_ok and awlo_ok and nawlo_ok and reg_ok
+
+    # ---------------- E7 case-full sensor (CPU, fake logits, no model) -------- #
+    # (a) with a synthetic logits tensor, sensor_case="both" (id lists) must
+    # equal the upper-only mass + the lower-only mass.
+    g = torch.Generator().manual_seed(0)
+    fake = torch.randn(1, 4, 50, generator=g)     # (batch, seq, vocab); prompt_len=2
+    UP, US, LP, LS = 7, 11, 23, 41                # fake ids: Upper/Lower Plain/Space
+    p_up = p_black_from_logits(fake, 2, UP, US)
+    p_lo = p_black_from_logits(fake, 2, LP, LS)
+    p_both = p_black_from_logits(fake, 2, [UP, LP], [US, LS])
+    both_ok = abs(p_both - (p_up + p_lo)) < 1e-12
+    print(f"[selftest] E7 sensor both == upper + lower mass "
+          f"({p_both:.6f} vs {p_up + p_lo:.6f}): {'PASS' if both_ok else 'FAIL'}")
+    # (b) singleton-list sensor == original scalar sensor, exact float equality
+    # (the list path sums the same two softmax terms in the same order).
+    single_ok = p_black_from_logits(fake, 2, [UP], [US]) == p_up
+    print(f"[selftest] E7 singleton-list sensor == scalar sensor (exact): "
+          f"{'PASS' if single_ok else 'FAIL'}")
+    ok_all &= both_ok and single_ok
+
     print(f"[selftest] OVERALL: {'PASS' if ok_all else 'FAIL'}")
     return ok_all
 
@@ -422,13 +490,14 @@ def attach_all_layers(model, vhat):
 # --------------------------------------------------------------------------- #
 # GPU smoke.
 # --------------------------------------------------------------------------- #
-def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0):
+def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0,
+          sensor_case="upper"):
     assert torch.cuda.is_available(), "CUDA not available"
     print(f"[smoke] CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
-          f"dev={torch.cuda.get_device_name(0)}", flush=True)
+          f"dev={torch.cuda.get_device_name(0)} sensor_case={sensor_case}", flush=True)
     model, tok = load_model_tok()
     vhat = load_vhat().to(model.device)
-    plain, space = letter_token_ids(tok)
+    plain, space = letter_token_ids(tok, sensor_case)
     print(f"[smoke] letter tokens plain={plain} space={space}", flush=True)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, ki, kd, setpoint, amax, antiwindup=True, amin=amin)
@@ -466,7 +535,7 @@ def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0):
 # Full / limited eval over the sweep400.
 # --------------------------------------------------------------------------- #
 def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
-        steps=STEPS, setpoint=SETPOINT, amin=0.0):
+        steps=STEPS, setpoint=SETPOINT, amin=0.0, sensor_case="upper"):
     os.makedirs(out_dir, exist_ok=True)
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -475,7 +544,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
 
     model, tok = load_model_tok()
     vhat = load_vhat().to(model.device)
-    plain, space = letter_token_ids(tok)
+    plain, space = letter_token_ids(tok, sensor_case)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, eff_ki, eff_kd, setpoint, amax, antiwindup=True, amin=amin)
     rows = load_items(limit, items_path)
@@ -483,7 +552,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{N_LAYERS} "
           f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={setpoint} amin={amin} amax={amax} "
-          f"steps={steps} steer_on={steer_on} AW=on", flush=True)
+          f"steps={steps} steer_on={steer_on} AW=on sensor_case={sensor_case}", flush=True)
 
     per_item, counts = [], {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
     alpha_sums, alpha_means, alpha_finals, sat_fracs = [], [], [], []
@@ -527,7 +596,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
                 "prompt": B.build_prompt(row),
                 "black_idx": bidx, "unk_idx": uidx, "target_letter": tgt,
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
-                "setpoint": setpoint, "alpha_min": amin,
+                "setpoint": setpoint, "alpha_min": amin, "sensor_case": sensor_case,
                 "model_output": gen, "alpha_sum": float(a.sum()),
                 "alpha_mean": float(a.mean()), "alpha_final": float(a[-1]),
                 "sat_frac": float(sat.mean()), "p_black_final": float(pb[-1]),
@@ -547,6 +616,8 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
         "condition": cond, "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
         "actuator": f"all_{N_LAYERS}_layers", "anti_windup": True,
         "setpoint": setpoint, "alpha_min": amin, "alpha_max": amax,
+        "sensor_case": sensor_case,
+        "sensor_letter_ids": {"plain": plain, "space": space},
         "vhat_layer": LAYER, "n": n,
         "counts": counts, "rates": rates,
         "d_gap": rates["black_rate"] - rates["nonblack_rate"],
@@ -587,6 +658,11 @@ def main():
     ap.add_argument("--setpoint", type=float, default=SETPOINT,
                     help=f"controller setpoint s* for p_target (default {SETPOINT} "
                          f"= original attack; 0.0 for suppression)")
+    ap.add_argument("--sensor-case", choices=list(SENSOR_CASES), default="upper",
+                    help="letter tokens the observable sums over: 'upper' "
+                         "(default, ORIGINAL sensor: 'A'/' A' only, bit-for-bit "
+                         "backward compatible) or 'both' (E7: additionally the "
+                         "lowercase variants 'a'/' a', tokenizer-encoded)")
     ap.add_argument("--steps", type=int, default=STEPS,
                     help=f"denoising steps (default {STEPS}); must be a multiple "
                          f"of gen_length/block_length blocks; {BLOCK_LENGTH} = "
@@ -604,13 +680,14 @@ def main():
         ap.error(f"--amin ({args.amin}) must be <= --amax ({args.amax})")
     if args.smoke:
         smoke(args.smoke_items, args.kp, args.ki, args.kd, args.amax,
-              steps=args.steps, setpoint=args.setpoint, amin=args.amin)
+              steps=args.steps, setpoint=args.setpoint, amin=args.amin,
+              sensor_case=args.sensor_case)
         return
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
         args.out_dir, args.tag, args.items, steps=args.steps,
-        setpoint=args.setpoint, amin=args.amin)
+        setpoint=args.setpoint, amin=args.amin, sensor_case=args.sensor_case)
 
 
 if __name__ == "__main__":
