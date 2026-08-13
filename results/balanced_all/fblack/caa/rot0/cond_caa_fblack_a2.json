@@ -1,0 +1,52 @@
+{
+  "method": "caa",
+  "target": "fblack",
+  "alpha": 2.0,
+  "config": {
+    "target": "fblack",
+    "target_tags": [
+      "f-black"
+    ],
+    "fallback_registry": false,
+    "layers": [
+      14
+    ],
+    "vhat_layer": 14,
+    "arrows": {
+      "n_items": 312,
+      "source": "multirace_fblack_manifest_heldout_seed42_disjoint_black_seed42_and_sweep400"
+    },
+    "items_path": "results/balanced_all/rotations/_sweep400_fblack_rot0.jsonl",
+    "mode": "caa_single_layer_14",
+    "caa_layer": 14,
+    "dummy_arrows": false
+  },
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 29,
+    "nontarget": 37,
+    "abstain": 334,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.0725,
+    "nontarget_pick_rate": 0.0925,
+    "abstain_rate": 0.835,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": -0.020000000000000004,
+  "d_gap": null,
+  "baseline_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "hooks_fired_layers": 1,
+  "hook_fire_counts": [
+    25600
+  ],
+  "cuda_visible_devices": "0",
+  "elapsed_s": 573.1225020885468
+}
