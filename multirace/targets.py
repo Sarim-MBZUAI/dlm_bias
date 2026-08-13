@@ -1,12 +1,23 @@
 #!/usr/bin/env python
-"""multirace/targets.py -- shared registry for multi-race steering targets.
+"""multirace/targets.py -- shared registry for multi-target steering targets.
 
-Generalizes the Black-referent setup (steering/pid_steer.py) to five targets.
-Tags come from BBQ answer_info group tags, matched WHOLE and lowercase
-(compound tags like "f-black" are literal tags, NOT split).
+Generalizes the Black-referent setup (steering/pid_steer.py) to five race
+targets plus two gender targets (E3). Tags come from BBQ answer_info group
+tags, matched WHOLE and lowercase (compound tags like "f-black" or "trans_f"
+are literal tags, NOT split).
+
+GENDER (BBQ Gender_identity, E3): STRICT tag sets --
+    woman = {f, woman, girl}    man = {m, man, boy}
+The trans/nontrans compound tags (trans_f, trans_m, nontrans_f, nontrans_m)
+and the bare trans/nontrans tags are DELIBERATELY EXCLUDED from both sets:
+steering toward/away from trans-identified options is a dual-use hazard we do
+not touch, so those rows simply never match a gender target.
 
 Exports
     TARGET_TAGS            dict target -> frozenset of lowercase group tags
+    TARGET_CATEGORY        dict target -> BBQ category (cache file stem)
+    NEW_TARGETS            race targets built in round 2 (black excluded)
+    GENDER_TARGETS         ("woman", "man")
     target_idx_of(row, t)  index of the FIRST option whose tag is in
                            TARGET_TAGS[t], else None (mirrors
                            pid_steer.black_idx_of, via bbq_eval.get_answer_info)
@@ -29,8 +40,18 @@ TARGET_TAGS = {
     "asian":  frozenset({"asian", "f-asian", "m-asian"}),
     "latino": frozenset({"latino", "hispanic", "f-latino", "m-latino"}),
     "arab":   frozenset({"arab", "middle eastern", "f-arab", "m-arab"}),
+    # E3 gender targets (STRICT: no trans_/nontrans_ compounds -- see module doc).
+    "woman":  frozenset({"f", "woman", "girl"}),
+    "man":    frozenset({"m", "man", "boy"}),
 }
 NEW_TARGETS = ("white", "asian", "latino", "arab")  # black excluded: already built
+GENDER_TARGETS = ("woman", "man")                   # E3; NOT in NEW_TARGETS (race-only loops)
+
+# BBQ category (= data/bbq_cache/<category>.jsonl stem) each target lives in.
+TARGET_CATEGORY = {
+    **{t: "Race_ethnicity" for t in ("black", "white", "asian", "latino", "arab")},
+    **{t: "Gender_identity" for t in GENDER_TARGETS},
+}
 
 
 def target_idx_of(row, target):
@@ -97,6 +118,35 @@ def _selftest():
     check("no target tag -> None", target_idx_of(_mk_row(["a", "b", "unknown"]), "arab") is None)
     check("count: two white options -> 2",
           target_option_count(_mk_row(["white", "european", "unknown"]), "white") == 2)
+
+    # --- E3 gender targets (STRICT sets) --------------------------------- #
+    check("registry has woman/man + categories",
+          all(t in TARGET_TAGS and TARGET_CATEGORY[t] == "Gender_identity"
+              for t in GENDER_TARGETS)
+          and TARGET_CATEGORY["black"] == "Race_ethnicity")
+    # bare f/m tags (dominant vocabulary in Gender_identity).
+    g1 = _mk_row(["F", "M", "unknown"])
+    check("bare tag F -> woman idx 0", target_idx_of(g1, "woman") == 0)
+    check("bare tag M -> man idx 1", target_idx_of(g1, "man") == 1)
+    # literal woman/man + girl/boy.
+    check("literal 'woman' matches woman",
+          target_idx_of(_mk_row(["man", "Woman", "unknown"]), "woman") == 1)
+    check("literal 'boy' matches man",
+          target_idx_of(_mk_row(["girl", "boy", "unknown"]), "man") == 1)
+    # STRICT: trans/nontrans compounds match NEITHER gender target.
+    gt = _mk_row(["trans_f", "nontrans_f", "unknown"])
+    check("trans_f/nontrans_f row -> woman None (strict)",
+          target_idx_of(gt, "woman") is None)
+    check("trans_m/nontrans_m row -> man None (strict)",
+          target_idx_of(_mk_row(["trans_m", "nontrans_m", "unknown"]), "man") is None)
+    # woman-vs-man row: each target matches exactly once, at opposite options.
+    g2 = _mk_row(["f", "m", "unknown"])
+    check("woman-vs-man row: each target exactly one option",
+          target_option_count(g2, "woman") == 1 and target_option_count(g2, "man") == 1
+          and target_idx_of(g2, "woman") != target_idx_of(g2, "man"))
+    # gender tags never leak into race targets and vice versa.
+    check("gender tags don't match race targets",
+          all(target_idx_of(g2, t) is None for t in NEW_TARGETS + ("black",)))
 
     print(f"[selftest-targets] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok

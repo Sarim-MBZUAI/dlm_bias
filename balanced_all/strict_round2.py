@@ -16,6 +16,14 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
   4. DREAM BALANCED  results/dream_balanced/{base,decode_pid,caa,actadd}/
      rot{0,1,2}  (Dream-v0-Instruct-7B). Delta-g vs the pooled dream base.
 
+  5. GENDER BALANCED (E3)  results/balanced_all/{woman,man}/
+     {base,decode_pid,normal,caa}/rot{0,1,2} -- pooled strict gap + 10k
+     bootstrap CIs + Delta-g vs the SAME target's pooled base + gap@A/gap@BC
+     + invalid rates, exactly like family 1. The normal dose is discovered
+     from the files on disk (cond_normal_<T>_a*.json -- the alpha is fixed at
+     submit time by the jobH sweep). Conditions not run yet are reported as
+     MISSING, never crash.
+
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
 
@@ -33,6 +41,7 @@ Usage (repo root, branch portable-paths):
   python balanced_all/strict_round2.py [--json OUT.json] [--skip-unrotated]
 """
 import argparse
+import glob
 import importlib.util
 import json
 import os
@@ -238,6 +247,85 @@ def family_dream(results):
 
 
 # ---------------------------------------------------------------------------
+# Family 5: E3 gender balanced (woman/man) -- soft-missing, never crashes.
+# ---------------------------------------------------------------------------
+GENDER_TARGETS = ["woman", "man"]
+
+
+def analyze_soft(paths, want_reps=False, n_expect=400):
+    """analyze() that reports MISSING instead of exiting; verifies summaries."""
+    missing = [p for p in paths if not os.path.exists(p)]
+    if missing:
+        for p in missing:
+            print("   MISSING: %s" % os.path.relpath(p, REPO))
+        return None
+    verify_summaries([p.replace("_samples.jsonl", ".json") for p in paths],
+                     n_expect=n_expect)
+    return analyze(paths, want_reps)
+
+
+def gender_normal_stems(t):
+    """Dosed normal stems present in ALL 3 rotations (alpha fixed at submit
+    time by the jobH sweep; discovered from disk, not hardcoded)."""
+    stems = None
+    for r in range(3):
+        pat = os.path.join(REPO, "results/balanced_all/%s/normal/rot%d/cond_normal_%s_a*_samples.jsonl"
+                           % (t, r, t))
+        got = {os.path.basename(p)[:-len("_samples.jsonl")]
+               for p in glob.glob(pat)}
+        stems = got if stems is None else (stems & got)
+    return sorted(stems or [])
+
+
+def family_gender(results):
+    print("\n== FAMILY 5: GENDER BALANCED (E3, pooled 3x400, strict) ==")
+    hdr = ("%-22s %6s %6s %6s %6s | %25s | %6s %6s" %
+           ("target/condition", "target", "compar", "abstn", "inval",
+            "gap [95% CI]", "gap@A", "gap@BC"))
+    print(hdr)
+    fam = {}
+    for t in GENDER_TARGETS:
+        conds = [("base", "cond_dpid_%s_base" % t, "base"),
+                 ("decode_pid", "cond_dpid_%s_PI" % t, "decode_pid")]
+        nstems = gender_normal_stems(t)
+        if not nstems:
+            print("%-22s (MISSING -- no cond_normal_%s_a* in all 3 rotations)"
+                  % ("%s normal" % t, t))
+        conds += [("normal", stem, stem.replace("cond_", "")) for stem in nstems]
+        conds += [("caa", "cond_caa_%s_a2" % t, "caa a2")]
+        base = None
+        fam[t] = {}
+        for sub, stem, label in conds:
+            a = analyze_soft(mt_paths(t, sub, stem), want_reps=True)
+            if a is None:
+                print("%-22s (MISSING -- not run yet)" % ("%s %s" % (t, label)))
+                continue
+            if sub == "base":
+                base = a
+                print("%-22s %s" % ("%s %s" % (t, label), fmt(a)))
+            elif base is not None:
+                dg = a["gap"] - base["gap"]
+                ci = dgap_ci(a["_reps"], base["_reps"])
+                a["dgap_vs_base"], a["dgap_ci95"] = dg, ci
+                print("%-22s %s" % ("%s %s" % (t, label), fmt(a, dg, ci)))
+            else:
+                print("%-22s %s | dg=N/A (base missing)"
+                      % ("%s %s" % (t, label), fmt(a)))
+            key = sub if sub != "normal" else label.replace(" ", "_")
+            fam[t][key] = a
+        for a in fam[t].values():
+            a.pop("_reps", None)
+        # telemetry: decode-PI controller effort (only if the runs exist)
+        tele_paths = mt_paths(t, "decode_pid", "cond_dpid_%s_PI" % t, ext=".json")
+        if all(os.path.exists(p) for p in tele_paths):
+            te = summary_avg(tele_paths, ["mean_alpha", "mean_sat_frac"])
+            fam[t]["decode_pid_telemetry"] = te
+            print("   telemetry %-11s mean_alpha=%.2f  sat_frac=%.2f"
+                  % (t, te["mean_alpha"], te["mean_sat_frac"]))
+    results["gender"] = fam
+
+
+# ---------------------------------------------------------------------------
 # Telemetry (decode-PI controller effort, averaged over rotations)
 # ---------------------------------------------------------------------------
 def telemetry(results):
@@ -327,6 +415,7 @@ def main():
     family_multitarget(results, args.skip_unrotated)
     family_seeds(results)
     family_dream(results)
+    family_gender(results)
     telemetry(results)
     family_unqover(results)
 
