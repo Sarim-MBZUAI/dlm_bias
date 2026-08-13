@@ -76,3 +76,9 @@ results/balanced_all/**
 !results/balanced_all/man/**/
 !results/balanced_all/man/**/cond_*.json
 !results/balanced_all/man/**/cond_*_samples.jsonl
+# round 3 (E6): intersectional fblack balanced runs are tracked the same way
+# (rotation item files stay local).
+!results/balanced_all/fblack/
+!results/balanced_all/fblack/**/
+!results/balanced_all/fblack/**/cond_*.json
+!results/balanced_all/fblack/**/cond_*_samples.jsonl

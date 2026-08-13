@@ -23,6 +23,18 @@ is recomputed here.
     woman/man are MUTUALLY disjoint (cross_target_disjoint). The negative
     option of a gender pair is the other-gendered person (non-target,
     non-unknown), same rule as race.
+  * fblack (E6, intersectional): multirace/items_manifest_fblack.json over
+    the Race_ethnicity cache (heldout = 312, a documented deviation -- see
+    make_items.py). NEGATIVE-OPTION POLICY: the negative is ANY non-fblack,
+    non-unknown option, INCLUDING m-black (a Black man) -- for a clean
+    intersectional direction the contrast must isolate the intersection
+    (Black x woman) rather than race alone, so same-race other-gender
+    negatives are deliberately admitted. Empirically BBQ Race_ethnicity
+    pairs people of the SAME gender, so the realized composition is
+    other-race WOMEN (0 m-black in the 312 heldout rows; recorded per tag in
+    the manifest's heldout_negative_composition and in the saved .pt
+    metadata) -- the direction is effectively "Black woman vs other-race
+    woman", which the paper should state when discussing E6.
 
 REUSE: steering/build_arrows.py's load_full_race is imported by absolute path
 (importlib, same pattern as dream/build_arrows.py -- this file shares its
@@ -49,9 +61,11 @@ sys.path.insert(0, HERE)
 
 import bbq_eval  # noqa: E402
 from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
-                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
+                     INTERSECTIONAL_TARGETS, TARGET_CATEGORY,
+                     target_idx_of, unk_idx_of)
 from make_items import (load_llada_builder, load_gender_cache, row_key,  # noqa: E402
-                        MANIFEST, MANIFEST_GENDER)
+                        negative_composition,
+                        MANIFEST, MANIFEST_GENDER, MANIFEST_FBLACK)
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS = 32
@@ -59,6 +73,8 @@ DEVICE = "cuda"
 
 
 def manifest_path_for(target):
+    if target in INTERSECTIONAL_TARGETS:
+        return MANIFEST_FBLACK
     return MANIFEST_GENDER if TARGET_CATEGORY[target] == "Gender_identity" else MANIFEST
 
 
@@ -167,6 +183,18 @@ def main(target):
     per_raw = [float(r[l].norm()) for l in range(N_LAYERS)]
     per_mean = [float(S[:, l, :].norm(dim=1).mean()) for l in range(N_LAYERS)]
 
+    if target in INTERSECTIONAL_TARGETS:
+        source = (f"multirace_fblack_manifest_heldout_seed{mani['seed']}"
+                  "_disjoint_black_seed42_and_sweep400")
+    elif TARGET_CATEGORY[target] == "Gender_identity":
+        source = f"multirace_gender_manifest_heldout_seed{mani['seed']}_cross_target_disjoint"
+    else:
+        source = f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400"
+    # Composition of the realized negatives (paper-facing for fblack: how many
+    # contrasts are m-black vs other-race -- see module doc), recomputed from
+    # the triples actually used, for every target.
+    neg_comp = negative_composition([row for row, _, _ in heldout], target)
+
     torch.save({
         "r": r,
         "target": target,
@@ -176,11 +204,11 @@ def main(target):
         "per_layer_raw_norm": per_raw,
         "per_layer_mean_diff_norm": per_mean,
         "method": "anchored_caa_text_all_layers",
-        "source": (f"multirace_gender_manifest_heldout_seed{mani['seed']}_cross_target_disjoint"
-                   if TARGET_CATEGORY[target] == "Gender_identity" else
-                   f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400"),
+        "source": source,
+        "negative_composition": neg_comp,
         "manifest": manifest_path_for(target),
     }, out_pt)
+    print(f"[build:{target}] negative composition: {neg_comp}", flush=True)
     print(f"[build:{target}] SAVED -> {out_pt}", flush=True)
     print(f"[build:{target}] per_layer_raw_norm={[round(x, 2) for x in per_raw]}", flush=True)
     print(f"[build:{target}] DONE", flush=True)
@@ -249,13 +277,49 @@ def _selftest():
           all(gsets[a].isdisjoint(gsets[b])
               for i, a in enumerate(names) for b in names[i + 1:]))
 
+    # --- E6 fblack manifest: race exclusions DO apply; negatives policy ---- #
+    triples, mani = heldout_from_manifest("fblack")
+    tinfo = mani["targets"]["fblack"]
+    check("fblack: heldout resolves (312 triples, documented deviation)",
+          len(triples) == tinfo["n_heldout"] == 312)
+    check("fblack: manifest records the 400/312 deviation",
+          mani.get("n_heldout") == 312 and "deviation" in mani)
+    keys = {row_key(r) for r, _, _ in triples}
+    with open(os.path.join(ROOT, tinfo["eval_file"])) as f:
+        ev_keys = {row_key(json.loads(l)) for l in f if l.strip()}
+    check("fblack: heldout disjoint from eval file (400 items)",
+          keys.isdisjoint(ev_keys) and len(ev_keys) == 400)
+    check("fblack: heldout disjoint from Black-exp keys (same category!)",
+          keys.isdisjoint(exclude))
+    check("fblack: eval disjoint from Black-exp keys", ev_keys.isdisjoint(exclude))
+    # positives are exactly f-black; negatives NEVER carry the f-black tag
+    # (they MAY be m-black by policy -- see module doc).
+    check("fblack: every positive tagged f-black",
+          all(str(bbq_eval.get_answer_info(r, t)[-1]).strip().lower() == "f-black"
+              for r, t, _ in triples))
+    check("fblack: negatives never f-black, never unknown",
+          all(str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+              not in {"f-black", "unknown"} for r, _, o in triples))
+    # composition recomputed from triples == manifest record (paper-facing).
+    comp = {}
+    for r, _, o in triples:
+        tag = str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+        comp[tag] = comp.get(tag, 0) + 1
+    mcomp = tinfo["heldout_negative_composition"]
+    check("fblack: negative composition matches manifest record",
+          comp == mcomp["by_tag"]
+          and mcomp["m-black"] + mcomp["other"] == len(triples))
+    print(f"[selftest-marrows] fblack negatives: m-black={mcomp['m-black']} "
+          f"other={mcomp['other']} by_tag={mcomp['by_tag']}")
+
     print(f"[selftest-marrows] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--target", choices=list(NEW_TARGETS) + list(GENDER_TARGETS))
+    ap.add_argument("--target", choices=(list(NEW_TARGETS) + list(GENDER_TARGETS)
+                                         + list(INTERSECTIONAL_TARGETS)))
     ap.add_argument("--selftest", action="store_true",
                     help="offline manifest-resolution check (no GPU)")
     args = ap.parse_args()
