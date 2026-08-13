@@ -12,7 +12,13 @@ decode-space observable p_black(t) and set ONE scalar actuator alpha(t):
     e(t)       = s* - p_black(t)                       (s* = setpoint, default 0.9)
     Iacc      += e(t)                                  (integral, w/ anti-windup)
     d(t)       = e(t) - e(t-1)                          (derivative, e(-1):=0)
-    alpha(t)   = clamp( Kp*e(t) + Ki*Iacc + Kd*d(t), 0, alpha_max )
+    alpha(t)   = clamp( Kp*e(t) + Ki*Iacc + Kd*d(t), alpha_min, alpha_max )
+
+SUPPRESSION (E5): --setpoint and --amin generalize the loop. Defaults
+(s*=0.9, amin=0) reproduce the original push-only attack bit-for-bit. Setting
+s* low (e.g. 0.0) and amin<0<=amax lets the SAME feedback law push AWAY from
+the target (negative actuation): e stays negative, alpha clamps in
+[amin, amax], anti-windup freezes at EITHER bound.
 
 ACTUATOR = ALL 32 TRANSFORMER BLOCKS. The SAME alpha(t)*vhat is broadcast to every
 block's residual output each step (vhat = unit(arrows.pt r[14])). This gives real
@@ -25,7 +31,8 @@ frozen on any step whose command saturates at 0 or alpha_max). NOTE: the paper's
 LAYER-space PID had no anti-windup; the decode-space controller adds this standard
 term because the plant carries persistent error. Labelled, not hidden.
 
-alpha >= 0: we only ever push TOWARD Black. Conditions differ ONLY in the gains:
+alpha >= 0 at the DEFAULTS: we only ever push TOWARD Black (suppression mode
+needs explicit --amin < 0). Conditions differ ONLY in the gains:
     base = no controller (clean, alpha == 0 always)
     P    = (Ki=0, Kd=0)     PI = (Ki>0, Kd=0)     PID = (Ki>0, Kd>0)
 
@@ -85,14 +92,14 @@ COND_MASK = {  # (use_ki, use_kd)
 # --------------------------------------------------------------------------- #
 # The controller: discrete PID on the scalar observable p_black, anti-windup.
 # --------------------------------------------------------------------------- #
-def clamp(a, amax):
-    return float(min(amax, max(0.0, a)))
+def clamp(a, amax, amin=0.0):
+    return float(min(amax, max(amin, a)))
 
 
 class PID:
-    def __init__(self, kp, ki, kd, setpoint, amax, antiwindup=True):
+    def __init__(self, kp, ki, kd, setpoint, amax, antiwindup=True, amin=0.0):
         self.kp, self.ki, self.kd = kp, ki, kd
-        self.setpoint, self.amax = setpoint, amax
+        self.setpoint, self.amax, self.amin = setpoint, amax, amin
         self.antiwindup = antiwindup
 
     def reset(self):
@@ -103,28 +110,28 @@ class PID:
         """One control step -> (alpha, e, integral, derivative, saturated).
 
         Anti-windup = conditional integration: the tentative integral (iacc+e) is
-        COMMITTED only when the resulting command is inside (0, amax); if it
-        saturates, the accumulator is frozen at its previous value.
+        COMMITTED only when the resulting command is inside (amin, amax); if it
+        saturates at EITHER bound, the accumulator is frozen at its previous value.
         """
         e = self.setpoint - p_black
         d = e - self.eprev
         iacc_try = self.iacc + e
         raw = self.kp * e + self.ki * iacc_try + self.kd * d
-        saturated = raw > self.amax or raw < 0.0
+        saturated = raw > self.amax or raw < self.amin
         if (not self.antiwindup) or (not saturated):
             self.iacc = iacc_try                 # accept integration
         # else: freeze integral (keep previous self.iacc)
-        alpha = clamp(raw, self.amax)
+        alpha = clamp(raw, self.amax, self.amin)
         self.eprev = e
         return alpha, e, self.iacc, d, saturated
 
 
-def pid_alphas_closedform(e_seq, kp, ki, kd, amax):
-    """Vectorized reference (NO anti-windup): clip(Kp*e+Ki*cumsum(e)+Kd*diff(e),0,amax)."""
+def pid_alphas_closedform(e_seq, kp, ki, kd, amax, amin=0.0):
+    """Vectorized reference (NO anti-windup): clip(Kp*e+Ki*cumsum(e)+Kd*diff(e),amin,amax)."""
     e = np.asarray(e_seq, dtype=np.float64)
     cum = np.cumsum(e)
     d = np.diff(e, prepend=0.0)
-    return np.clip(kp * e + ki * cum + kd * d, 0.0, amax)
+    return np.clip(kp * e + ki * cum + kd * d, amin, amax)
 
 
 # --------------------------------------------------------------------------- #
@@ -303,6 +310,74 @@ def selftest():
           f"(alpha_AW={a_aw:.2f} < alpha_noAW={a_naw:.2f}): {'PASS' if rel_ok else 'FAIL'}")
 
     ok_all &= hi_ok and lo_ok and aw_ok and naw_ok and rel_ok
+
+    # ---------------- E5 suppression regime (s* low, amin < 0 <= amax) -------- #
+    # (a) s*=0, p high -> e negative -> command clamps to the NEGATIVE floor amin.
+    AMIN = -6.0
+    sup = PID(100.0, 10.0, 0.0, 0.0, 0.0, antiwindup=False, amin=AMIN); sup.reset()
+    outs = [sup.update(0.9) for _ in range(10)]          # e = 0 - 0.9 = -0.9
+    sup_ok = all(a == AMIN for a, *_ in outs) and all(e < 0 for _, e, *_ in outs)
+    print(f"[selftest] suppress: s*=0, p=0.9 -> e<0, alpha clamps to amin={AMIN}: "
+          f"{'PASS' if sup_ok else 'FAIL'}")
+    # stateful == closed-form with the SAME [amin, amax] bounds (no-AW), mixed-sign e.
+    sup_cf_ok = True
+    for name, (kp, ki, kd) in grids.items():
+        c = PID(kp, ki, kd, 0.0, 0.0, antiwindup=False, amin=AMIN); c.reset()
+        got = [c.update(0.0 - e)[0] for e in e_synth]     # feed p=s*-e => sees e
+        want = pid_alphas_closedform(e_synth, kp, ki, kd, 0.0, amin=AMIN)
+        sup_cf_ok &= np.allclose(np.array(got), want, atol=1e-9)
+    print(f"[selftest] suppress: stateful==closedform on [amin,amax]=[{AMIN},0]: "
+          f"{'PASS' if sup_cf_ok else 'FAIL'}")
+
+    # (b) anti-windup freezes at the LOWER bound: persistent negative error that
+    # saturates at amin must FREEZE the integral; no-AW winds it DOWN unboundedly.
+    aw_lo = PID(100.0, 10.0, 0.0, 0.0, 0.0, antiwindup=True, amin=AMIN); aw_lo.reset()
+    for _ in range(20):
+        aw_lo.update(0.9)                  # e=-0.9 -> raw << amin -> saturate -> freeze
+    naw_lo = PID(100.0, 10.0, 0.0, 0.0, 0.0, antiwindup=False, amin=AMIN); naw_lo.reset()
+    for _ in range(20):
+        naw_lo.update(0.9)
+    awlo_ok = abs(aw_lo.iacc) < 1e-9       # frozen at 0 (step 0 already saturates)
+    nawlo_ok = naw_lo.iacc < -15.0         # 20*(-0.9) = -18 wound down
+    print(f"[selftest] anti-windup FREEZES at LOWER bound (iacc={aw_lo.iacc:.3f}~0): "
+          f"{'PASS' if awlo_ok else 'FAIL'}")
+    print(f"[selftest] no-AW WINDS DOWN integral (iacc={naw_lo.iacc:.3f}<-15): "
+          f"{'PASS' if nawlo_ok else 'FAIL'}")
+
+    # (c) DEFAULTS REGRESSION: with setpoint=0.9 amin=0 (i.e. amin left at its
+    # default) the new controller's alpha sequence must be IDENTICAL (exact float
+    # equality, not allclose) to the ORIGINAL pre-suppression law, re-implemented
+    # verbatim below, on the existing test vectors -- both with and without AW.
+    def old_alpha_seq(p_seq, kp, ki, kd, setpoint_, amax_, antiwindup):
+        iacc, eprev, out = 0.0, 0.0, []
+        for p in p_seq:
+            e = setpoint_ - p
+            d = e - eprev
+            iacc_try = iacc + e
+            raw = kp * e + ki * iacc_try + kd * d
+            if (not antiwindup) or not (raw > amax_ or raw < 0.0):
+                iacc = iacc_try
+            out.append(float(min(amax_, max(0.0, raw))))
+            eprev = e
+        return out
+    p_synth = [SETPOINT - e for e in e_synth]            # same measurements to both
+    reg_ok = True
+    for name, (kp, ki, kd) in grids.items():
+        for aw_flag in (False, True):
+            c = PID(kp, ki, kd, SETPOINT, amax, antiwindup=aw_flag)  # amin default
+            c.reset()
+            got = [c.update(p)[0] for p in p_synth]
+            reg_ok &= got == old_alpha_seq(p_synth, kp, ki, kd, SETPOINT, amax, aw_flag)
+    # closed-form default args == original clip(.., 0, amax) formula, exactly.
+    e64 = np.asarray(e_synth, dtype=np.float64)
+    old_cf = np.clip(1.5 * e64 + 0.30 * np.cumsum(e64) + 0.50 * np.diff(e64, prepend=0.0),
+                     0.0, amax)
+    reg_ok &= np.array_equal(pid_alphas_closedform(e_synth, 1.5, 0.30, 0.50, amax), old_cf)
+    print(f"[selftest] DEFAULTS REGRESSION: new PID(setpoint=0.9, amin=0) alpha "
+          f"sequence bit-identical to original law (AW on+off, P/PI/PID + closed-form): "
+          f"{'PASS' if reg_ok else 'FAIL'}")
+
+    ok_all &= sup_ok and sup_cf_ok and awlo_ok and nawlo_ok and reg_ok
     print(f"[selftest] OVERALL: {'PASS' if ok_all else 'FAIL'}")
     return ok_all
 
@@ -347,7 +422,7 @@ def attach_all_layers(model, vhat):
 # --------------------------------------------------------------------------- #
 # GPU smoke.
 # --------------------------------------------------------------------------- #
-def smoke(n_items, kp, ki, kd, amax, steps=STEPS):
+def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0):
     assert torch.cuda.is_available(), "CUDA not available"
     print(f"[smoke] CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
           f"dev={torch.cuda.get_device_name(0)}", flush=True)
@@ -356,7 +431,7 @@ def smoke(n_items, kp, ki, kd, amax, steps=STEPS):
     plain, space = letter_token_ids(tok)
     print(f"[smoke] letter tokens plain={plain} space={space}", flush=True)
     steerer = attach_all_layers(model, vhat)
-    ctrl = PID(kp, ki, kd, SETPOINT, amax, antiwindup=True)
+    ctrl = PID(kp, ki, kd, setpoint, amax, antiwindup=True, amin=amin)
     rows = [r for r in load_items(0) if black_idx_of(r) is not None][:n_items]
     try:
         for n, row in enumerate(rows):
@@ -391,7 +466,7 @@ def smoke(n_items, kp, ki, kd, amax, steps=STEPS):
 # Full / limited eval over the sweep400.
 # --------------------------------------------------------------------------- #
 def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
-        steps=STEPS):
+        steps=STEPS, setpoint=SETPOINT, amin=0.0):
     os.makedirs(out_dir, exist_ok=True)
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -402,12 +477,12 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
     vhat = load_vhat().to(model.device)
     plain, space = letter_token_ids(tok)
     steerer = attach_all_layers(model, vhat)
-    ctrl = PID(kp, eff_ki, eff_kd, SETPOINT, amax, antiwindup=True)
+    ctrl = PID(kp, eff_ki, eff_kd, setpoint, amax, antiwindup=True, amin=amin)
     rows = load_items(limit, items_path)
     print(f"[{cond}] items={items_path}", flush=True)
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{N_LAYERS} "
-          f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} amax={amax} "
+          f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={setpoint} amin={amin} amax={amax} "
           f"steps={steps} steer_on={steer_on} AW=on", flush=True)
 
     per_item, counts = [], {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
@@ -452,6 +527,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
                 "prompt": B.build_prompt(row),
                 "black_idx": bidx, "unk_idx": uidx, "target_letter": tgt,
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
+                "setpoint": setpoint, "alpha_min": amin,
                 "model_output": gen, "alpha_sum": float(a.sum()),
                 "alpha_mean": float(a.mean()), "alpha_final": float(a[-1]),
                 "sat_frac": float(sat.mean()), "p_black_final": float(pb[-1]),
@@ -470,7 +546,8 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
     result = {
         "condition": cond, "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
         "actuator": f"all_{N_LAYERS}_layers", "anti_windup": True,
-        "setpoint": SETPOINT, "alpha_max": amax, "vhat_layer": LAYER, "n": n,
+        "setpoint": setpoint, "alpha_min": amin, "alpha_max": amax,
+        "vhat_layer": LAYER, "n": n,
         "counts": counts, "rates": rates,
         "d_gap": rates["black_rate"] - rates["nonblack_rate"],
         "mean_total_actuation": float(np.mean(alpha_sums)) if alpha_sums else 0.0,
@@ -503,6 +580,13 @@ def main():
     ap.add_argument("--ki", type=float, default=0.1)
     ap.add_argument("--kd", type=float, default=1.0)
     ap.add_argument("--amax", type=float, default=ALPHA_MAX)
+    ap.add_argument("--amin", type=float, default=0.0,
+                    help="lower actuation bound (default 0.0 = original push-only "
+                         "behavior); set negative, e.g. -6 with --amax 0, for "
+                         "suppression (push AWAY from the target)")
+    ap.add_argument("--setpoint", type=float, default=SETPOINT,
+                    help=f"controller setpoint s* for p_target (default {SETPOINT} "
+                         f"= original attack; 0.0 for suppression)")
     ap.add_argument("--steps", type=int, default=STEPS,
                     help=f"denoising steps (default {STEPS}); must be a multiple "
                          f"of gen_length/block_length blocks; {BLOCK_LENGTH} = "
@@ -516,14 +600,17 @@ def main():
 
     if args.selftest:
         sys.exit(0 if selftest() else 1)
+    if args.amin > args.amax:
+        ap.error(f"--amin ({args.amin}) must be <= --amax ({args.amax})")
     if args.smoke:
         smoke(args.smoke_items, args.kp, args.ki, args.kd, args.amax,
-              steps=args.steps)
+              steps=args.steps, setpoint=args.setpoint, amin=args.amin)
         return
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
-        args.out_dir, args.tag, args.items, steps=args.steps)
+        args.out_dir, args.tag, args.items, steps=args.steps,
+        setpoint=args.setpoint, amin=args.amin)
 
 
 if __name__ == "__main__":
