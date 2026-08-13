@@ -45,7 +45,7 @@ rotation-balanced (3x400 per run).
 
 **Sanity check**: strict outcome rates recomputed here reproduce
 `results/balanced_all/RESULTS_STRICT.md` / `results/ROUND2_STRICT.md`
-exactly (e.g. black PI gap +0.166, PID +0.160, arab +0.223, asian 93.8%
+exactly (e.g. black PI gap +0.167, PID +0.160, arab +0.223, asian 93.8%
 invalid, white 96.1% invalid).
 
 ## RQ1 -- When does the biased answer lock in?
@@ -65,11 +65,13 @@ fig_p_mean):
   transferred and the distribution snaps.
 - **Robustness**: per-rotation medians 30/30/30; seeds 1-3 medians 31/30/31
   (early fractions 0.17-0.22); PID median 29; th = 0.3/0.5/0.7/0.9 keeps
-  n_locked at 332/326/308/291 with the same ECDF shape (fig_lockin, right).
+  n_locked at 332/326/308/291 with the same wave-centered ECDF shape
+  (fig_lockin, right); the median shifts mechanically with the threshold
+  (26.5/30/32/32) but stays inside the commit wave.
 - **Steering does not move the commit time -- it biases what gets
   committed.** Unsteered base runs lock at the same wave (seed-base medians
-  24-28) but on only ~10% of items; steering triples the lock count at
-  unchanged timing. The mechanism is a modest pre-commit lift: mean
+  24-28) but on only ~10% of items; steering multiplies the lock count by
+  ~2.5x (2.3-2.7x across the three paired seeds) at unchanged timing. The mechanism is a modest pre-commit lift: mean
   p(t < 24) rises from 0.130-0.142 (base) to 0.170-0.182 (steered) across
   the three seeds, which the irreversible commit then amplifies to ~0.99
   or ~0.
@@ -88,17 +90,18 @@ fig_alpha_targets):
 
 | target | mean p: t0 -> peak -> final | mean alpha final | ever-pin | strict target / invalid |
 |---|---|---|---|---|
-| black  | 0.12 -> 0.30 (t~33) -> 0.27 | 4.7 | 0.72 | 0.304 / 0.078 |
+| black  | 0.12 -> 0.32 (t~29) -> 0.27 | 4.7 | 0.72 | 0.304 / 0.078 |
 | latino | 0.12 -> 0.26 (t~22) -> 0.22 | 4.9 | 0.78 | 0.225 / 0.596 |
 | arab   | 0.15 -> 0.18 (t~2) -> 0.08  | 5.5 | 0.92 | 0.483 / 0.097 |
 | asian  | 0.175 -> 0.175 (t=0) -> 0.06 | 5.7 | 0.94 | 0.059 / 0.938 |
 | white  | 0.076 -> 0.076 (t=0) -> 0.04 | 5.8 | 0.96 | 0.039 / 0.961 |
 
-- **On asian/white the p_target(t) curve never rises at any step** -- it
-  decays monotonically from the probe value while alpha ramps to the
-  ceiling and stays pinned for the rest of the decode. There is no
-  transient success followed by collapse; the loop simply gets no reward at
-  any alpha, and integral windup does the rest. This is the
+- **On asian/white the mean p_target(t) curve never exceeds its t = 0
+  probe value** (its peak is at t = 0) -- apart from sub-0.02 wiggles it
+  declines steadily to 0.06/0.04 while alpha ramps to the ceiling and
+  stays pinned for the rest of the decode. There is no transient success
+  followed by collapse; the loop simply gets no reward at any alpha, and
+  integral windup does the rest. This is the
   trajectory-level picture behind ROUND2_STRICT section 5's "hard targets
   drive the controller hotter".
 - **The few asian/white "successes" are prior hits, not steering wins**:
@@ -111,11 +114,18 @@ fig_alpha_targets):
   position 0 (`steering/denoise_pid.py::letter_token_ids` /
   `p_black_from_logits`), while the STRICT parser accepts lowercase
   letters. On arab, **480/580 (82.8%) of strict-target successes end with
-  p_final ~ 0** because the model emitted a lowercase letter ('c', 'a')
-  that the sensor cannot see. The controller therefore winds up to the
-  ceiling on wins and losses alike (ever-pin 0.92, freeze median 7 << pin
-  median 37). Black is mildly affected (7.9-9.7% lowercase successes);
-  asian/latino/white not at all (0%). Consequence: arab's "hot" telemetry
+  p_final ~ 0** (median 0.0001, max 0.0007) because the model emitted a
+  lowercase letter ('c', 'a') that the sensor cannot see. The lowercase
+  emission is itself a steering side effect specific to the arab direction:
+  no base run ever emits a lowercase answer (0/6000 valid base answers
+  across all five targets), 89% of *all* arab valid answers are lowercase
+  vs 6% for black and ~0% for latino/asian/white, and the lowercase token
+  commits early at moderate alpha (freeze median 7, alpha at freeze median
+  3.1, i.e. half the ceiling) -- so the windup (first pin median 37,
+  freeze < pin on 100% of these items) follows the invisible win rather
+  than causing it. The controller winds up to the ceiling on wins and
+  losses alike (ever-pin 0.92). Black is mildly affected (7.9-9.7%
+  lowercase successes); asian/latino/white not at all (0%). Consequence: arab's "hot" telemetry
   (mean alpha 4.56, sat 0.38) reflects a blind sensor, not a hard target --
   arab is in fact the *most* steerable direction (strict gap +0.223).
   Actuation effort separates steerable from unsteerable directions only
@@ -131,12 +141,23 @@ all: ever-pin 8% (PI) / 10% (PID) / 7-9% (seeds) vs 100% for failures --
 the success/failure dichotomy in saturation is near-total. Replication:
 PID 84% freeze-first (median +13), seeds 91-92% (+12), latino 100% (+14).
 
+A caveat on how much of the ordering is baked in: with Kp = 3, Ki = 0.1
+and setpoint 0.9 the applied alpha is bounded by 2.7 + 0.09(t+1), so the
+integrator *cannot* reach the 6.0 ceiling before step ~36 (observed
+minimum pin on PI runs: exactly 36). The ordering statistic is therefore
+partly mechanical -- saturation arrives too late, by construction, to
+cause any commit inside the t in [24, 33] wave. It is not fully forced
+(27.5% of black-PI failures freeze at t >= 36, where either order was
+possible, and freeze-first still holds at 93%), but the causal claim
+rests on the two independent pieces of evidence below more than on the
+93% itself.
+
 **Saturation is a symptom of an already-lost item (windup on an unfixable
 error), not a cause of failure.** Two further pieces of evidence:
 
 1. The steps=32 run **never saturates on a single item** (the integral has
    half the steps to wind; mean alpha 3.27) yet reproduces the 64-step
-   outcome rates (target 0.294 vs 0.304; gap +0.151 vs +0.166). Removing
+   outcome rates (target 0.294 vs 0.304; gap +0.151 vs +0.167). Removing
    saturation entirely does not change steering success.
 2. On arab (blind sensor) and white (flat p), freeze trivially precedes pin
    (100%), because commitment/collapse happens in the first steps while the
@@ -184,10 +205,10 @@ fig_pi_vs_pid. Paired by (rotation, example_id), n = 1200:
   *at* the commit -- i.e. after the answer is already irreversible. It
   cannot act on anything. Its only measurable effect is 62% higher
   actuation roughness (per-item mean |dAlpha| 0.279 vs 0.172), pure noise
-  amplification, with a slightly *worse* gap (+0.160 vs +0.166).
+  amplification, with a slightly *worse* gap (+0.160 vs +0.167).
 - steps=32 shows the same p(t) endpoint via a later (fractional) commit
   wave and zero saturation (see RQ1/RQ3); trajectory-level dynamics confirm
-  the gap is schedule-robust (+0.151 vs +0.166).
+  the gap is schedule-robust (+0.151 vs +0.167).
 
 ## Candidate paper claims
 
@@ -197,19 +218,25 @@ fig_pi_vs_pid. Paired by (rotation, example_id), n = 1200:
    earlier); successes pin on <= 10% of items vs 100% of failures;
    replicates on PID (84%), 3 seeds (91-92%), latino (100%); and a 32-step
    run with *zero* saturation reproduces the steering gap (+0.151 vs
-   +0.166). Effect sizes are near-categorical.
+   +0.167). Effect sizes are near-categorical. (Scope note: at these gains
+   the earliest possible pin is step ~36, so the ordering is partly
+   mechanical; the zero-saturation s32 replication and the near-total
+   success/failure pin dichotomy carry the causal weight.)
 
 2. **SOLID -- The biased answer locks in mid-decode at the token-commit
    wave, as a discrete, irreversible event; steering biases *what* commits,
    not *when*.** Median lock step 30/64, identical across 3 rotations
-   (30/30/30), 3 seeds (30-31), PI/PID (30/29), thresholds th = 0.3-0.9;
+   (30/30/30), 3 seeds (30-31), PI/PID (30/29); across thresholds
+   th = 0.3-0.9 the locked count is stable (332-291) and the median stays
+   inside the commit wave (26.5-32, shifting mechanically with th);
    median p-jump at lock 0.44; unsteered base items lock at the same wave
-   (24-28) at one third the rate; commit timing follows the transfer
+   (24-28) at ~40% of the steered rate; commit timing follows the transfer
    schedule (27/32 at steps=32).
 
 3. **SOLID -- On unsteerable directions the loop receives no reward at any
-   alpha: p_target(t) decays monotonically while alpha(t) ramps to the
-   ceiling and pins; the rare asian/white successes are prior hits (median
+   alpha: mean p_target(t) never exceeds its unsteered probe value (peak
+   at t = 0) and decays to ~0.04-0.06 while alpha(t) ramps to the ceiling
+   and pins; the rare asian/white successes are prior hits (median
    lock 0-3, median p0 0.53-0.62), not steering wins.** Consistent across
    all 3 rotations of both targets (ever-pin 0.94/0.96, invalid
    0.938/0.961).
@@ -219,9 +246,16 @@ fig_pi_vs_pid. Paired by (rotation, example_id), n = 1200:
    arab, the most steerable target**: 82.8% (480/580) of arab's strict
    successes end sensor-invisible (lowercase letter, p_final ~ 0), so the
    controller saturates on wins and losses alike. Arab's "hard-target"
-   telemetry is a sensor artifact. Caveat: one target family / one
-   tokenizer; the *fact* is exact and 3-rotation-consistent, but the
-   framing should be "sensor design matters", not a general law.
+   telemetry is a sensor artifact. The within-item ordering supports the
+   causal story: the lowercase token commits at median step 7 under
+   median alpha 3.1 (half the ceiling), and the pin follows ~30 steps
+   later on 100% of these items -- windup is downstream of the invisible
+   win. Caveats: one target family / one tokenizer; the *fact* is exact
+   and 3-rotation-consistent, but the framing should be "sensor design
+   matters", not a general law. Note also that lowercase emission is
+   itself induced by the arab steering vector (0% in every unsteered
+   base run; ~0% under latino/asian/white steering at comparable alpha),
+   i.e. the actuator created the very output mode the sensor cannot see.
 
 5. **SUGGESTIVE -- The derivative term is structurally inert in
    decode-space control because the error trajectory is a step function**:
