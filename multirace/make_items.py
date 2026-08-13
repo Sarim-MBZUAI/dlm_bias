@@ -22,8 +22,25 @@ Asserts per target: >=800 usable rows (warns with the exact count when the
 heldout side is under 400 -- expected for white, ~811 total) and
 eval INTERSECT heldout == EMPTY.
 
+GENDER (E3, --category Gender_identity): woman and man are OPPOSITE POLES on
+the SAME Gender_identity rows -- their usable pools are (near-)identical, so
+per-target eval/heldout splits drawn independently would overlap almost
+completely. Instead the SHARED pool (rows usable for BOTH targets) gets ONE
+seed-42 shuffle and is cut into FOUR mutually disjoint 400-row sets:
+
+    [0:400)     eval(woman)    -> data/bbq_items/_sweep400_woman.jsonl
+    [400:800)   heldout(woman) -> keys in multirace/items_manifest_gender.json
+    [800:1200)  eval(man)      -> data/bbq_items/_sweep400_man.jsonl
+    [1200:1600) heldout(man)   -> keys in multirace/items_manifest_gender.json
+
+(2,396 shared usable rows >= 1,600.) The race experiment's exclusion keys do
+NOT apply (different BBQ category); manifest schema matches
+items_manifest.json plus "cross_target_disjoint": true. STRICT gender tag
+sets exclude the trans_/nontrans_ compounds (see targets.py).
+
 CPU-only, offline (BBQ cache already on disk).
-Run:            python multirace/make_items.py
+Run:            python multirace/make_items.py                  # race, unchanged
+                python multirace/make_items.py --category Gender_identity
 Offline check:  python multirace/make_items.py --selftest
 """
 import argparse
@@ -37,7 +54,8 @@ ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.pat
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from targets import TARGET_TAGS, NEW_TARGETS, target_idx_of, unk_idx_of  # noqa: E402
+from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
+                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
 
 
 # Reuse the LLaDA arrow builder's exclusion helpers VERBATIM. Loaded by absolute
@@ -53,10 +71,14 @@ def load_llada_builder():
 
 ITEMS_DIR = os.path.join(ROOT, "data", "bbq_items")
 MANIFEST = os.path.join(HERE, "items_manifest.json")
+MANIFEST_GENDER = os.path.join(HERE, "items_manifest_gender.json")
+GENDER_CACHE = os.path.join(ROOT, "data", "bbq_cache", "Gender_identity.jsonl")
 SEED = 42
 N_EVAL = 400
 N_HELDOUT_CAP = 400
 MIN_USABLE = 800
+N_GENDER_SET = 400          # each of the 4 disjoint gender sets
+MIN_GENDER_POOL = 4 * N_GENDER_SET
 
 
 def row_key(r):
@@ -90,6 +112,83 @@ def split_items(rows, seed=SEED):
     ev = order[:N_EVAL]
     held = order[N_EVAL:N_EVAL + N_HELDOUT_CAP]
     return ev, held
+
+
+def load_gender_cache():
+    """data/bbq_cache/Gender_identity.jsonl (category stamped, like load_full_race)."""
+    rows = []
+    with open(GENDER_CACHE) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                r = json.loads(line)
+                r["category"] = "Gender_identity"
+                rows.append(r)
+    return rows
+
+
+def split_gender_pool(shared_rows, seed=SEED, n=N_GENDER_SET):
+    """ONE seed-`seed` shuffle of the SHARED woman/man pool -> 4 mutually
+    disjoint sets: eval(woman), heldout(woman), eval(man), heldout(man)."""
+    order = list(shared_rows)
+    random.Random(seed).shuffle(order)
+    return order[:n], order[n:2 * n], order[2 * n:3 * n], order[3 * n:4 * n]
+
+
+def main_gender():
+    full = load_gender_cache()
+    pools = {t: select_target_rows(full, t, set()) for t in GENDER_TARGETS}
+    keysets = {t: {row_key(r) for r in pools[t]} for t in GENDER_TARGETS}
+    shared_keys = keysets["woman"] & keysets["man"]
+    # cache-order shared pool (deterministic input to the seeded shuffle)
+    shared = [r for r in pools["woman"] if row_key(r) in shared_keys]
+    print(f"[items-gender] full={len(full)} usable_woman={len(pools['woman'])} "
+          f"usable_man={len(pools['man'])} shared={len(shared)}", flush=True)
+    assert len(shared) >= MIN_GENDER_POOL, \
+        f"shared gender pool {len(shared)} < {MIN_GENDER_POOL}"
+
+    ev_w, held_w, ev_m, held_m = split_gender_pool(shared)
+    sets = {("woman", "eval"): ev_w, ("woman", "heldout"): held_w,
+            ("man", "eval"): ev_m, ("man", "heldout"): held_m}
+    keys = {name: {row_key(r) for r in rows} for name, rows in sets.items()}
+    names = list(sets)
+    for name in names:
+        assert len(sets[name]) == N_GENDER_SET and len(keys[name]) == N_GENDER_SET, \
+            f"{name}: expected {N_GENDER_SET} unique rows, got {len(keys[name])}"
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            assert keys[a].isdisjoint(keys[b]), f"overlap between {a} and {b}"
+
+    manifest = {
+        "seed": SEED,
+        "n_eval": N_GENDER_SET,
+        "n_heldout_cap": N_GENDER_SET,
+        "cache": os.path.join("data", "bbq_cache", "Gender_identity.jsonl"),  # ROOT-relative (portable)
+        "category": "Gender_identity",
+        "cross_target_disjoint": True,  # 4 sets cut from ONE shuffle of the shared pool
+        "n_shared_pool": len(shared),
+        "exclusions": {},  # race-experiment keys don't apply (different category)
+        "targets": {},
+    }
+    for target, ev, held in (("woman", ev_w, held_w), ("man", ev_m, held_m)):
+        out = os.path.join(ITEMS_DIR, f"_sweep400_{target}.jsonl")
+        with open(out, "w") as f:
+            for r in ev:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        manifest["targets"][target] = {
+            "tags": sorted(TARGET_TAGS[target]),
+            "n_usable_after_exclusion": len(shared),
+            "n_eval": len(ev),
+            "n_heldout": len(held),
+            "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
+            "heldout_keys": sorted([list(k) for k in {row_key(r) for r in held}]),
+        }
+        print(f"[items-gender] {target:6s} eval={len(ev)} heldout={len(held)} -> {out}",
+              flush=True)
+
+    with open(MANIFEST_GENDER, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"[items-gender] manifest -> {MANIFEST_GENDER}", flush=True)
 
 
 def main():
@@ -203,6 +302,38 @@ def _selftest():
           len(ev4) == 400 and len(held4) == 350
           and {row_key(r) for r in ev4}.isdisjoint({row_key(r) for r in held4}))
 
+    # --- E3 gender: strict selection + 4-way disjoint split --------------- #
+    gfull = [
+        _mk_row(10, "q1", "ambig",    ["F", "M", "unknown"]),         # keep both
+        _mk_row(11, "q2", "ambig",    ["man", "Woman", "unknown"]),   # keep both
+        _mk_row(12, "q3", "ambig",    ["boy", "girl", "unknown"]),    # keep both
+        _mk_row(13, "q4", "ambig",    ["trans_f", "nontrans_f", "unknown"]),  # strict: drop
+        _mk_row(14, "q5", "disambig", ["f", "m", "unknown"]),         # drop: disambig
+        _mk_row(15, "q6", "ambig",    ["f", "m", "black"]),           # drop: no unknown
+        _mk_row(16, "q7", "ambig",    ["f", "girl", "unknown"]),      # drop: 2 woman
+    ]
+    kw = {row_key(r) for r in select_target_rows(gfull, "woman", set())}
+    km = {row_key(r) for r in select_target_rows(gfull, "man", set())}
+    check("gender strict selection: woman == man == 3 shared rows",
+          kw == km == {(10, "q1"), (11, "q2"), (12, "q3")})
+    check("trans_f/nontrans_f row NOT selected (strict)", (13, "q4") not in kw)
+    check("row 16 unusable for both (two woman options, zero man)",
+          (16, "q7") not in kw and (16, "q7") not in km)
+
+    gpool = [_mk_row(1000 + i, "q", "ambig", ["f", "m", "unknown"]) for i in range(2396)]
+    ev_w, held_w, ev_m, held_m = split_gender_pool(gpool)
+    gsets = {"eval_w": ev_w, "held_w": held_w, "eval_m": ev_m, "held_m": held_m}
+    gkeys = {k: {row_key(r) for r in v} for k, v in gsets.items()}
+    check("gender split: 4 x 400", all(len(v) == 400 for v in gsets.values()))
+    gnames = list(gkeys)
+    check("gender split: pairwise disjoint (all 6 pairs)",
+          all(gkeys[a].isdisjoint(gkeys[b])
+              for i, a in enumerate(gnames) for b in gnames[i + 1:]))
+    ev_w2, held_w2, ev_m2, held_m2 = split_gender_pool(gpool)
+    check("gender split deterministic under seed 42",
+          [row_key(r) for r in ev_w2] == [row_key(r) for r in ev_w]
+          and [row_key(r) for r in held_m2] == [row_key(r) for r in held_m])
+
     print(f"[selftest-items] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -210,5 +341,11 @@ def _selftest():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--category", default="Race_ethnicity",
+                    choices=["Race_ethnicity", "Gender_identity"],
+                    help="Race_ethnicity (default, byte-identical to the "
+                         "original behavior) or Gender_identity (E3)")
     args = ap.parse_args()
-    sys.exit(0 if _selftest() else 1) if args.selftest else main()
+    if args.selftest:
+        sys.exit(0 if _selftest() else 1)
+    main_gender() if args.category == "Gender_identity" else main()

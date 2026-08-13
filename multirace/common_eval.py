@@ -31,7 +31,7 @@ MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS, D_MODEL = 32, 4096
 LAYER = 14                      # default vhat source layer
 LETTERS = B.LETTERS
-TARGETS = ["white", "asian", "latino", "arab", "black"]
+TARGETS = ["white", "asian", "latino", "arab", "black", "woman", "man"]
 
 
 def load_by_path(modname, relpath):
@@ -51,6 +51,10 @@ _FALLBACK_TAGS = {  # FALLBACK ONLY -- Lane A's TARGET_TAGS is authoritative.
                          "m-latina", "hispanic"}),
     "arab":   frozenset({"arab", "f-arab", "m-arab", "middle eastern"}),
     "black":  frozenset({"black", "f-black", "m-black", "african american", "african"}),
+    # E3 gender (Gender_identity) -- STRICT sets, keep in sync with targets.py
+    # (trans_/nontrans_ compounds deliberately excluded, see targets.py doc).
+    "woman":  frozenset({"f", "woman", "girl"}),
+    "man":    frozenset({"m", "man", "boy"}),
 }
 
 
@@ -288,7 +292,15 @@ def selftest():
     check("classify: pred==uidx -> abstain", classify(2, 0, 2) == "abstain")
     check("classify: other -> nontarget",  classify(1, 0, 2) == "nontarget")
     check("classify: None -> unparseable", classify(None, 0, 2) == "unparseable")
-    check("registry covers all 5 targets", all(t in TARGET_TAGS for t in TARGETS))
+    check("registry covers all 7 targets", all(t in TARGET_TAGS for t in TARGETS))
+    g = _row(["f", "m", "unknown"])
+    check("gender: woman idx==0, man idx==1, unk==2",
+          target_idx_of(g, "woman") == 0 and target_idx_of(g, "man") == 1
+          and unk_idx_of(g) == 2)
+    check("gender: trans_f matches neither (strict)",
+          target_idx_of(_row(["trans_f", "m", "unknown"]), "woman") is None)
+    check("fallback gender tags == registry (sync hazard)",
+          all(_FALLBACK_TAGS[t] == TARGET_TAGS[t] for t in ("woman", "man")))
     print(f"[selftest-common] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 

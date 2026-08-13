@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """multirace/build_arrows.py -- per-target "prefer <target> option" arrows r(k)
 for LLaDA-8B-Instruct.  Port of steering/build_arrows.py parameterized by
---target in {white, asian, latino, arab} (black = existing steering/arrows.pt,
-NOT rebuilt here).
+--target in {white, asian, latino, arab} + the E3 gender targets {woman, man}
+(black = existing steering/arrows.pt, NOT rebuilt here).
 
 For every transformer block k = 0..31, the answer-text-anchored diff-in-means:
 
@@ -12,11 +12,17 @@ where h_*(k) is the block-k residual, masked-mean over the answer-text token
 span of a single clean forward on  chat_prompt + answer_text  (identical
 pooling to steering/build_arrows.py).
 
-ITEMS: the target's HELDOUT keys from multirace/items_manifest.json (written by
+ITEMS: the target's HELDOUT keys from the category's manifest (written by
 make_items.py, seed 42) -- the manifest is the single source of truth, nothing
-is recomputed here, so the item set is deterministic and disjoint from both the
-target's own _sweep400_<target>.jsonl eval items and the Black experiment's
-seed-42 / sweep400 keys.
+is recomputed here.
+  * race targets: multirace/items_manifest.json; heldout is disjoint from the
+    target's own _sweep400_<target>.jsonl eval items and the Black
+    experiment's seed-42 / sweep400 keys.
+  * gender targets (E3): multirace/items_manifest_gender.json over
+    data/bbq_cache/Gender_identity.jsonl; the four sets eval/heldout x
+    woman/man are MUTUALLY disjoint (cross_target_disjoint). The negative
+    option of a gender pair is the other-gendered person (non-target,
+    non-unknown), same rule as race.
 
 REUSE: steering/build_arrows.py's load_full_race is imported by absolute path
 (importlib, same pattern as dream/build_arrows.py -- this file shares its
@@ -42,25 +48,38 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import bbq_eval  # noqa: E402
-from targets import TARGET_TAGS, NEW_TARGETS, target_idx_of, unk_idx_of  # noqa: E402
-from make_items import load_llada_builder, row_key, MANIFEST  # noqa: E402
+from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
+                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
+from make_items import (load_llada_builder, load_gender_cache, row_key,  # noqa: E402
+                        MANIFEST, MANIFEST_GENDER)
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS = 32
 DEVICE = "cuda"
 
 
+def manifest_path_for(target):
+    return MANIFEST_GENDER if TARGET_CATEGORY[target] == "Gender_identity" else MANIFEST
+
+
+def load_cache_rows(target):
+    """Full BBQ cache rows for the target's category."""
+    if TARGET_CATEGORY[target] == "Gender_identity":
+        return load_gender_cache()
+    return load_llada_builder().load_full_race()
+
+
 def heldout_from_manifest(target):
     """(row, target_idx, other_idx) triples for the manifest's heldout keys,
     in manifest order. other = the non-target, non-unknown option."""
-    with open(MANIFEST) as f:
+    with open(manifest_path_for(target)) as f:
         mani = json.load(f)
     tinfo = mani["targets"][target]
     assert sorted(TARGET_TAGS[target]) == tinfo["tags"], \
         f"[{target}] manifest tags drifted from targets.py -- rerun make_items.py"
     keys = [tuple(k) for k in tinfo["heldout_keys"]]
     by_key = {}
-    for r in load_llada_builder().load_full_race():
+    for r in load_cache_rows(target):
         by_key[row_key(r)] = r
     triples = []
     for key in keys:
@@ -157,8 +176,10 @@ def main(target):
         "per_layer_raw_norm": per_raw,
         "per_layer_mean_diff_norm": per_mean,
         "method": "anchored_caa_text_all_layers",
-        "source": f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400",
-        "manifest": MANIFEST,
+        "source": (f"multirace_gender_manifest_heldout_seed{mani['seed']}_cross_target_disjoint"
+                   if TARGET_CATEGORY[target] == "Gender_identity" else
+                   f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400"),
+        "manifest": manifest_path_for(target),
     }, out_pt)
     print(f"[build:{target}] SAVED -> {out_pt}", flush=True)
     print(f"[build:{target}] per_layer_raw_norm={[round(x, 2) for x in per_raw]}", flush=True)
@@ -166,7 +187,8 @@ def main(target):
 
 
 # --------------------------------------------------------------------------- #
-# Offline self-test: manifest -> triples resolution (no GPU, real manifest).   #
+# Offline self-test: manifest -> triples resolution (no GPU, real manifests:   #
+# race unchanged + gender).                                                    #
 # --------------------------------------------------------------------------- #
 def _selftest():
     ok = True
@@ -197,13 +219,43 @@ def _selftest():
             for r, t, o in triples)
         check(f"{target}: positive=target tag, negative=non-target non-unknown", tag_ok)
 
+    # --- E3 gender manifest: same checks + 4-way cross-target disjointness -- #
+    gsets = {}
+    for target in GENDER_TARGETS:
+        triples, mani = heldout_from_manifest(target)
+        tinfo = mani["targets"][target]
+        check(f"{target}: gender manifest flags cross_target_disjoint",
+              mani.get("cross_target_disjoint") is True)
+        check(f"{target}: heldout resolves ({len(triples)} triples)",
+              len(triples) == tinfo["n_heldout"] == 400)
+        keys = {row_key(r) for r, _, _ in triples}
+        with open(os.path.join(ROOT, tinfo["eval_file"])) as f:
+            ev_keys = {row_key(json.loads(l)) for l in f if l.strip()}
+        gsets[f"heldout({target})"] = keys
+        gsets[f"eval({target})"] = ev_keys
+        other = "man" if target == "woman" else "woman"
+        tag_ok = all(
+            str(bbq_eval.get_answer_info(r, t)[-1]).strip().lower() in TARGET_TAGS[target]
+            and str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+            not in (TARGET_TAGS[target] | {"unknown"})
+            for r, t, o in triples)
+        check(f"{target}: positive=target tag, negative=non-target non-unknown", tag_ok)
+        # gender-specific: the negative is the OTHER-gendered person.
+        check(f"{target}: negative carries the other gender's tag",
+              all(str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+                  in TARGET_TAGS[other] for r, _, o in triples))
+    names = sorted(gsets)
+    check("gender: 4 sets pairwise disjoint (eval/heldout x woman/man)",
+          all(gsets[a].isdisjoint(gsets[b])
+              for i, a in enumerate(names) for b in names[i + 1:]))
+
     print(f"[selftest-marrows] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--target", choices=list(NEW_TARGETS))
+    ap.add_argument("--target", choices=list(NEW_TARGETS) + list(GENDER_TARGETS))
     ap.add_argument("--selftest", action="store_true",
                     help="offline manifest-resolution check (no GPU)")
     args = ap.parse_args()

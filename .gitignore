@@ -66,3 +66,13 @@ results/balanced_all/**
 !results/balanced_all/white/**/
 !results/balanced_all/white/**/cond_*.json
 !results/balanced_all/white/**/cond_*_samples.jsonl
+# round 3 (E3): gender balanced runs (woman/man) are tracked the same way
+# (rotation item files stay local).
+!results/balanced_all/woman/
+!results/balanced_all/woman/**/
+!results/balanced_all/woman/**/cond_*.json
+!results/balanced_all/woman/**/cond_*_samples.jsonl
+!results/balanced_all/man/
+!results/balanced_all/man/**/
+!results/balanced_all/man/**/cond_*.json
+!results/balanced_all/man/**/cond_*_samples.jsonl

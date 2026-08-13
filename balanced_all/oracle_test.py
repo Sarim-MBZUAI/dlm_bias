@@ -27,14 +27,21 @@ import sys
 from collections import Counter
 
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _load_targets():
-    p = os.path.join(ROOT, "multirace", "targets.py")
-    spec = importlib.util.spec_from_file_location("multirace_targets", p)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    """Registry from the RUNNING tree first (code travels with the checkout;
+    DLM_BIAS_ROOT only redirects data), then the ROOT tree (common_eval.py's
+    lookup pattern)."""
+    for p in (os.path.join(REPO, "multirace", "targets.py"),
+              os.path.join(ROOT, "multirace", "targets.py")):
+        if os.path.exists(p):
+            spec = importlib.util.spec_from_file_location("multirace_targets", p)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise FileNotFoundError("multirace/targets.py not found in repo or ROOT")
 
 
 T = _load_targets()  # target_idx_of(row, target), unk_idx_of(row), TARGET_TAGS
