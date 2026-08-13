@@ -24,6 +24,18 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      submit time by the jobH sweep). Conditions not run yet are reported as
      MISSING, never crash.
 
+  6. FBLACK BALANCED (E6)  results/balanced_all/fblack/
+     {base,decode_pid,normal,caa}/rot{0,1,2} -- same soft-missing machinery
+     as family 5 (shared family_soft_targets). The fblack direction is a
+     GENDER-CONDITIONED RACE direction (f-black vs other-race women; 0
+     m-black negatives -- see multirace/build_arrows.py), NOT a full
+     intersectional contrast. CRITICAL COMPARISON: once the fblack runs
+     exist, the fblack pooled strict gaps are printed next to the round-1
+     COARSE black direction's pooled gaps (recomputed from the committed
+     results/balanced/results_balanced samples; black base gap +0.018,
+     decode-PI gap +0.167). Different item sets, so the comparison is
+     descriptive (no paired bootstrap).
+
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
 
@@ -247,9 +259,11 @@ def family_dream(results):
 
 
 # ---------------------------------------------------------------------------
-# Family 5: E3 gender balanced (woman/man) -- soft-missing, never crashes.
+# Families 5/6: soft-missing per-target balanced families (E3 gender woman/man,
+# E6 fblack) -- report MISSING pre-run, never crash.
 # ---------------------------------------------------------------------------
 GENDER_TARGETS = ["woman", "man"]
+FBLACK_TARGETS = ["fblack"]
 
 
 def analyze_soft(paths, want_reps=False, n_expect=400):
@@ -264,9 +278,9 @@ def analyze_soft(paths, want_reps=False, n_expect=400):
     return analyze(paths, want_reps)
 
 
-def gender_normal_stems(t):
+def normal_stems(t):
     """Dosed normal stems present in ALL 3 rotations (alpha fixed at submit
-    time by the jobH sweep; discovered from disk, not hardcoded)."""
+    time by the jobH/jobK sweep; discovered from disk, not hardcoded)."""
     stems = None
     for r in range(3):
         pat = os.path.join(REPO, "results/balanced_all/%s/normal/rot%d/cond_normal_%s_a*_samples.jsonl"
@@ -277,17 +291,20 @@ def gender_normal_stems(t):
     return sorted(stems or [])
 
 
-def family_gender(results):
-    print("\n== FAMILY 5: GENDER BALANCED (E3, pooled 3x400, strict) ==")
+def family_soft_targets(results, key, title, targets):
+    """Shared soft-missing family: pooled strict gap + CIs + Delta-g vs the
+    SAME target's pooled base + gap@A/gap@BC + invalid rates + decode-PI
+    telemetry, per target in `targets`. Returns the family dict."""
+    print("\n== %s ==" % title)
     hdr = ("%-22s %6s %6s %6s %6s | %25s | %6s %6s" %
            ("target/condition", "target", "compar", "abstn", "inval",
             "gap [95% CI]", "gap@A", "gap@BC"))
     print(hdr)
     fam = {}
-    for t in GENDER_TARGETS:
+    for t in targets:
         conds = [("base", "cond_dpid_%s_base" % t, "base"),
                  ("decode_pid", "cond_dpid_%s_PI" % t, "decode_pid")]
-        nstems = gender_normal_stems(t)
+        nstems = normal_stems(t)
         if not nstems:
             print("%-22s (MISSING -- no cond_normal_%s_a* in all 3 rotations)"
                   % ("%s normal" % t, t))
@@ -311,8 +328,8 @@ def family_gender(results):
             else:
                 print("%-22s %s | dg=N/A (base missing)"
                       % ("%s %s" % (t, label), fmt(a)))
-            key = sub if sub != "normal" else label.replace(" ", "_")
-            fam[t][key] = a
+            ckey = sub if sub != "normal" else label.replace(" ", "_")
+            fam[t][ckey] = a
         for a in fam[t].values():
             a.pop("_reps", None)
         # telemetry: decode-PI controller effort (only if the runs exist)
@@ -322,7 +339,59 @@ def family_gender(results):
             fam[t]["decode_pid_telemetry"] = te
             print("   telemetry %-11s mean_alpha=%.2f  sat_frac=%.2f"
                   % (t, te["mean_alpha"], te["mean_sat_frac"]))
-    results["gender"] = fam
+    results[key] = fam
+    return fam
+
+
+def family_gender(results):
+    family_soft_targets(results, "gender",
+                        "FAMILY 5: GENDER BALANCED (E3, pooled 3x400, strict)",
+                        GENDER_TARGETS)
+
+
+def family_fblack(results):
+    fam = family_soft_targets(
+        results, "fblack",
+        "FAMILY 6: FBLACK BALANCED (E6 gender-conditioned race direction, "
+        "pooled 3x400, strict)",
+        FBLACK_TARGETS)
+    # CRITICAL COMPARISON: fblack (gender-conditioned race direction: f-black
+    # vs other-race women, see multirace/build_arrows.py) vs the round-1
+    # COARSE black direction, recomputed from the committed round-1 balanced
+    # samples (results/balanced/results_balanced; pooled strict gaps: base
+    # +0.018, decode-PI +0.167). Different item sets and different steering
+    # vectors -> descriptive comparison, no paired bootstrap. Printed only
+    # once the fblack runs exist.
+    fb = fam.get("fblack") or {}
+    if not fb.get("base"):
+        print("   (fblack-vs-black comparison: skipped -- fblack base not run yet)")
+        return
+    cmp_out = {}
+    print("-- fblack (gender-conditioned race direction: f-black vs "
+          "other-race women) vs black (coarse, round 1) -- "
+          "descriptive: different item sets --")
+    pairs = [("base", "cond_base"), ("decode_pid", "cond_dpid_PI")]
+    for sub, black_stem in pairs:
+        if not fb.get(sub):
+            continue
+        blk = analyze(rots("results/balanced/results_balanced/rot%%d/%s_samples.jsonl"
+                           % black_stem))
+        f, b = fb[sub], blk
+        cmp_out[sub] = {"fblack_gap": f["gap"], "fblack_gap_ci95": f["gap_ci95"],
+                        "black_gap": b["gap"], "black_gap_ci95": b["gap_ci95"],
+                        "diff": f["gap"] - b["gap"]}
+        print("%-22s fblack %+6.3f [%+6.3f,%+6.3f]  vs  black %+6.3f "
+              "[%+6.3f,%+6.3f]  (diff %+6.3f)"
+              % (sub, f["gap"], f["gap_ci95"][0], f["gap_ci95"][1],
+                 b["gap"], b["gap_ci95"][0], b["gap_ci95"][1],
+                 f["gap"] - b["gap"]))
+    if fb.get("decode_pid") and cmp_out.get("base") and cmp_out.get("decode_pid"):
+        dg_f = fb["decode_pid"].get("dgap_vs_base")
+        dg_b = cmp_out["decode_pid"]["black_gap"] - cmp_out["base"]["black_gap"]
+        cmp_out["dgap_decode_pid"] = {"fblack": dg_f, "black": dg_b}
+        print("%-22s fblack dg=%+6.3f  vs  black dg=%+6.3f"
+              % ("decode_pid dgap", dg_f, dg_b))
+    results["fblack_vs_black"] = cmp_out
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +485,7 @@ def main():
     family_seeds(results)
     family_dream(results)
     family_gender(results)
+    family_fblack(results)
     telemetry(results)
     family_unqover(results)
 

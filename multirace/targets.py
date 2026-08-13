@@ -13,11 +13,25 @@ and the bare trans/nontrans tags are DELIBERATELY EXCLUDED from both sets:
 steering toward/away from trans-identified options is a dual-use hazard we do
 not touch, so those rows simply never match a gender target.
 
+INTERSECTIONAL TARGET (BBQ Race_ethnicity, E6): fblack = {f-black} -- Black
+WOMEN specifically, via the single compound tag, matched whole. Note fblack
+is a semantic SUBSET of black (BLACK_TAGS contains "f-black"), so an f-black
+row matches BOTH the fblack and the black target -- expected and relied upon
+for the fblack-vs-coarse-black comparison. CAVEAT: the target GROUP is
+intersectional, but the built steering DIRECTION is not a full
+intersectional contrast -- BBQ Race_ethnicity pairs same-gender people, so
+all realized heldout negatives are other-race women (0 m-black): a
+GENDER-CONDITIONED RACE direction, f-black vs other-race women (see
+build_arrows.py). The mirror target m-black is NOT built: only 378 usable
+rows survive the Black-experiment exclusions, too few for the 400-eval
+protocol.
+
 Exports
     TARGET_TAGS            dict target -> frozenset of lowercase group tags
     TARGET_CATEGORY        dict target -> BBQ category (cache file stem)
     NEW_TARGETS            race targets built in round 2 (black excluded)
     GENDER_TARGETS         ("woman", "man")
+    INTERSECTIONAL_TARGETS ("fblack",)  E6
     target_idx_of(row, t)  index of the FIRST option whose tag is in
                            TARGET_TAGS[t], else None (mirrors
                            pid_steer.black_idx_of, via bbq_eval.get_answer_info)
@@ -43,14 +57,18 @@ TARGET_TAGS = {
     # E3 gender targets (STRICT: no trans_/nontrans_ compounds -- see module doc).
     "woman":  frozenset({"f", "woman", "girl"}),
     "man":    frozenset({"m", "man", "boy"}),
+    # E6 intersectional target: Black women only (subset of black -- see doc).
+    "fblack": frozenset({"f-black"}),
 }
 NEW_TARGETS = ("white", "asian", "latino", "arab")  # black excluded: already built
 GENDER_TARGETS = ("woman", "man")                   # E3; NOT in NEW_TARGETS (race-only loops)
+INTERSECTIONAL_TARGETS = ("fblack",)                # E6; NOT in NEW_TARGETS
 
 # BBQ category (= data/bbq_cache/<category>.jsonl stem) each target lives in.
 TARGET_CATEGORY = {
     **{t: "Race_ethnicity" for t in ("black", "white", "asian", "latino", "arab")},
     **{t: "Gender_identity" for t in GENDER_TARGETS},
+    **{t: "Race_ethnicity" for t in INTERSECTIONAL_TARGETS},
 }
 
 
@@ -147,6 +165,28 @@ def _selftest():
     # gender tags never leak into race targets and vice versa.
     check("gender tags don't match race targets",
           all(target_idx_of(g2, t) is None for t in NEW_TARGETS + ("black",)))
+
+    # --- E6 intersectional target fblack ---------------------------------- #
+    check("registry has fblack, category Race_ethnicity",
+          "fblack" in TARGET_TAGS and TARGET_CATEGORY["fblack"] == "Race_ethnicity"
+          and INTERSECTIONAL_TARGETS == ("fblack",))
+    fb = _mk_row(["F-Black", "M-White", "unknown"])
+    check("f-black row matches fblack (idx 0)", target_idx_of(fb, "fblack") == 0)
+    # plain 'black' and m-black rows do NOT match fblack (compound tag, whole).
+    check("plain 'black' tag does NOT match fblack",
+          target_idx_of(_mk_row(["Black", "white", "unknown"]), "fblack") is None)
+    check("m-black tag does NOT match fblack",
+          target_idx_of(_mk_row(["M-Black", "F-White", "unknown"]), "fblack") is None)
+    # fblack SUBSET of black: an f-black row ALSO matches the black target
+    # (expected -- BLACK_TAGS contains "f-black"; the E6 comparison relies on it).
+    check("fblack row ALSO matches black (fblack SUBSET of black)",
+          target_idx_of(fb, "black") == 0)
+    # f-black vs m-black row: fblack picks the woman, black picks the FIRST
+    # Black option -- the intersectional target disambiguates within race.
+    fb2 = _mk_row(["m-black", "f-black", "unknown"])
+    check("f-black vs m-black row: fblack -> 1, black -> 0 (first)",
+          target_idx_of(fb2, "fblack") == 1 and target_idx_of(fb2, "black") == 0
+          and target_option_count(fb2, "fblack") == 1)
 
     print(f"[selftest-targets] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok

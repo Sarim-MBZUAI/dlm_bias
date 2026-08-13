@@ -38,9 +38,28 @@ NOT apply (different BBQ category); manifest schema matches
 items_manifest.json plus "cross_target_disjoint": true. STRICT gender tag
 sets exclude the trans_/nontrans_ compounds (see targets.py).
 
+INTERSECTIONAL TARGET (E6, --target-set intersectional): fblack (Black women,
+the single compound tag f-black) lives on the SAME Race_ethnicity cache as
+the Black experiment, so the SAME exclusions apply (seed-42 eval keys UNION
+_sweep400.jsonl keys). Only 712 usable rows survive them (952 raw - 240
+excluded), so the split is a DOCUMENTED DEVIATION from the 400/400 standard:
+eval 400 + heldout 312 (= ALL remaining rows), recorded as "deviation" in
+multirace/items_manifest_fblack.json. The manifest also records the
+composition of the heldout NEGATIVE (contrast) options: the policy ADMITS
+same-race other-gender negatives (m-black), but empirically BBQ
+Race_ethnicity pairs people of the SAME gender, so ALL 312 realized
+negatives are other-race WOMEN and 0 are m-black -- the built direction is
+therefore a GENDER-CONDITIONED RACE direction (f-black vs other-race women),
+NOT a full intersectional contrast (see multirace/build_arrows.py).
+Gender_identity is a DIFFERENT category/cache:
+(example_id, question_index) keys are only meaningful within a category, so
+no key collision with the gender manifests is possible and no gender
+exclusion is needed (it would be dead code).
+
 CPU-only, offline (BBQ cache already on disk).
 Run:            python multirace/make_items.py                  # race, unchanged
                 python multirace/make_items.py --category Gender_identity
+                python multirace/make_items.py --target-set intersectional  # E6
 Offline check:  python multirace/make_items.py --selftest
 """
 import argparse
@@ -55,7 +74,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
-                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
+                     INTERSECTIONAL_TARGETS, TARGET_CATEGORY,
+                     target_idx_of, unk_idx_of)
 
 
 # Reuse the LLaDA arrow builder's exclusion helpers VERBATIM. Loaded by absolute
@@ -72,6 +92,7 @@ def load_llada_builder():
 ITEMS_DIR = os.path.join(ROOT, "data", "bbq_items")
 MANIFEST = os.path.join(HERE, "items_manifest.json")
 MANIFEST_GENDER = os.path.join(HERE, "items_manifest_gender.json")
+MANIFEST_FBLACK = os.path.join(HERE, "items_manifest_fblack.json")
 GENDER_CACHE = os.path.join(ROOT, "data", "bbq_cache", "Gender_identity.jsonl")
 SEED = 42
 N_EVAL = 400
@@ -79,6 +100,9 @@ N_HELDOUT_CAP = 400
 MIN_USABLE = 800
 N_GENDER_SET = 400          # each of the 4 disjoint gender sets
 MIN_GENDER_POOL = 4 * N_GENDER_SET
+# E6 fblack: DOCUMENTED DEVIATION -- 712 usable after exclusions, so heldout
+# is ALL 312 remaining rows, not the standard 400 (asserted exactly below).
+N_FBLACK_HELDOUT = 312
 
 
 def row_key(r):
@@ -189,6 +213,119 @@ def main_gender():
     with open(MANIFEST_GENDER, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"[items-gender] manifest -> {MANIFEST_GENDER}", flush=True)
+
+
+def negative_tag_of(row, target):
+    """Lowercase tag of the CONTRAST (negative) option build_arrows.py will
+    pick for this row: the FIRST option that is neither the target nor the
+    unknown option (identical rule to build_arrows.heldout_from_manifest)."""
+    tidx = target_idx_of(row, target)
+    unk = unk_idx_of(row)
+    oidx = next(k for k in range(3) if k != tidx and k != unk)
+    return str(row["answer_info"][f"ans{oidx}"][-1]).strip().lower()
+
+
+def negative_composition(rows, target, contrast_tag="m-black"):
+    """Tally the negative-option tags over `rows`. Returns
+    {"by_tag": {...}, contrast_tag (as key): n, "other": n} -- recorded in the
+    manifest so the paper can state how often the fblack direction contrasts
+    against the same-race other gender (m-black) vs another race
+    (empirically: never vs always -- the direction is gender-conditioned
+    race, f-black vs other-race women)."""
+    by_tag = {}
+    for r in rows:
+        tag = negative_tag_of(r, target)
+        by_tag[tag] = by_tag.get(tag, 0) + 1
+    n_contrast = by_tag.get(contrast_tag, 0)
+    return {"by_tag": dict(sorted(by_tag.items())),
+            contrast_tag: n_contrast,
+            "other": len(rows) - n_contrast}
+
+
+def main_fblack():
+    """E6: fblack items. Same category/cache as the Black experiment ->
+    the SAME exclusions apply (unlike gender: Gender_identity is a different
+    cache, keys are per-category, no collision possible, no exclusion added)."""
+    lb = load_llada_builder()
+    full = lb.load_full_race()
+    seed_keys = lb.eval_race_keys()
+    sw_keys = lb.sweep400_keys()
+    exclude = seed_keys | sw_keys
+    target = "fblack"
+    raw = select_target_rows(full, target, set())
+    usable = select_target_rows(full, target, exclude)
+    print(f"[items-fblack] full={len(full)} raw_usable={len(raw)} "
+          f"seed42_keys={len(seed_keys)} sweep400_keys={len(sw_keys)} "
+          f"excluded_union={len(exclude)} usable={len(usable)}", flush=True)
+
+    ev, held = split_items(usable)
+    ev_keys = {row_key(r) for r in ev}
+    held_keys = {row_key(r) for r in held}
+    # DOCUMENTED DEVIATION: exactly 400 eval + 312 heldout (= ALL remaining).
+    assert len(ev) == len(ev_keys) == N_EVAL, f"eval {len(ev)} != {N_EVAL}"
+    assert len(held) == len(held_keys) == N_FBLACK_HELDOUT, \
+        f"heldout {len(held)} != {N_FBLACK_HELDOUT} -- cache/exclusions drifted"
+    assert len(ev) + len(held) == len(usable), "heldout must be ALL remaining rows"
+    assert ev_keys.isdisjoint(held_keys), "eval/heldout overlap"
+    assert ev_keys.isdisjoint(exclude) and held_keys.isdisjoint(exclude), \
+        "contamination with Black-experiment keys"
+
+    neg = negative_composition(held, target)
+    print(f"[items-fblack] heldout negatives: m-black={neg['m-black']} "
+          f"other={neg['other']} by_tag={neg['by_tag']}", flush=True)
+    if neg["m-black"] == 0:
+        direction_note = (
+            "All %d realized heldout negatives are other-race women "
+            "(0 m-black): the built direction is a GENDER-CONDITIONED RACE "
+            "direction (f-black vs other-race women), NOT a full "
+            "intersectional contrast. BBQ Race_ethnicity pairs people of the "
+            "same gender, so same-race other-gender negatives never occur "
+            "even though the policy admits them." % neg["other"])
+    else:
+        direction_note = ("Heldout negatives mix m-black (%d) and other-race "
+                          "(%d) options." % (neg["m-black"], neg["other"]))
+
+    out = os.path.join(ITEMS_DIR, f"_sweep400_{target}.jsonl")
+    with open(out, "w") as f:
+        for r in ev:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    manifest = {
+        "seed": SEED,
+        "n_eval": N_EVAL,
+        "n_heldout": N_FBLACK_HELDOUT,
+        "deviation": ("heldout is 312 = ALL usable rows remaining after the "
+                      "400-item eval draw, NOT the standard 400: only 712 "
+                      "f-black rows survive the Black-experiment exclusions "
+                      "(952 raw - 240 excluded)."),
+        "cache": os.path.join("data", "bbq_cache", "Race_ethnicity.jsonl"),  # ROOT-relative (portable)
+        "category": "Race_ethnicity",
+        "exclusions": {"black_seed42_race_keys": len(seed_keys),
+                       "black_sweep400_keys": len(sw_keys),
+                       "union": len(exclude),
+                       "raw_usable_before_exclusion": len(raw),
+                       "raw_rows_excluded": len(raw) - len(usable)},
+        "targets": {
+            target: {
+                "tags": sorted(TARGET_TAGS[target]),
+                "n_usable_after_exclusion": len(usable),
+                "n_eval": len(ev),
+                "n_heldout": len(held),
+                "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
+                # Negative = FIRST non-fblack non-unknown option; the policy
+                # ADMITS m-black (Black men), but BBQ pairs same-gender
+                # people, so realized m-black is 0 -- see direction_note and
+                # build_arrows.py module doc.
+                "heldout_negative_composition": neg,
+                "direction_note": direction_note,
+                "heldout_keys": sorted([list(k) for k in held_keys]),
+            }
+        },
+    }
+    with open(MANIFEST_FBLACK, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"[items-fblack] eval={len(ev)} -> {out}", flush=True)
+    print(f"[items-fblack] manifest -> {MANIFEST_FBLACK}", flush=True)
 
 
 def main():
@@ -334,6 +471,34 @@ def _selftest():
           [row_key(r) for r in ev_w2] == [row_key(r) for r in ev_w]
           and [row_key(r) for r in held_m2] == [row_key(r) for r in held_m])
 
+    # --- E6 fblack: selection, negative composition, 400/312 split -------- #
+    ffull = [
+        _mk_row(20, "q1", "ambig",    ["F-Black", "M-White", "unknown"]),  # keep
+        _mk_row(21, "q2", "ambig",    ["m-black", "f-black", "unknown"]),  # keep (neg = m-black!)
+        _mk_row(22, "q3", "ambig",    ["Black", "white", "unknown"]),      # drop: no f-black
+        _mk_row(23, "q4", "ambig",    ["f-black", "f-black", "unknown"]),  # drop: 2 f-black
+        _mk_row(24, "q5", "disambig", ["f-black", "white", "unknown"]),    # drop: disambig
+        _mk_row(25, "q6", "ambig",    ["f-black", "white", "unknown"]),    # drop: excluded
+    ]
+    fk = {row_key(r) for r in select_target_rows(ffull, "fblack", {(25, "q6")})}
+    check("fblack selection: exactly the 2 valid rows",
+          fk == {(20, "q1"), (21, "q2")})
+    check("fblack: plain-black / m-black-only rows not selected",
+          (22, "q3") not in fk)
+    # negative composition: row 20 contrasts m-white, row 21 contrasts m-black.
+    fneg = negative_composition([ffull[0], ffull[1]], "fblack")
+    check("negative composition: m-black=1 other=1, tags tallied",
+          fneg["m-black"] == 1 and fneg["other"] == 1
+          and fneg["by_tag"] == {"m-black": 1, "m-white": 1})
+    # 712-row pool (the real fblack count) -> 400 eval + 312 heldout = ALL rest.
+    fpool = [_mk_row(2000 + i, "q", "ambig", ["f-black", "white", "unknown"])
+             for i in range(712)]
+    fev, fheld = split_items(fpool)
+    check("fblack pool 712 -> 400 eval + 312 heldout (all remaining), disjoint",
+          len(fev) == 400 and len(fheld) == N_FBLACK_HELDOUT == 312
+          and len(fev) + len(fheld) == 712
+          and {row_key(r) for r in fev}.isdisjoint({row_key(r) for r in fheld}))
+
     print(f"[selftest-items] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -345,7 +510,19 @@ if __name__ == "__main__":
                     choices=["Race_ethnicity", "Gender_identity"],
                     help="Race_ethnicity (default, byte-identical to the "
                          "original behavior) or Gender_identity (E3)")
+    ap.add_argument("--target-set", default="race",
+                    choices=["race", "intersectional"],
+                    help="Race_ethnicity only: 'race' = the four round-2 "
+                         "targets (default, byte-identical) or "
+                         "'intersectional' = E6 fblack (400 eval / 312 heldout)")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
-    main_gender() if args.category == "Gender_identity" else main()
+    if args.category == "Gender_identity":
+        if args.target_set != "race":
+            ap.error("--target-set intersectional requires --category Race_ethnicity")
+        main_gender()
+    elif args.target_set == "intersectional":
+        main_fblack()
+    else:
+        main()
