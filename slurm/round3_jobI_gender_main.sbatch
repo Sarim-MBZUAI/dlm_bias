@@ -28,6 +28,11 @@
 # !!! different WOMAN_AMAX after a partial run will SKIP completed rotations --
 # !!! delete results/balanced_all/woman/decode_pid (and normal at a changed
 # !!! alpha) first if the dose changes.
+# !!! WOMAN_ALPHA must be an INTEGER: normal.py's default output stem renders
+# !!! alpha via %g with '.'->'p' (2.5 -> cond_normal_woman_a2p5.json) while the
+# !!! run_if_missing marker below interpolates the env value verbatim
+# !!! (cond_normal_woman_a2.5.json) -- a fractional alpha breaks the skip-guard
+# !!! and reruns all 3 normal rotations on every requeue.
 # 14 runs (12 GPU evals + rotations + oracle), idempotent via run_if_missing.
 set -euo pipefail
 

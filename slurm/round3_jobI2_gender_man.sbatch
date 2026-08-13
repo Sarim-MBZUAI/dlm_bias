@@ -19,6 +19,11 @@
 # !!!     sbatch --export=ALL,MAN_AMAX=4,MAN_ALPHA=2 slurm/round3_jobI2_gender_man.sbatch
 # !!! The decode-PI marker/tag does NOT encode amax: delete
 # !!! results/balanced_all/man/decode_pid before rerunning at a changed dose.
+# !!! MAN_ALPHA must be an INTEGER: normal.py's default output stem renders
+# !!! alpha via %g with '.'->'p' (2.5 -> cond_normal_man_a2p5.json) while the
+# !!! run_if_missing marker below interpolates the env value verbatim
+# !!! (cond_normal_man_a2.5.json) -- a fractional alpha breaks the skip-guard
+# !!! and reruns all 3 normal rotations on every requeue.
 # 14 runs (12 GPU evals + rotations + oracle), idempotent via run_if_missing.
 set -euo pipefail
 
