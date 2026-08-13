@@ -1,0 +1,68 @@
+{
+  "condition": "PI",
+  "target": "woman",
+  "config": {
+    "target": "woman",
+    "target_tags": [
+      "f",
+      "girl",
+      "woman"
+    ],
+    "fallback_registry": false,
+    "arrows": {
+      "n_items": 400,
+      "source": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint"
+    },
+    "items_path": "results/balanced_all/rotations/_sweep400_woman_rot0.jsonl"
+  },
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.1,
+    "Kd": 0.0
+  },
+  "actuator": "all_32_layers",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 4.0,
+  "vhat_layer": 14,
+  "sensor_case": "upper",
+  "sensor_letter_ids": {
+    "plain": {
+      "A": 32,
+      "B": 33,
+      "C": 34
+    },
+    "space": {
+      "A": 355,
+      "B": 413,
+      "C": 348
+    }
+  },
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 145,
+    "nontarget": 76,
+    "abstain": 179,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.3625,
+    "nontarget_pick_rate": 0.19,
+    "abstain_rate": 0.4475,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": 0.1725,
+  "d_gap": null,
+  "baseline_rate": null,
+  "mean_total_actuation": 203.58879236266546,
+  "mean_alpha": 3.181074880666648,
+  "mean_final_alpha": 3.07038030961775,
+  "mean_sat_frac": 0.3942578125,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "dummy_arrows": false,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 621.5759434700012
+}

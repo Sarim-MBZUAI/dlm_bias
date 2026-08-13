@@ -1,0 +1,87 @@
+{
+  "condition": "PI",
+  "target": "arab",
+  "config": {
+    "target": "arab",
+    "target_tags": [
+      "arab",
+      "f-arab",
+      "m-arab",
+      "middle eastern"
+    ],
+    "fallback_registry": false,
+    "arrows": {
+      "n_items": 400,
+      "source": "multirace_manifest_heldout_seed42_disjoint_black_seed42_and_sweep400"
+    },
+    "items_path": "results/balanced_all/rotations/_sweep400_arab_rot1.jsonl"
+  },
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.1,
+    "Kd": 0.0
+  },
+  "actuator": "all_32_layers",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 6.0,
+  "vhat_layer": 14,
+  "sensor_case": "both",
+  "sensor_letter_ids": {
+    "plain": {
+      "A": [
+        32,
+        64
+      ],
+      "B": [
+        33,
+        65
+      ],
+      "C": [
+        34,
+        66
+      ]
+    },
+    "space": {
+      "A": [
+        355,
+        259
+      ],
+      "B": [
+        413,
+        285
+      ],
+      "C": [
+        348,
+        272
+      ]
+    }
+  },
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 163,
+    "nontarget": 89,
+    "abstain": 117,
+    "unparseable": 31
+  },
+  "rates": {
+    "target_pick_rate": 0.4075,
+    "nontarget_pick_rate": 0.2225,
+    "abstain_rate": 0.2925,
+    "unparseable_rate": 0.0775
+  },
+  "gap_within": 0.18499999999999997,
+  "d_gap": null,
+  "baseline_rate": null,
+  "mean_total_actuation": 229.27122304815254,
+  "mean_alpha": 3.5823628601273834,
+  "mean_final_alpha": 4.24989682506381,
+  "mean_sat_frac": 0.1633203125,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "dummy_arrows": false,
+  "cuda_visible_devices": "0",
+  "elapsed_s": 623.980010509491
+}
