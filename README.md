@@ -99,6 +99,10 @@ regenerate with `python balanced_all/strict_round3.py` (+ families 5–6 of
   f-black direction disinhibits without aiming: pick rates quadruple, gap
   stays at zero (decode-PI −0.003) vs the coarse Black direction's +0.167 —
   steerability is a property of the direction.
+- **Also:** the full 7-method prior-work baseline suite on gender (E8: ITI-C the
+  lone winner on woman at Δg +0.083; man resists all 8 methods) and a clean UnQover
+  **religion** baseline (E9: μ=0.279, Muslim γ +0.218 / pref_gap +0.210 debiased,
+  steered runs deliberately deferred).
 
 The strict parse rule mirrors `tools/strict_reparse.py` in the
 [paper repo](https://github.com/Sarim-MBZUAI/DLM_Bias_overleaf): a response
