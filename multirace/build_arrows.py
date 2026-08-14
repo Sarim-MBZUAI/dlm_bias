@@ -2,6 +2,7 @@
 """multirace/build_arrows.py -- per-target "prefer <target> option" arrows r(k)
 for LLaDA-8B-Instruct.  Port of steering/build_arrows.py parameterized by
 --target in {white, asian, latino, arab} + the E3 gender targets {woman, man}
++ the E9 pair-axis targets {lowses, highses, old, young}
 (black = existing steering/arrows.pt, NOT rebuilt here).
 
 For every transformer block k = 0..31, the answer-text-anchored diff-in-means:
@@ -23,6 +24,13 @@ is recomputed here.
     woman/man are MUTUALLY disjoint (cross_target_disjoint). The negative
     option of a gender pair is the other-gendered person (non-target,
     non-unknown), same rule as race.
+  * SES targets (E9): multirace/items_manifest_ses.json over
+    data/bbq_cache/SES.jsonl; same cross_target_disjoint 4-way split as
+    gender (lowses/highses). The negative is the other SES pole.
+  * Age targets (E9): multirace/items_manifest_age.json over
+    data/bbq_cache/Age.jsonl; same 4-way split (old/young). The negative is
+    the other age pole; note the 'young' target tag-matches BBQ's 'nonOld'
+    tag (see targets.py).
   * fblack (E6, intersectional target group -- but see below: the realized
     direction is gender-conditioned race): multirace/items_manifest_fblack.json over
     the Race_ethnicity cache (heldout = 312, a documented deviation -- see
@@ -62,28 +70,34 @@ sys.path.insert(0, HERE)
 
 import bbq_eval  # noqa: E402
 from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
-                     INTERSECTIONAL_TARGETS, TARGET_CATEGORY,
-                     target_idx_of, unk_idx_of)
-from make_items import (load_llada_builder, load_gender_cache, row_key,  # noqa: E402
+                     INTERSECTIONAL_TARGETS, SES_TARGETS, AGE_TARGETS,
+                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
+from make_items import (load_llada_builder, load_category_cache, row_key,  # noqa: E402
                         negative_composition,
-                        MANIFEST, MANIFEST_GENDER, MANIFEST_FBLACK)
+                        MANIFEST, MANIFEST_GENDER, MANIFEST_FBLACK,
+                        MANIFEST_SES, MANIFEST_AGE)
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS = 32
 DEVICE = "cuda"
 
+# category -> pair-axis manifest (E3 gender, E9 SES/Age; race handled below).
+_CATEGORY_MANIFEST = {"Gender_identity": MANIFEST_GENDER,
+                      "SES": MANIFEST_SES, "Age": MANIFEST_AGE}
+
 
 def manifest_path_for(target):
     if target in INTERSECTIONAL_TARGETS:
         return MANIFEST_FBLACK
-    return MANIFEST_GENDER if TARGET_CATEGORY[target] == "Gender_identity" else MANIFEST
+    return _CATEGORY_MANIFEST.get(TARGET_CATEGORY[target], MANIFEST)
 
 
 def load_cache_rows(target):
     """Full BBQ cache rows for the target's category."""
-    if TARGET_CATEGORY[target] == "Gender_identity":
-        return load_gender_cache()
-    return load_llada_builder().load_full_race()
+    cat = TARGET_CATEGORY[target]
+    if cat == "Race_ethnicity":
+        return load_llada_builder().load_full_race()
+    return load_category_cache(cat)
 
 
 def heldout_from_manifest(target):
@@ -189,6 +203,9 @@ def main(target):
                   "_disjoint_black_seed42_and_sweep400")
     elif TARGET_CATEGORY[target] == "Gender_identity":
         source = f"multirace_gender_manifest_heldout_seed{mani['seed']}_cross_target_disjoint"
+    elif TARGET_CATEGORY[target] in ("SES", "Age"):
+        source = (f"multirace_{TARGET_CATEGORY[target].lower()}_manifest_heldout"
+                  f"_seed{mani['seed']}_cross_target_disjoint")
     else:
         source = f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400"
     # Composition of the realized negatives (paper-facing for fblack: how many
@@ -278,6 +295,38 @@ def _selftest():
           all(gsets[a].isdisjoint(gsets[b])
               for i, a in enumerate(names) for b in names[i + 1:]))
 
+    # --- E9 SES/Age manifests: same 4-way cross-target disjointness -------- #
+    for axis_name, axis_targets in (("ses", SES_TARGETS), ("age", AGE_TARGETS)):
+        xsets = {}
+        for target in axis_targets:
+            triples, mani = heldout_from_manifest(target)
+            tinfo = mani["targets"][target]
+            check(f"{target}: {axis_name} manifest flags cross_target_disjoint",
+                  mani.get("cross_target_disjoint") is True
+                  and mani["category"] == TARGET_CATEGORY[target])
+            check(f"{target}: heldout resolves ({len(triples)} triples)",
+                  len(triples) == tinfo["n_heldout"] == 400)
+            keys = {row_key(r) for r, _, _ in triples}
+            with open(os.path.join(ROOT, tinfo["eval_file"])) as f:
+                ev_keys = {row_key(json.loads(l)) for l in f if l.strip()}
+            xsets[f"heldout({target})"] = keys
+            xsets[f"eval({target})"] = ev_keys
+            other = axis_targets[1] if target == axis_targets[0] else axis_targets[0]
+            tag_ok = all(
+                str(bbq_eval.get_answer_info(r, t)[-1]).strip().lower() in TARGET_TAGS[target]
+                and str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+                not in (TARGET_TAGS[target] | {"unknown"})
+                for r, t, o in triples)
+            check(f"{target}: positive=target tag, negative=non-target non-unknown", tag_ok)
+            # pair-axis specific: the negative carries the OTHER pole's tag.
+            check(f"{target}: negative carries the other pole's tag",
+                  all(str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
+                      in TARGET_TAGS[other] for r, _, o in triples))
+        names = sorted(xsets)
+        check(f"{axis_name}: 4 sets pairwise disjoint (eval/heldout x poles)",
+              all(xsets[a].isdisjoint(xsets[b])
+                  for i, a in enumerate(names) for b in names[i + 1:]))
+
     # --- E6 fblack manifest: race exclusions DO apply; negatives policy ---- #
     triples, mani = heldout_from_manifest("fblack")
     tinfo = mani["targets"]["fblack"]
@@ -320,7 +369,8 @@ def _selftest():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", choices=(list(NEW_TARGETS) + list(GENDER_TARGETS)
-                                         + list(INTERSECTIONAL_TARGETS)))
+                                         + list(INTERSECTIONAL_TARGETS)
+                                         + list(SES_TARGETS) + list(AGE_TARGETS)))
     ap.add_argument("--selftest", action="store_true",
                     help="offline manifest-resolution check (no GPU)")
     args = ap.parse_args()
