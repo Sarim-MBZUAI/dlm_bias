@@ -1,0 +1,82 @@
+{
+  "method": "normal",
+  "target": "highses",
+  "alpha": 3.0,
+  "config": {
+    "target": "highses",
+    "target_tags": [
+      "highses"
+    ],
+    "fallback_registry": false,
+    "layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ],
+    "vhat_layer": 14,
+    "arrows": {
+      "n_items": 400,
+      "source": "multirace_ses_manifest_heldout_seed42_cross_target_disjoint"
+    },
+    "items_path": "results/balanced_all/rotations/_sweep400_highses_rot2.jsonl",
+    "mode": "normal_all32",
+    "dummy_arrows": false
+  },
+  "n": 400,
+  "n_skipped_no_target": 0,
+  "counts": {
+    "target": 87,
+    "nontarget": 44,
+    "abstain": 269,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.2175,
+    "nontarget_pick_rate": 0.11,
+    "abstain_rate": 0.6725,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": 0.1075,
+  "d_gap": null,
+  "baseline_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "hooks_fired_layers": 32,
+  "hook_fire_counts": [
+    25600
+  ],
+  "cuda_visible_devices": "0",
+  "elapsed_s": 605.7980411052704
+}
