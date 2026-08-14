@@ -73,10 +73,10 @@ regenerate with `python balanced_all/strict_round2.py`.
   negation-debiasing absorbs ~95% of the shift — the push is largely
   valence-independent. Metric: `unqover/unqover_metric.py`.
 
-### Round-3: suppression, sensor fix, gender axis, intersectional null
+### Round-3: suppression, sensor fix, five bias axes, intersectional null
 
 Full tables and caveats: [`results/ROUND3_STRICT.md`](results/ROUND3_STRICT.md);
-regenerate with `python balanced_all/strict_round3.py` (+ families 5–6 of
+regenerate with `python balanced_all/strict_round3.py` (+ families 5–8 of
 `strict_round2.py`).
 
 - **Defense (E5).** The same feedback loop with the setpoint flipped
@@ -99,6 +99,17 @@ regenerate with `python balanced_all/strict_round3.py` (+ families 5–6 of
   f-black direction disinhibits without aiming: pick rates quadruple, gap
   stays at zero (decode-PI −0.003) vs the coarse Black direction's +0.167 —
   steerability is a property of the direction.
+- **SES + Age axes (E9).** Steering evidence now spans **five bias axes**
+  (race, gender, gender-conditioned race, SES, age). **old is the strongest
+  steering result in the project**: decode-PI Δg **+0.372** [+0.318, +0.427],
+  ahead of the α=4 open loop on point aim (+0.313; paired diff ns) and
+  unambiguously ahead on coherence (9.3% vs 19.0% strict-invalid) at the
+  lowest controller effort of any attack target (mean α 2.54). lowses reverses a standing anti-poor tilt
+  (base −0.049 → +0.068; effort-matched feedback win +0.049). **highses is
+  the first significant effort-matched loss for feedback** (−0.082
+  [−0.114, −0.050]) — the honest counterexample: feedback wins at matched
+  effort on black/woman/lowses/old, loses on highses, ns on the nulls.
+  young is a null, joining man/asian/white/fblack in the unsteerable set.
 - **Also:** the full 7-method prior-work baseline suite on gender (E8: ITI-C the
   lone winner on woman at Δg +0.083; man resists all 8 methods) and a clean UnQover
   **religion** baseline (E9: μ=0.279, Muslim γ +0.218 / pref_gap +0.210 debiased,
@@ -174,7 +185,7 @@ relocate pre-existing local blobs, or reconstruct from scratch:
 
 **SLURM.** All headline runs go through `slurm/*.sbatch` (round 1:
 `job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`; round 3:
-`round3_job{G..O}` + `round3_smokeJ`). Two quirks:
+`round3_job{G..W}` + `round3_smokeJ`). Two quirks:
 they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
 remote code can be materialized on compute nodes, and the round-2 scripts
 request `--qos=normal-plus` for the longer walltimes. Do not set
@@ -193,7 +204,7 @@ python steering/denoise_pid.py --cond PI \
 # authoritative strict-parse analyses (CPU, committed inputs)
 python balanced_all/strict_pool.py     # round-1 14-condition Black table
 python balanced_all/strict_round2.py   # multi-target / seeds / UnQover / Dream
-                                       #   + round-3 gender / fblack families
+                                       #   + round-3 gender / fblack / SES / Age families
 python balanced_all/strict_round3.py   # round-3 suppression + case-full sensor
 
 # UnQover metric for one steered condition
