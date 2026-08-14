@@ -23,6 +23,11 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      from the files on disk (cond_normal_<T>_a*.json -- the alpha is fixed at
      submit time by the jobH sweep). Conditions not run yet are reported as
      MISSING, never crash.
+     E8: the family ALSO reports the full prior-work baseline suite at the
+     round-1 published operating points (results/BASELINES.md; jobQ/jobR):
+     caa L14 a16, actadd a16, meanact unit s2, linearact gaussian s1,
+     aura inject g4, aura vanilla, itic K48 a8 -- same sub-dirs + stems as
+     results/balanced_all/black (BASELINE_CONDS), per target, soft-missing.
 
   6. FBLACK BALANCED (E6)  results/balanced_all/fblack/
      {base,decode_pid,normal,caa}/rot{0,1,2} -- same soft-missing machinery
@@ -291,10 +296,29 @@ def normal_stems(t):
     return sorted(stems or [])
 
 
-def family_soft_targets(results, key, title, targets):
+# E8: the full prior-work baseline suite at the round-1 published operating
+# points (results/BASELINES.md). (sub_dir, stem, print label, result key) --
+# sub-dirs and stems are EXACTLY the round-1 results/balanced_all/black layout,
+# so slurm/round3_jobQ/jobR write where this discovery looks. Result keys are
+# explicit because the baselines-CAA (L14 a16) must not shadow the multirace
+# caa-a2 condition ("caa") in the family dict.
+BASELINE_CONDS = [
+    ("caa", "cond_caa_L14_a16", "caa L14 a16", "caa_L14_a16"),
+    ("actadd", "cond_actadd_a16", "actadd a16", "actadd_a16"),
+    ("meanact", "cond_meanact_unit_s2", "meanact unit s2", "meanact_unit_s2"),
+    ("linearact", "cond_gaussian_s1", "linearact gauss s1", "linearact_gaussian_s1"),
+    ("aura_inject", "cond_inject_g4", "aura inject g4", "aura_inject_g4"),
+    ("aura_vanilla", "cond_vanilla", "aura vanilla", "aura_vanilla"),
+    ("itic", "cond_itic_K48_a8", "itic K48 a8", "itic_K48_a8"),
+]
+
+
+def family_soft_targets(results, key, title, targets, include_baselines=False):
     """Shared soft-missing family: pooled strict gap + CIs + Delta-g vs the
     SAME target's pooled base + gap@A/gap@BC + invalid rates + decode-PI
-    telemetry, per target in `targets`. Returns the family dict."""
+    telemetry, per target in `targets`. include_baselines additionally reports
+    the round-1 prior-work baseline suite (BASELINE_CONDS), soft-missing.
+    Returns the family dict."""
     print("\n== %s ==" % title)
     hdr = ("%-22s %6s %6s %6s %6s | %25s | %6s %6s" %
            ("target/condition", "target", "compar", "abstn", "inval",
@@ -302,17 +326,20 @@ def family_soft_targets(results, key, title, targets):
     print(hdr)
     fam = {}
     for t in targets:
-        conds = [("base", "cond_dpid_%s_base" % t, "base"),
-                 ("decode_pid", "cond_dpid_%s_PI" % t, "decode_pid")]
+        conds = [("base", "cond_dpid_%s_base" % t, "base", "base"),
+                 ("decode_pid", "cond_dpid_%s_PI" % t, "decode_pid", "decode_pid")]
         nstems = normal_stems(t)
         if not nstems:
             print("%-22s (MISSING -- no cond_normal_%s_a* in all 3 rotations)"
                   % ("%s normal" % t, t))
-        conds += [("normal", stem, stem.replace("cond_", "")) for stem in nstems]
-        conds += [("caa", "cond_caa_%s_a2" % t, "caa a2")]
+        conds += [("normal", stem, stem.replace("cond_", ""),
+                   stem.replace("cond_", "")) for stem in nstems]
+        conds += [("caa", "cond_caa_%s_a2" % t, "caa a2", "caa")]
+        if include_baselines:
+            conds += BASELINE_CONDS
         base = None
         fam[t] = {}
-        for sub, stem, label in conds:
+        for sub, stem, label, ckey in conds:
             a = analyze_soft(mt_paths(t, sub, stem), want_reps=True)
             if a is None:
                 print("%-22s (MISSING -- not run yet)" % ("%s %s" % (t, label)))
@@ -328,7 +355,6 @@ def family_soft_targets(results, key, title, targets):
             else:
                 print("%-22s %s | dg=N/A (base missing)"
                       % ("%s %s" % (t, label), fmt(a)))
-            ckey = sub if sub != "normal" else label.replace(" ", "_")
             fam[t][ckey] = a
         for a in fam[t].values():
             a.pop("_reps", None)
@@ -345,8 +371,9 @@ def family_soft_targets(results, key, title, targets):
 
 def family_gender(results):
     family_soft_targets(results, "gender",
-                        "FAMILY 5: GENDER BALANCED (E3, pooled 3x400, strict)",
-                        GENDER_TARGETS)
+                        "FAMILY 5: GENDER BALANCED (E3, pooled 3x400, strict; "
+                        "E8 incl. prior-work baseline suite)",
+                        GENDER_TARGETS, include_baselines=True)
 
 
 def family_fblack(results):

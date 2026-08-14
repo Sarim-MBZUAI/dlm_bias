@@ -89,35 +89,45 @@ DIR_CHOICES = ("unit", "raw", "fitted")
 FIT_PATH = os.path.join(common.CACHE_DIR, "meanact_meandiff_block.pt")
 
 
+def fit_path_for(target):
+    """cache/meanact_meandiff_block.pt for black (round-1 path, unchanged);
+    cache/meanact_meandiff_block_<target>.pt otherwise."""
+    return os.path.join(common.CACHE_DIR,
+                        f"meanact_meandiff_block{common.target_suffix(target)}.pt")
+
+
 # --------------------------------------------------------------------------- #
-# Direction source: the per-layer (mu2 - mu1) = Black-minus-other mean shift.  #
+# Direction source: the per-layer (mu2 - mu1) = target-minus-other mean shift. #
 # --------------------------------------------------------------------------- #
-def load_direction(direction="unit", fit_path=FIT_PATH):
-    """Return the (32, 4096) per-layer mean-shift (mu2 - mu1), Black minus other.
+def load_direction(direction="unit", fit_path=None, target="black"):
+    """Return the (32, 4096) per-layer mean-shift (mu2 - mu1), target minus
+    other (Black minus other for the round-1 default target).
 
     direction:
-      "unit"   -> directions.load_arrows()          (per-layer unit-normalized;
+      "unit"   -> directions.load_arrows(target=...)  (per-layer unit-normalized;
                   family default, the spec's directions.load_arrows() r[k]).
-      "raw"    -> directions.load_arrows(raw=True)   (raw diff-in-means; the
-                  literal (mu2 - mu1) the true Mean-AcT uses).
+      "raw"    -> directions.load_arrows(raw=True, target=...)  (raw
+                  diff-in-means; the literal (mu2 - mu1) the true Mean-AcT uses).
       "fitted" -> the fit()-produced per-neuron (mu2 - mu1) at block granularity
-                  (needs a calib cache; see fit()).
+                  (needs the target's calib cache; see fit()).
     """
     assert direction in DIR_CHOICES, f"direction must be one of {DIR_CHOICES}"
+    fit_path = fit_path or fit_path_for(target)
     if direction == "fitted":
         assert os.path.exists(fit_path), (
             f"direction='fitted' needs {fit_path}; run --fit first "
             f"(which needs a calib.py activation cache built on GPU).")
         blob = torch.load(fit_path, map_location="cpu")
         return blob["mean_diff"].to(torch.float32)          # (32, 4096)
-    return directions.load_arrows(raw=(direction == "raw")).to(torch.float32)
+    return directions.load_arrows(raw=(direction == "raw"),
+                                  target=target).to(torch.float32)
 
 
 # --------------------------------------------------------------------------- #
 # The injection: vec_k = strength * GAIN * (mu2 - mu1)_k   (all 32 blocks).    #
 # --------------------------------------------------------------------------- #
 def build_injection(strength, direction="unit", gain=GAIN, arrows=None,
-                    fit_path=FIT_PATH):
+                    fit_path=None, target="black"):
     """Return the (32, 4096) additive mean-shift injection, one row per block.
 
         vec_k = strength * gain * (mu2 - mu1)_k
@@ -129,7 +139,7 @@ def build_injection(strength, direction="unit", gain=GAIN, arrows=None,
     arrows: optional (32, 4096) override for (mu2 - mu1) (used by --selftest to
     avoid touching arrows.pt); otherwise load_direction(direction) supplies it.
     """
-    r = load_direction(direction, fit_path=fit_path) if arrows is None \
+    r = load_direction(direction, fit_path=fit_path, target=target) if arrows is None \
         else torch.as_tensor(arrows, dtype=torch.float32)
     assert r.dim() == 2 and r.shape[1] == common.H_MODEL, \
         f"expected (n_layers, {common.H_MODEL}) arrows, got {tuple(r.shape)}"
@@ -140,7 +150,7 @@ def build_injection(strength, direction="unit", gain=GAIN, arrows=None,
 # attach_fn: add vec_k at every block k via the shared fire-counted factory.   #
 # --------------------------------------------------------------------------- #
 def build_attach_fn(strength, layers=None, direction="unit", gain=GAIN,
-                    arrows=None, fit_path=FIT_PATH):
+                    arrows=None, fit_path=None, target="black"):
     """Return attach_fn(model) -> handles that adds vec_k at each block k.
 
     layers=None -> all 32 blocks (native Mean-AcT: every layer).  Hooks are built
@@ -149,7 +159,7 @@ def build_attach_fn(strength, layers=None, direction="unit", gain=GAIN,
     """
     layers = list(range(common.N_LAYERS)) if layers is None else list(layers)
     vecs = build_injection(strength, direction=direction, gain=gain,
-                           arrows=arrows, fit_path=fit_path)
+                           arrows=arrows, fit_path=fit_path, target=target)
 
     def attach_fn(model):
         handles = []
@@ -166,18 +176,21 @@ def build_attach_fn(strength, layers=None, direction="unit", gain=GAIN,
 # --------------------------------------------------------------------------- #
 def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
         gain=GAIN, limit=0, baseline_black_rate=None, model=None, tok=None,
-        items_path=common.SWEEP400):
+        items_path=None, target="black"):
     """Run one Mean-AcT injection condition end-to-end via common.run_baseline.
 
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl) in the pid_steer format.
-    NEEDS A GPU.  See --selftest for the offline math check.
+    target selects the (mu2 - mu1) source arrows/fit AND the eval
+    classification (black default = round-1 behavior).  NEEDS A GPU.  See
+    --selftest for the offline math check.
     """
     tag = tag or f"meanact_{direction}_s{strength:g}"
     attach_fn = build_attach_fn(strength, layers=layers, direction=direction,
-                                gain=gain)
+                                gain=gain, target=target)
     return common.run_baseline(
         attach_fn, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
+        target=target,
         config_extra={
             "method": "mean_act",
             "reference": "act/hooks/transport.py OnlyMeanHook (transport.py:259)",
@@ -185,6 +198,7 @@ def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
             "strength": float(strength),
             "gain": float(gain),
             "direction_source": direction,
+            "target": target,
             "layers": "all32" if layers is None else list(layers),
             "position": "all (bidirectional)",
         },
@@ -198,26 +212,30 @@ def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
 # activation cache exists -- but building that cache (calib.py --fit) NEEDS a   #
 # GPU, so --fit as a whole is documented as a GPU step; do NOT run it here.     #
 # --------------------------------------------------------------------------- #
-def fit(where="block", calib_path=None, save=True, out_path=FIT_PATH):
-    """Compute per-neuron (mu2 - mu1) = mean(Black) - mean(other) per layer.
+def fit(where="block", calib_path=None, save=True, out_path=None, target="black"):
+    """Compute per-neuron (mu2 - mu1) = mean(target) - mean(other) per layer.
 
-    Reads a calib.py activation cache (acts (2n,32,feat), labels 1=Black/0=other)
-    and averages within class.  This is the block-granularity twin of arrows.pt's
-    diff-in-means and the direct analogue of OnlyMeanHook.fit's mu1/mu2.
+    Reads the target's calib.py activation cache (acts (2n,32,feat), labels
+    1=target/0=other) and averages within class.  This is the block-granularity
+    twin of the target's arrows diff-in-means and the direct analogue of
+    OnlyMeanHook.fit's mu1/mu2.  target="black" (default) reads the round-1
+    cache/calib_block.pt and writes the round-1 out path, unchanged.
     """
     import calib  # local import: only needed for --fit
-    blob = calib.load_calib(where, path=calib_path)
+    out_path = out_path or fit_path_for(target)
+    blob = calib.load_calib(where, path=calib_path, target=target)
     acts = blob["acts"].to(torch.float64)          # (2n, 32, feat)
-    labels = blob["labels"].to(torch.bool)         # (2n,) 1=Black, 0=other
-    mu_black = acts[labels].mean(dim=0)            # (32, feat)  == mu2
+    labels = blob["labels"].to(torch.bool)         # (2n,) 1=target, 0=other
+    mu_target = acts[labels].mean(dim=0)           # (32, feat)  == mu2
     mu_other = acts[~labels].mean(dim=0)           # (32, feat)  == mu1
-    mean_diff = (mu_black - mu_other).to(torch.float32)   # (mu2 - mu1) toward Black
+    mean_diff = (mu_target - mu_other).to(torch.float32)  # (mu2 - mu1) toward target
     out = {
         "mean_diff": mean_diff, "where": where,
         "feat": mean_diff.shape[-1], "n_layers": mean_diff.shape[0],
         "n_items": int(labels.sum()),
-        "note": "mu2-mu1 = mean(Black) - mean(other); OnlyMeanHook.fit analogue",
+        "note": "mu2-mu1 = mean(target) - mean(other); OnlyMeanHook.fit analogue",
         "source": blob.get("source"),
+        "target": target,
     }
     if save:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -343,6 +361,13 @@ def _selftest():
     check("fit recovers the ~4.0 mean gap (Black-other)",
           abs(float(md.mean()) - 4.0) < 0.3)
 
+    # E8 target-parameterized fit-artifact paths.
+    check("fit_path_for('black') == FIT_PATH (round-1 regression)",
+          fit_path_for("black") == FIT_PATH)
+    check("fit_path_for gender -> cache/meanact_meandiff_block_<t>.pt",
+          fit_path_for("woman").endswith("cache/meanact_meandiff_block_woman.pt")
+          and fit_path_for("man").endswith("cache/meanact_meandiff_block_man.pt"))
+
     # load_direction: unit source is per-layer unit-normalized; raw is not.
     if os.path.exists(directions.ARROWS_PATH):
         u = load_direction("unit")
@@ -376,8 +401,12 @@ def main():
                          "diff-in-means magnitude), fitted (per-neuron from calib)")
     ap.add_argument("--where", default="block",
                     help="calib granularity for --fit (default block/residual)")
-    ap.add_argument("--items", default=common.SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender arrows/calib + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out-dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -387,13 +416,13 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit(where=args.where)
+        fit(where=args.where, target=args.target)
         return
     if args.run:
         run(args.strength, out_dir=args.out_dir, tag=args.tag,
             direction=args.direction, limit=args.limit,
             baseline_black_rate=args.baseline_black_rate,
-            items_path=args.items)
+            items_path=args.items, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU cache), "
              "or --run (GPU)")

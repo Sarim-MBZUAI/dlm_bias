@@ -98,6 +98,12 @@ DEFAULT_OUT = os.path.join(ROOT, "results", "aura")
 MODES = ("vanilla", "inject")
 
 
+def auroc_path_for(target):
+    """cache/aura_auroc.pt for black (round-1 path, unchanged);
+    cache/aura_auroc_<target>.pt otherwise."""
+    return os.path.join(CACHE_DIR, f"aura_auroc{common.target_suffix(target)}.pt")
+
+
 # --------------------------------------------------------------------------- #
 # Gate formulas (per-neuron). auroc: any (...,) tensor of AUROC values.        #
 # --------------------------------------------------------------------------- #
@@ -131,20 +137,25 @@ def gate_for(auroc, mode, gamma):
 # --------------------------------------------------------------------------- #
 # FIT: AUROC over the 12288-d MLP-hidden activations (NEEDS GPU).              #
 # --------------------------------------------------------------------------- #
-def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=AUROC_CACHE):
+def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
+        target="black"):
     """Build the per-neuron AUROC over the MLP-hidden units and cache it.
 
     Steps (all reused, none reimplemented):
-      1. calib.collect_activations('mlp_hidden')  -> acts (2n,32,12288), labels
-         (2n,) with Black=1 / other=0, from the contamination-safe held-out
-         BBQ-Race contrast set (calib.py).
+      1. calib.collect_activations('mlp_hidden', target=...)  -> acts
+         (2n,32,12288), labels (2n,) with target=1 / other=0, from the
+         contamination-safe held-out contrast set (calib.py; black default =
+         the round-1 BBQ-Race heldout, woman/man = the E3 gender manifest).
       2. For each of the 32 layers, directions.auroc_per_neuron(acts[:,k,:],
          labels) -> auroc (12288,)  (exact sklearn roc_auc_score, auroc.py:27-31).
-      3. Stack -> auroc (32,12288); cache {'auroc', 'where', 'n_items', ...}.
+      3. Stack -> auroc (32,12288); cache {'auroc', 'where', 'n_items', ...}
+         at cache/aura_auroc[_<target>].pt.
 
     NEEDS A GPU (step 1 runs the model). --selftest validates the pure math only.
     Returns the auroc tensor (32,12288)."""
-    blob = calib.collect_activations(WHERE, model=model, tok=tok, cap=cap, save=False)
+    out_path = out_path or auroc_path_for(target)
+    blob = calib.collect_activations(WHERE, model=model, tok=tok, cap=cap,
+                                     save=False, target=target)
     acts = blob["acts"]              # (2n, 32, 12288)
     labels = blob["labels"]          # (2n,)
     assert acts.shape[-1] == H_MLP, f"expected MLP-hidden width {H_MLP}, got {acts.shape[-1]}"
@@ -157,7 +168,7 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=AUROC_CACHE):
 
     out = {
         "auroc": auroc, "where": WHERE, "feat": H_MLP, "n_layers": N_LAYERS,
-        "n_items": blob["n_items"], "source": blob["source"],
+        "n_items": blob["n_items"], "source": blob["source"], "target": target,
     }
     if save:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -166,8 +177,9 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=AUROC_CACHE):
     return auroc
 
 
-def load_auroc(path=AUROC_CACHE):
+def load_auroc(path=None, target="black"):
     """Load the cached per-neuron AUROC (32,12288). Run fit() first (GPU)."""
+    path = path or auroc_path_for(target)
     assert os.path.exists(path), (
         f"missing {path}; run `python aura.py --fit` first (NEEDS GPU).")
     blob = torch.load(path, map_location="cpu")
@@ -179,7 +191,7 @@ def load_auroc(path=AUROC_CACHE):
 # --------------------------------------------------------------------------- #
 # ATTACH: per-layer multiplicative gate on the ff_out INPUT (12288-d).         #
 # --------------------------------------------------------------------------- #
-def attach_fn(mode, gamma=1.0, auroc=None):
+def attach_fn(mode, gamma=1.0, auroc=None, target="black"):
     """Return an attach(model)->handles closure that gates the MLP-hidden units.
 
     For each of the 32 blocks, multiplies ff_out's INPUT (the 12288-d gated MLP
@@ -187,7 +199,8 @@ def attach_fn(mode, gamma=1.0, auroc=None):
     (forward_pre_hook, pre=True). The gate is the suppression or amplification
     formula for `mode` (see module docstring). All positions, bidirectional,
     fires once per denoising step (~steps*num_blocks per item)."""
-    a = load_auroc() if auroc is None else torch.as_tensor(auroc, dtype=torch.float32)
+    a = (load_auroc(target=target) if auroc is None
+         else torch.as_tensor(auroc, dtype=torch.float32))
     gate = gate_for(a, mode, gamma)          # (32,12288)
 
     def _attach(model):
@@ -206,24 +219,27 @@ def attach_fn(mode, gamma=1.0, auroc=None):
 # --------------------------------------------------------------------------- #
 def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
         baseline_black_rate=None, model=None, tok=None, auroc=None,
-        items_path=common.SWEEP400):
+        items_path=None, target="black"):
     """Evaluate one AURA condition on the sweep-400 BBQ items.
 
-    mode='vanilla' -> suppression gate (negative control, lowers Black rate).
+    mode='vanilla' -> suppression gate (negative control, lowers the target rate).
     mode='inject'  -> amplification gate (gamma sweeps strength; headline number).
+    target selects the AUROC gate fit (cache/aura_auroc[_<target>].pt) AND the
+    eval classification (black default = round-1 behavior).
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl). NEEDS A GPU."""
     assert mode in MODES, f"mode must be one of {MODES}"
     if tag is None:
         tag = mode if mode == "vanilla" else f"inject_g{gamma:g}"
-    af = attach_fn(mode, gamma=gamma, auroc=auroc)
+    af = attach_fn(mode, gamma=gamma, auroc=auroc, target=target)
     cfg = {"method": "aura", "where": WHERE, "mode": mode, "gamma": float(gamma),
-           "multiplicative": True, "auroc_cache": AUROC_CACHE,
+           "multiplicative": True, "auroc_cache": auroc_path_for(target),
+           "target": target,
            "hook": "mul_vec_pre_hook on blocks[k].ff_out INPUT (12288-d MLP-hidden)",
            "note": "vanilla=suppression(1-2max(auroc-.5,0)); inject=amplify(1+g*2max(auroc-.5,0))"}
     return common.run_baseline(
         af, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
-        config_extra=cfg)
+        target=target, config_extra=cfg)
 
 
 # --------------------------------------------------------------------------- #
@@ -319,6 +335,13 @@ def _selftest():
     check("gate_for on (32,12288) preserves shape",
           tuple(gate_for(fake_auroc, "inject", 1.0).shape) == (N_LAYERS, H_MLP))
 
+    # --- E8 target-parameterized fit-artifact paths --------------------------- #
+    check("auroc_path_for('black') == AUROC_CACHE (round-1 regression)",
+          auroc_path_for("black") == AUROC_CACHE)
+    check("auroc_path_for gender -> cache/aura_auroc_<t>.pt",
+          auroc_path_for("woman").endswith("cache/aura_auroc_woman.pt")
+          and auroc_path_for("man").endswith("cache/aura_auroc_man.pt"))
+
     print(f"[selftest-aura] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -336,8 +359,12 @@ def main():
                     help="vanilla=suppression (neg. control); inject=amplification (headline)")
     ap.add_argument("--gamma", type=float, default=1.0,
                     help="amplification strength for --mode inject (>=0; 0=identity)")
-    ap.add_argument("--items", default=common.SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender calib fit + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out-dir", default=DEFAULT_OUT)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -347,12 +374,12 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit()
+        fit(target=args.target)
         return
     if args.run:
         run(args.mode, gamma=args.gamma, out_dir=args.out_dir, tag=args.tag,
             limit=args.limit, baseline_black_rate=args.baseline_black_rate,
-            items_path=args.items)
+            items_path=args.items, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU), or --run (GPU)")
 

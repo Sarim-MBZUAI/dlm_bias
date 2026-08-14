@@ -184,10 +184,12 @@ def _call_filtered(fn, candidates):
     return fn(**kwargs)
 
 
-def _run_candidates(method, out_dir, strength_val, limit, model, tok):
+def _run_candidates(method, out_dir, strength_val, limit, model, tok,
+                    target="black"):
     """Build the curated run() kwargs for one method (adapter-driven)."""
     entry = METHODS[method]
-    cand = {"out_dir": out_dir, "limit": limit, "model": model, "tok": tok}
+    cand = {"out_dir": out_dir, "limit": limit, "model": model, "tok": tok,
+            "target": target}
     cand.update(entry.get("run_defaults", {}))
     sp = entry.get("strength_param")
     if sp and strength_val is not None:
@@ -198,17 +200,19 @@ def _run_candidates(method, out_dir, strength_val, limit, model, tok):
 # --------------------------------------------------------------------------- #
 # Dispatch (NEEDS GPU).  fit first if requested + applicable, then run.        #
 # --------------------------------------------------------------------------- #
-def _ensure_block_calib(model, tok):
-    """meanact.fit() takes no args and bare-torch.loads cache/calib_block.pt;
+def _ensure_block_calib(model, tok, target="black"):
+    """meanact.fit() bare-torch.loads cache/calib_block[_<target>].pt;
     build that calib here (reusing the shared model) if it is missing."""
     import calib  # noqa: E402  (deferred: imports torch)
-    path = os.path.join(calib.CACHE_DIR, "calib_block.pt")
+    path = calib.calib_path("block", target)
     if not os.path.exists(path):
         print(f"[run_all] building missing block calib -> {path}", flush=True)
-        calib.collect_activations("block", model=model, tok=tok, save=True)
+        calib.collect_activations("block", model=model, tok=tok, save=True,
+                                  target=target)
 
 
-def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok):
+def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok,
+             target="black"):
     summary = []
     for method in methods:
         modname = METHODS[method]["module"]
@@ -221,9 +225,10 @@ def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok):
             if do_fit and _module_needs_fit(method, mod):
                 if hasattr(mod, "fit") and callable(mod.fit):
                     if method == "meanact":
-                        _ensure_block_calib(model, tok)
+                        _ensure_block_calib(model, tok, target)
                     print(f"[run_all] FIT  {method} ({modname}.fit) ...", flush=True)
-                    _call_filtered(mod.fit, {"model": model, "tok": tok})
+                    _call_filtered(mod.fit, {"model": model, "tok": tok,
+                                             "target": target})
                     fit_ran = True
                 else:
                     print(f"[run_all] FIT  {method}: SKIP (needs a fit but exposes "
@@ -232,7 +237,8 @@ def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok):
             if do_run:
                 if not (hasattr(mod, "run") and callable(mod.run)):
                     raise RuntimeError(f"module '{modname}' exposes no run()")
-                cand = _run_candidates(method, out_dir, strength_val, limit, model, tok)
+                cand = _run_candidates(method, out_dir, strength_val, limit,
+                                       model, tok, target)
                 missing = _unsatisfied_required(mod.run, cand)
                 if missing:
                     status = "SKIP"
@@ -385,6 +391,11 @@ def main():
                     help="alias for --strength (takes precedence if both given).")
     ap.add_argument("--limit", type=int, default=0,
                     help="cap BBQ items (0 = all of _sweep400.jsonl); passthrough.")
+    ap.add_argument("--target", default="black",
+                    choices=("black", "woman", "man"),
+                    help="steering target passed through to every method's "
+                         "fit()/run() (black = round-1 default; woman/man = "
+                         "E3 gender fits, arrows, and classification).")
     ap.add_argument("--selftest", action="store_true",
                     help="offline: import the 6 methods, assert the contract, "
                          "print the write map (no GPU).")
@@ -400,7 +411,8 @@ def main():
     methods = parse_methods(args.method)
     strength_val = args.alpha if args.alpha is not None else args.strength
     print(f"[run_all] methods={methods} fit={args.fit} run={args.run} "
-          f"strength={strength_val} limit={args.limit}", flush=True)
+          f"strength={strength_val} limit={args.limit} target={args.target}",
+          flush=True)
 
     # Share one model load across every method under --run (each run()/fit() that
     # accepts model=/tok= gets it; those that don't will lazily load their own).
@@ -412,7 +424,7 @@ def main():
 
     summary = dispatch(methods, do_fit=args.fit, do_run=args.run,
                        strength_val=strength_val, limit=args.limit,
-                       model=model, tok=tok)
+                       model=model, tok=tok, target=args.target)
 
     _print_dispatch_summary(summary)
     failed = [s["method"] for s in summary if s["status"] == "FAIL"]

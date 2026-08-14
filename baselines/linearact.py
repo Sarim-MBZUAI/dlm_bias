@@ -88,6 +88,13 @@ RESULTS_DIR = os.path.join(ROOT, "results", "linearact")
 EPS = 1e-4                    # matches directions.gaussian_ot / transport.std_eps
 
 
+def stats_path_for(target):
+    """cache/linearact_stats.pt for black (round-1 path, unchanged);
+    cache/linearact_stats_<target>.pt otherwise."""
+    return os.path.join(CACHE_DIR,
+                        f"linearact_stats{common.target_suffix(target)}.pt")
+
+
 # --------------------------------------------------------------------------- #
 # PURE fit math (no GPU): labelled per-layer acts -> per-neuron OT parameters. #
 # Factored out of fit() so --selftest can exercise it on synthetic tensors.    #
@@ -138,14 +145,19 @@ def fit_stats_from_blob(blob):
 # --------------------------------------------------------------------------- #
 # FIT (NEEDS GPU): collect mlp_hidden activations, fit both variants, cache.   #
 # --------------------------------------------------------------------------- #
-def fit(cap=calib.CAP, model=None, tok=None, out_path=STATS_PATH):
-    """Collect Black-vs-other MLP-hidden activations and fit both OT variants.
+def fit(cap=calib.CAP, model=None, tok=None, out_path=None, target="black"):
+    """Collect target-vs-other MLP-hidden activations and fit both OT variants.
 
-    Calls calib.collect_activations('mlp_hidden') (Black=label 1 => OT DESTINATION),
-    fits gaussian + empirical per-neuron maps for all 32 layers, and caches
-    cache/linearact_stats.pt.  NEEDS A GPU + the model -- do NOT run here."""
-    blob = calib.collect_activations(WHERE, model=model, tok=tok, cap=cap, save=True)
+    Calls calib.collect_activations('mlp_hidden', target=...) (target=label 1 =>
+    OT DESTINATION; black default = the round-1 Black heldout, gender = the E3
+    manifest heldout), fits gaussian + empirical per-neuron maps for all 32
+    layers, and caches cache/linearact_stats[_<target>].pt.  NEEDS A GPU + the
+    model -- do NOT run here."""
+    out_path = out_path or stats_path_for(target)
+    blob = calib.collect_activations(WHERE, model=model, tok=tok, cap=cap,
+                                     save=True, target=target)
     stats = fit_stats_from_blob(blob)
+    stats["target"] = target
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     torch.save(stats, out_path)
     print(f"[linearact.fit] gaussian+empirical stats "
@@ -153,8 +165,8 @@ def fit(cap=calib.CAP, model=None, tok=None, out_path=STATS_PATH):
     return stats
 
 
-def load_stats(path=STATS_PATH):
-    return torch.load(path, map_location="cpu")
+def load_stats(path=None, target="black"):
+    return torch.load(path or stats_path_for(target), map_location="cpu")
 
 
 # --------------------------------------------------------------------------- #
@@ -226,15 +238,17 @@ def attach_fn(model, variant="empirical", strength=1.0, stats=None, layers=None)
 # --------------------------------------------------------------------------- #
 def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
         layers=None, limit=0, model=None, tok=None, baseline_black_rate=None,
-        items_path=common.SWEEP400):
+        items_path=None, target="black"):
     """Run the full sweep400 BBQ injection for one variant/strength.
 
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl); default tag encodes the
     strength (<variant>_s<strength>) so sweeps at different strengths don't
-    overwrite each other.  NEEDS A GPU."""
+    overwrite each other.  target selects the fitted OT stats
+    (cache/linearact_stats[_<target>].pt) AND the eval classification (black
+    default = round-1 behavior).  NEEDS A GPU."""
     assert variant in VARIANTS, f"variant must be one of {VARIANTS}"
     tag = tag or f"{variant}_s{strength:g}"
-    stats = load_stats()
+    stats = load_stats(target=target)
 
     def _attach(m):
         return attach_fn(m, variant=variant, strength=strength,
@@ -243,11 +257,12 @@ def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
     return run_baseline(
         _attach, items_path=items_path, out_dir=out_dir, tag=tag, limit=limit,
         model=model, tok=tok, baseline_black_rate=baseline_black_rate,
+        target=target,
         config_extra={"method": "linear_act", "variant": variant,
-                      "strength": strength, "where": WHERE,
+                      "strength": strength, "where": WHERE, "target": target,
                       "layers": "all" if layers is None else list(layers),
                       "intervention_position": "all_bidirectional",
-                      "stats_path": STATS_PATH},
+                      "stats_path": stats_path_for(target)},
     )
 
 
@@ -331,6 +346,13 @@ def _selftest():
           and torch.allclose(r[0], be2[0] * xin + bi2[0], atol=1e-5))
     check("affine_pre_hook bumps fire counter", common.get_fire_count() == 1)
 
+    # E8 target-parameterized fit-artifact paths.
+    check("stats_path_for('black') == STATS_PATH (round-1 regression)",
+          stats_path_for("black") == STATS_PATH)
+    check("stats_path_for gender -> cache/linearact_stats_<t>.pt",
+          stats_path_for("woman").endswith("cache/linearact_stats_woman.pt")
+          and stats_path_for("man").endswith("cache/linearact_stats_man.pt"))
+
     # feat / layer wiring sanity (MLP-hidden = 12288, all 32 layers).
     check("H_MLP == 12288 and N_LAYERS == 32", H_MLP == 12288 and N_LAYERS == 32)
     check("submodule_paths('ff_out') -> blocks[k].ff_out",
@@ -355,8 +377,12 @@ def main():
                     help="AcT transport strength; 1=full OT, >1 extrapolates")
     ap.add_argument("--cap", type=int, default=calib.CAP)
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--items", default=common.SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender calib fit + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     args = ap.parse_args()
@@ -364,12 +390,12 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit(cap=args.cap)                      # NEEDS GPU
+        fit(cap=args.cap, target=args.target)             # NEEDS GPU
         return
     if args.run:
         run(variant=args.variant, strength=args.strength,   # NEEDS GPU
             out_dir=args.out_dir, tag=args.tag, limit=args.limit,
-            items_path=args.items)
+            items_path=args.items, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit or --run (GPU)")
 
