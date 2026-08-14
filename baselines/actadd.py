@@ -319,7 +319,7 @@ def main():
     ap.add_argument("--pair-index", type=int, default=0,
                     help="which held-out contrast pair to use for the fit")
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA,
-                    help="injection strength (positive -> toward Black)")
+                    help="injection strength (positive -> toward the target)")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help="block layer to add the vector at (native: residual)")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",

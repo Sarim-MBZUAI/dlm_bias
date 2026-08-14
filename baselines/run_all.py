@@ -126,9 +126,14 @@ METHODS = {
 }
 
 
-def results_dir(method):
-    """results/<method>/ -- where this method's cond_*.json files land."""
-    return os.path.join(RESULTS_ROOT, method)
+def results_dir(method, target="black"):
+    """results/<method>[_<target>]/ -- where this method's cond_*.json files
+    land.  target="black" (the round-1 default) keeps the round-1 dir names
+    untouched; other targets get their own suffixed dir because the default
+    run tags (e.g. cond_caa_L14_a16.json) do NOT encode the target -- without
+    the suffix a woman run would silently overwrite a man (or black) run."""
+    suffix = "" if target == "black" else f"_{target}"
+    return os.path.join(RESULTS_ROOT, method + suffix)
 
 
 def parse_methods(spec):
@@ -216,7 +221,7 @@ def dispatch(methods, do_fit, do_run, strength_val, limit, model, tok,
     summary = []
     for method in methods:
         modname = METHODS[method]["module"]
-        out_dir = results_dir(method)
+        out_dir = results_dir(method, target)
         status, fit_ran, result = "OK", False, None
         try:
             mod = importlib.import_module(modname)
@@ -293,6 +298,15 @@ def _selftest():
     check("actadd registered needs_fit=True", METHODS["actadd"]["needs_fit"] is True)
     check("meanact run_defaults supplies strength=2.0",
           METHODS["meanact"]["run_defaults"].get("strength") == 2.0)
+    # E8: per-target result dirs (black = round-1 dirs unchanged; gender
+    # suffixed so cross-target runs can never overwrite each other -- the
+    # default run tags do not encode the target).
+    check("results_dir black == round-1 results/<method> (regression)",
+          results_dir("caa") == os.path.join(RESULTS_ROOT, "caa")
+          and results_dir("caa", "black") == results_dir("caa"))
+    check("results_dir gender -> results/<method>_<target>",
+          results_dir("caa", "woman") == os.path.join(RESULTS_ROOT, "caa_woman")
+          and results_dir("itic", "man") == os.path.join(RESULTS_ROOT, "itic_man"))
 
     for method in METHOD_ORDER:
         modname = METHODS[method]["module"]

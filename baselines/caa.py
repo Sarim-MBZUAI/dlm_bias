@@ -298,7 +298,8 @@ def main():
     ap.add_argument("--run", action="store_true",
                     help="run the BBQ eval for one CAA condition (NEEDS GPU)")
     ap.add_argument("--alpha", type=float, default=1.0,
-                    help="steering strength (positive -> inject toward Black); sweepable")
+                    help="steering strength (positive -> inject toward the "
+                         "target); sweepable")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help=f"single block to steer (default {DEFAULT_LAYER})")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
