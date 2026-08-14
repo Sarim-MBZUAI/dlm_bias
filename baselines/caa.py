@@ -89,30 +89,33 @@ RESULTS_DIR = os.path.join(ROOT, "results", "caa")
 # --------------------------------------------------------------------------- #
 # The CAA steering vector.                                                     #
 # --------------------------------------------------------------------------- #
-def build_injection(layer=DEFAULT_LAYER, alpha=1.0, arrows=None):
+def build_injection(layer=DEFAULT_LAYER, alpha=1.0, arrows=None, target="black"):
     """Return the CAA additive vector for one layer:  alpha * unit(r[layer]).
 
-    r is the diff-in-means Black-minus-other arrow set (steering/arrows.pt).
+    r is the diff-in-means target-minus-other arrow set (steering/arrows.pt for
+    the default target="black"; multirace/arrows_<target>.pt for the E3 gender
+    targets -- same format and sign convention, see directions.load_arrows).
     directions.load_arrows() already unit-normalizes each layer row
     (directions.py:39-47), so load_arrows()[layer] == unit(r[layer]); we scale by
-    alpha.  POSITIVE alpha injects toward Black (the arrow points Black-minus-other).
+    alpha.  POSITIVE alpha injects toward the target (the arrow points
+    target-minus-other).
 
     arrows: optional pre-loaded (32,H) UNIT arrow set (skips the file read; the
     selftest passes a synthetic one).  Returns a (H,) float32 tensor.
     """
-    u = directions.load_arrows() if arrows is None else arrows
+    u = directions.load_arrows(target=target) if arrows is None else arrows
     assert 0 <= int(layer) < u.shape[0], f"layer {layer} out of range [0,{u.shape[0]})"
     return (float(alpha) * u[int(layer)]).to(torch.float32)
 
 
-def make_attach_fn(layer=DEFAULT_LAYER, alpha=1.0, arrows=None):
+def make_attach_fn(layer=DEFAULT_LAYER, alpha=1.0, arrows=None, target="black"):
     """Build attach_fn(model) -> handles that adds the CAA vector at ONE block.
 
     Uses common.add_vec_hook (block tuple contract + shared fire counter) on the
     single dotted path 'model.transformer.blocks.<layer>'.  All positions, every
     denoising step, bidirectional.
     """
-    vec = build_injection(layer=layer, alpha=alpha, arrows=arrows)
+    vec = build_injection(layer=layer, alpha=alpha, arrows=arrows, target=target)
 
     def attach_fn(model):
         return attach(model, block_paths([int(layer)]), add_vec_hook(vec), pre=False)
@@ -124,12 +127,17 @@ def make_attach_fn(layer=DEFAULT_LAYER, alpha=1.0, arrows=None):
 # Eval driver (NEEDS GPU).                                                     #
 # --------------------------------------------------------------------------- #
 def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
-        items_path=SWEEP400, limit=0, baseline_black_rate=None,
-        model=None, tok=None, **run_kwargs):
-    """Run one CAA condition end-to-end via common.run_baseline.  NEEDS A GPU."""
+        items_path=None, limit=0, baseline_black_rate=None,
+        model=None, tok=None, target="black", **run_kwargs):
+    """Run one CAA condition end-to-end via common.run_baseline.  NEEDS A GPU.
+
+    target="black" (default) is byte-identical to round 1 (arrows.pt direction,
+    black_idx classification, _sweep400.jsonl items when items_path is None).
+    target="woman"/"man" uses multirace/arrows_<target>.pt and classifies
+    against the WOMAN/MAN option (multirace/targets.py registry)."""
     if tag is None:
         tag = f"caa_L{int(layer)}_a{alpha:g}"
-    attach_fn = make_attach_fn(layer=layer, alpha=alpha)
+    attach_fn = make_attach_fn(layer=layer, alpha=alpha, target=target)
     return run_baseline(
         attach_fn,
         items_path=items_path,
@@ -139,13 +147,15 @@ def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
         model=model,
         tok=tok,
         baseline_black_rate=baseline_black_rate,
+        target=target,
         config_extra={
             "method": "caa",
             "granularity": "block_residual_single_layer",
             "layer": int(layer),
             "alpha": float(alpha),
-            "direction": "unit_diff_in_means_black_minus_other",
-            "arrows_path": directions.ARROWS_PATH,
+            "target": target,
+            "direction": f"unit_diff_in_means_{target}_minus_other",
+            "arrows_path": directions.arrows_path_for(target),
             "intervention_position": "all",
             "reference": "Rimsky et al. Contrastive Activation Addition; "
                          "AcT mean map transport.py:258-259",
@@ -157,10 +167,13 @@ def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
 # --------------------------------------------------------------------------- #
 # Fit prerequisite check (the ONLY artifact is arrows.pt; NEEDS GPU to build).  #
 # --------------------------------------------------------------------------- #
-def fit():
-    """CAA has no per-method fit.  Its contrastive vector is steering/arrows.pt,
-    built by steering/build_arrows.py (NEEDS GPU).  Report whether it exists."""
-    p = directions.ARROWS_PATH
+def fit(target="black"):
+    """CAA has no per-method fit.  Its contrastive vector is steering/arrows.pt
+    (black) or multirace/arrows_<target>.pt (gender), built by the respective
+    build_arrows.py (NEEDS GPU).  Report whether it exists."""
+    p = directions.arrows_path_for(target)
+    builder = ("steering/build_arrows.py" if target == "black"
+               else f"multirace/build_arrows.py --target {target}")
     if os.path.exists(p):
         blob = torch.load(p, map_location="cpu")
         r = blob["r"]
@@ -168,7 +181,7 @@ def fit():
               f"n_items={blob.get('n_items')} -- CAA needs no further fit.")
     else:
         print(f"[caa:fit] MISSING {p}. Build it (NEEDS GPU):\n"
-              f"    cd {ROOT}/steering && python build_arrows.py\n"
+              f"    cd {ROOT} && python {builder}\n"
               f"CAA reuses that diff-in-means arrow set as its steering vector.")
 
 
@@ -285,11 +298,16 @@ def main():
     ap.add_argument("--run", action="store_true",
                     help="run the BBQ eval for one CAA condition (NEEDS GPU)")
     ap.add_argument("--alpha", type=float, default=1.0,
-                    help="steering strength (positive -> inject toward Black); sweepable")
+                    help="steering strength (positive -> inject toward the "
+                         "target); sweepable")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help=f"single block to steer (default {DEFAULT_LAYER})")
-    ap.add_argument("--items", default=SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender, multirace arrows + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--limit", type=int, default=0)
@@ -299,12 +317,12 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit()
+        fit(target=args.target)
         return
     if args.run:
         run(alpha=args.alpha, layer=args.layer, out_dir=args.out_dir, tag=args.tag,
             items_path=args.items, limit=args.limit,
-            baseline_black_rate=args.baseline_black_rate)
+            baseline_black_rate=args.baseline_black_rate, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (verify arrows), "
              "or --run (GPU eval)")

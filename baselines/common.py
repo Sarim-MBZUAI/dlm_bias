@@ -74,11 +74,87 @@ from pid_steer import (  # noqa: E402,F401
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+# CODE tree (this checkout), distinct from ROOT (the data/model tree): sibling
+# code modules like multirace/targets.py must come from the SAME checkout as
+# this file, while data reads honor DLM_BIAS_ROOT.
+CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 H_MODEL = 4096       # residual width (config.json d_model)
 H_MLP = 12288        # gated MLP-hidden width (config.json mlp_hidden_size)
 N_HEADS = 32         # config.json n_heads
 D_HEAD = 128         # d_model / n_heads
+
+
+# --------------------------------------------------------------------------- #
+# E8: target parameterization (gender baselines).                              #
+#                                                                              #
+# Every fit/run entry point takes target="black" (the round-1 default; with it #
+# every path, selection and output byte matches the pre-E8 behavior -- the     #
+# machinery that produced the paper's round-1 numbers).  target in             #
+# {"woman","man"} switches the heldout/calib selection to the E3 gender        #
+# manifest (multirace/items_manifest_gender.json), the arrows to               #
+# multirace/arrows_<target>.pt, the cache artifacts to *_<target>.pt, and the  #
+# eval classification to multirace/targets.py's target_idx_of.                 #
+# Extending to further manifest targets = add them here (they must have a      #
+# manifest entry + arrows_<target>.pt).                                        #
+# --------------------------------------------------------------------------- #
+SUPPORTED_TARGETS = ("black", "woman", "man")
+
+
+def target_suffix(target):
+    """Cache-artifact filename suffix: '' for the round-1 black default (so
+    every existing path is untouched), '_<target>' otherwise."""
+    assert target in SUPPORTED_TARGETS, \
+        f"target must be one of {SUPPORTED_TARGETS}, got {target!r}"
+    return "" if target == "black" else f"_{target}"
+
+
+def sweep400_path(target):
+    """Default eval items file for a target (the unrotated 400-item sweep)."""
+    if target == "black":
+        return SWEEP400
+    target_suffix(target)  # validate
+    return os.path.join(ROOT, "data", "bbq_items", f"_sweep400_{target}.jsonl")
+
+
+def result_keys(target):
+    """Result/sample key names per target.  Black keeps the round-1 names
+    (black/nonblack/black_idx -> byte-identical output); other targets use the
+    multirace naming (target/nontarget/target_idx), which is what
+    balanced_all/strict_pool.target_index expects for non-black samples."""
+    if target == "black":
+        return {"pick": "black", "non": "nonblack", "idx": "black_idx"}
+    target_suffix(target)  # validate
+    return {"pick": "target", "non": "nontarget", "idx": "target_idx"}
+
+
+_MULTIRACE_TARGETS_MOD = None
+
+
+def _multirace_targets():
+    """Load multirace/targets.py from THIS code tree by absolute path (same
+    importlib pattern as multirace/make_items.load_llada_builder; avoids
+    polluting sys.path with a module named 'targets')."""
+    global _MULTIRACE_TARGETS_MOD
+    if _MULTIRACE_TARGETS_MOD is None:
+        import importlib.util
+        path = os.path.join(CODE_ROOT, "multirace", "targets.py")
+        spec = importlib.util.spec_from_file_location("multirace_targets", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _MULTIRACE_TARGETS_MOD = mod
+    return _MULTIRACE_TARGETS_MOD
+
+
+def target_index_fn(target):
+    """row -> option index of the steered target.  Black uses the round-1
+    pid_steer.black_idx_of (unchanged); other targets use the shared
+    multirace/targets.py registry (target_idx_of)."""
+    if target == "black":
+        return black_idx_of
+    target_suffix(target)  # validate
+    mt = _multirace_targets()
+    return lambda row: mt.target_idx_of(row, target)
 
 
 # --------------------------------------------------------------------------- #
@@ -238,7 +314,7 @@ def load_model(model_path=MODEL_PATH, device="cuda"):
 # --------------------------------------------------------------------------- #
 def run_baseline(
     attach_fn,
-    items_path=SWEEP400,
+    items_path=None,
     out_dir=None,
     tag="baseline",
     limit=0,
@@ -250,6 +326,7 @@ def run_baseline(
     tok=None,
     baseline_black_rate=None,
     config_extra=None,
+    target="black",
 ):
     """Run one steered BBQ condition end-to-end and write the result files.
 
@@ -267,12 +344,24 @@ def run_baseline(
     Writes  out_dir/cond_<tag>.json  and  out_dir/cond_<tag>_samples.jsonl
     in the pid_steer result format.
 
-    baseline_black_rate: if given, d_gap = black_pick_rate - baseline_black_rate
+    baseline_black_rate: if given, d_gap = <target>_pick_rate - baseline rate
     is recorded (the injection lift over the clean model).
+
+    target: "black" (default) keeps the round-1 behavior byte-identical
+    (black_idx_of classification, black/nonblack/black_idx key names).  A
+    non-black target classifies against multirace/targets.py's target_idx_of
+    and emits the multirace key names (target/nontarget/target_idx + a
+    "target" field), which balanced_all/strict_pool scores transparently.
+    items_path=None resolves to the target's own _sweep400 file.
     """
+    if items_path is None:
+        items_path = sweep400_path(target)
     if out_dir is None:
         out_dir = CACHE_DIR
     os.makedirs(out_dir, exist_ok=True)
+
+    keys = result_keys(target)
+    tidx_of = target_index_fn(target)
 
     if model is None or tok is None:
         model, tok = load_model()
@@ -286,7 +375,7 @@ def run_baseline(
         handles = [handles]
 
     per_item = []
-    counts = {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
+    counts = {keys["pick"]: 0, keys["non"]: 0, "abstain": 0, "unparseable": 0}
     dis_n = dis_correct = 0
     t0 = time.time()
     try:
@@ -303,20 +392,20 @@ def run_baseline(
             gen = tok.batch_decode(out[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
             letter = parse_letter(gen, row)
             pred = LETTERS.index(letter) if letter else None
-            bidx = black_idx_of(row)
+            bidx = tidx_of(row)
             uidx = unk_idx_of(row)
             if pred is None:
                 cls = "unparseable"; counts["unparseable"] += 1
             elif pred == bidx:
-                cls = "black"; counts["black"] += 1
+                cls = keys["pick"]; counts[keys["pick"]] += 1
             elif pred == uidx:
                 cls = "abstain"; counts["abstain"] += 1
             else:
-                cls = "nonblack"; counts["nonblack"] += 1
+                cls = keys["non"]; counts[keys["non"]] += 1
             if row.get("context_condition") == "disambig" and pred is not None:
                 dis_n += 1
                 dis_correct += int(pred == int(row["label"]))
-            per_item.append({
+            item = {
                 "example_id": int(row.get("example_id", -1)),
                 "question_index": str(row.get("question_index", "")),
                 "category": row.get("category"),
@@ -329,12 +418,15 @@ def run_baseline(
                 "ground_truth_text": ([row.get("ans0"), row.get("ans1"), row.get("ans2")][row["label"]]
                                       if isinstance(row.get("label"), int) and 0 <= row["label"] < 3 else None),
                 "prompt": prompt,
-                "black_idx": bidx, "unk_idx": uidx, "pred_index": pred,
+                keys["idx"]: bidx, "unk_idx": uidx, "pred_index": pred,
                 "pred_letter": letter, "model_output": gen, "pred_class": cls,
-            })
+            }
+            if target != "black":
+                item["target"] = target
+            per_item.append(item)
             if (idx + 1) % 50 == 0:
-                print(f"[{tag}] {idx+1}/{len(use_rows)} b={counts['black']} "
-                      f"nb={counts['nonblack']} ab={counts['abstain']} "
+                print(f"[{tag}] {idx+1}/{len(use_rows)} b={counts[keys['pick']]} "
+                      f"nb={counts[keys['non']]} ab={counts['abstain']} "
                       f"un={counts['unparseable']} ({time.time()-t0:.0f}s)", flush=True)
     finally:
         for h in handles:
@@ -347,12 +439,12 @@ def run_baseline(
 
     n = len(use_rows)
     rates = {
-        "black_pick_rate": counts["black"] / n,
-        "nonblack_pick_rate": counts["nonblack"] / n,
+        f"{keys['pick']}_pick_rate": counts[keys["pick"]] / n,
+        f"{keys['non']}_pick_rate": counts[keys["non"]] / n,
         "abstain_rate": counts["abstain"] / n,
         "unparseable_rate": counts["unparseable"] / n,
     }
-    d_gap = (rates["black_pick_rate"] - baseline_black_rate
+    d_gap = (rates[f"{keys['pick']}_pick_rate"] - baseline_black_rate
              if baseline_black_rate is not None else None)
     acc_disambig = (dis_correct / dis_n) if dis_n else None
     result = {
@@ -361,7 +453,7 @@ def run_baseline(
         "counts": counts,
         "rates": rates,
         "d_gap": d_gap,
-        "baseline_black_rate": baseline_black_rate,
+        f"baseline_{keys['pick']}_rate": baseline_black_rate,
         "acc_disambig": acc_disambig,
         "n_disambig": dis_n,
         "gen_length": gen_length, "steps": steps, "block_length": block_length,
@@ -372,6 +464,8 @@ def run_baseline(
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "config": config_extra or {},
     }
+    if target != "black":
+        result["target"] = target
     outp = os.path.join(out_dir, f"cond_{tag}.json")
     with open(outp, "w") as f:
         json.dump(result, f, indent=2)
@@ -436,6 +530,44 @@ def _selftest():
     for _ in range(5):
         hk(None, None, h.clone())
     check("fire counter counts invocations", get_fire_count() == 5)
+
+    # --- E8 target parameterization (offline, no GPU) ---
+    check("target_suffix: black -> '' (round-1 paths untouched)",
+          target_suffix("black") == "")
+    check("target_suffix: woman/man -> '_<t>'",
+          target_suffix("woman") == "_woman" and target_suffix("man") == "_man")
+    try:
+        target_suffix("klingon")
+        bad = False
+    except AssertionError:
+        bad = True
+    check("target_suffix rejects unknown target", bad)
+    check("sweep400_path black == SWEEP400 (identical object path)",
+          sweep400_path("black") == SWEEP400)
+    check("sweep400_path woman -> _sweep400_woman.jsonl",
+          sweep400_path("woman").endswith("data/bbq_items/_sweep400_woman.jsonl"))
+    check("result_keys black == round-1 names",
+          result_keys("black") == {"pick": "black", "non": "nonblack",
+                                   "idx": "black_idx"})
+    check("result_keys gender == multirace names (strict_pool target_idx)",
+          result_keys("man") == {"pick": "target", "non": "nontarget",
+                                 "idx": "target_idx"})
+    # classification dispatch: black uses pid_steer.black_idx_of UNCHANGED;
+    # gender uses the multirace registry (whole-tag, strict sets).
+    check("target_index_fn('black') IS black_idx_of", target_index_fn("black") is black_idx_of)
+    row_b = {"answer_info": {"ans0": ["x", "Black"], "ans1": ["y", "White"],
+                             "ans2": ["z", "unknown"]}}
+    row_g = {"answer_info": {"ans0": ["x", "F"], "ans1": ["y", "M"],
+                             "ans2": ["z", "unknown"]}}
+    check("black fn: Black row -> 0", target_index_fn("black")(row_b) == 0)
+    check("woman fn: F row -> 0, man fn -> 1",
+          target_index_fn("woman")(row_g) == 0 and target_index_fn("man")(row_g) == 1)
+    check("woman fn on race row -> None (no gender tag)",
+          target_index_fn("woman")(row_b) is None)
+    check("man fn: trans_m excluded (strict registry)",
+          target_index_fn("man")({"answer_info": {"ans0": ["x", "trans_m"],
+                                                  "ans1": ["y", "F"],
+                                                  "ans2": ["z", "unknown"]}}) is None)
 
     print(f"[selftest-common] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok

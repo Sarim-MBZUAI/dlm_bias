@@ -72,29 +72,39 @@ DIR_PATH = os.path.join(CACHE_DIR, "actadd_dir.pt")
 RESULTS_DIR = os.path.join(ROOT, "results", "actadd")
 
 
+def dir_path_for(target):
+    """cache/actadd_dir.pt for black (round-1 path, unchanged);
+    cache/actadd_dir_<target>.pt otherwise."""
+    return os.path.join(CACHE_DIR, f"actadd_dir{common.target_suffix(target)}.pt")
+
+
 # --------------------------------------------------------------------------- #
 # FIT: build the single-pair direction r_actadd (32,4096).  NEEDS A GPU.       #
 # --------------------------------------------------------------------------- #
-def fit(pair_index=0, model=None, tok=None, save=True, out_path=DIR_PATH):
+def fit(pair_index=0, model=None, tok=None, save=True, out_path=None,
+        target="black"):
     """Build the ActAdd single-pair direction and cache it.  NEEDS A GPU.
 
-    Picks ONE Black-vs-other contrast pair (the held-out item at `pair_index`
-    from calib.heldout_items()), runs a clean forward on the fully-materialized
-    prompt+Black-answer and prompt+other-answer (reusing the SAME masked-mean
-    answer-span pooling as build_arrows.all_layer_hidden, via
-    calib.collect_activations on a single item), and computes
+    Picks ONE target-vs-other contrast pair (the held-out item at `pair_index`
+    from calib.heldout_items(target=...): the round-1 Black heldout for the
+    default, the E3 gender-manifest heldout for woman/man), runs a clean
+    forward on the fully-materialized prompt+target-answer and
+    prompt+other-answer (reusing the SAME masked-mean answer-span pooling as
+    build_arrows.all_layer_hidden, via calib.collect_activations on a single
+    item), and computes
 
-        r_actadd[k] = h_black[k] - h_other[k]     for every block k (0..31).
+        r_actadd[k] = h_target[k] - h_other[k]    for every block k (0..31).
 
     This is exactly build_arrows' per-item difference (build_arrows.py:182) for
     ONE item instead of the n=400 mean -- i.e. ActAdd, not CAA.
 
-    Caches {"r": (32,4096), ...} to cache/actadd_dir.pt.  Do NOT execute here;
-    it loads the model.
+    Caches {"r": (32,4096), ...} to cache/actadd_dir.pt (black; round-1 path)
+    or cache/actadd_dir_<target>.pt.  Do NOT execute here; it loads the model.
     """
+    out_path = out_path or dir_path_for(target)
     if model is None or tok is None:
         model, tok = common.load_model()
-    items = calib.heldout_items(tok=tok)
+    items = calib.heldout_items(tok=tok, target=target)
     assert len(items) > 0, "no held-out contrast items available"
     assert 0 <= pair_index < len(items), (
         f"pair_index {pair_index} out of range [0,{len(items)})")
@@ -103,12 +113,12 @@ def fit(pair_index=0, model=None, tok=None, save=True, out_path=DIR_PATH):
     # Reuse the exact calib collection pipeline (build_arrows masked-mean pool,
     # block granularity) on this ONE item -> acts (2,32,4096), labels [1,0].
     blob = calib.collect_activations(
-        "block", model=model, tok=tok, items=[item], save=False)
+        "block", model=model, tok=tok, items=[item], save=False, target=target)
     acts = blob["acts"].to(torch.float32)      # (2, 32, 4096)
     labels = blob["labels"]                    # tensor([1, 0])
-    h_black = acts[(labels == 1).nonzero(as_tuple=True)[0][0]]   # (32,4096)
+    h_target = acts[(labels == 1).nonzero(as_tuple=True)[0][0]]  # (32,4096)
     h_other = acts[(labels == 0).nonzero(as_tuple=True)[0][0]]   # (32,4096)
-    r = h_black - h_other                      # (32,4096)  Black-minus-other
+    r = h_target - h_other                     # (32,4096)  target-minus-other
 
     out = {
         "r": r,
@@ -117,18 +127,23 @@ def fit(pair_index=0, model=None, tok=None, save=True, out_path=DIR_PATH):
         "pair_index": pair_index,
         "method": "actadd_single_pair",
         "granularity": "block_residual",
-        "black_idx": item["black_idx"],
         "other_idx": item["other_idx"],
-        "black_answer_text": item["black_answer_text"],
         "other_answer_text": item["other_answer_text"],
-        "source": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400",
+        "source": calib.SOURCE_BY_TARGET[target],
         "per_layer_raw_norm": [float(r[k].norm()) for k in range(N_LAYERS)],
     }
+    if target == "black":   # round-1 metadata key names, unchanged
+        out["black_idx"] = item["target_idx"]
+        out["black_answer_text"] = item["target_answer_text"]
+    else:
+        out["target"] = target
+        out["target_idx"] = item["target_idx"]
+        out["target_answer_text"] = item["target_answer_text"]
     if save:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         torch.save(out, out_path)
         print(f"[actadd:fit] SAVED single-pair dir {tuple(r.shape)} "
-              f"(pair_index={pair_index}) -> {out_path}", flush=True)
+              f"(pair_index={pair_index}, target={target}) -> {out_path}", flush=True)
     return out
 
 
@@ -189,20 +204,24 @@ def make_attach_fn(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None,
 
 
 def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
-        limit=0, baseline_black_rate=None, model=None, tok=None, tag=None, **kw):
+        limit=0, baseline_black_rate=None, model=None, tok=None, tag=None,
+        target="black", **kw):
     """Run the ActAdd BBQ-injection condition end-to-end.  NEEDS A GPU.
 
     Writes cond_<tag>.json / cond_<tag>_samples.jsonl under out_dir via the
     shared common.run_baseline driver (identical scoring & file format to every
     other baseline).  Default tag encodes alpha (actadd_a<alpha>) so sweeps at
-    different alphas don't overwrite each other."""
+    different alphas don't overwrite each other.  target selects the fitted
+    single-pair direction (cache/actadd_dir[_<target>].pt) AND the eval
+    classification (black default = round-1 behavior)."""
     tag = tag or f"actadd_a{alpha:g}"
-    attach_fn = make_attach_fn(alpha=alpha, layer=layer)
+    attach_fn = make_attach_fn(alpha=alpha, layer=layer, path=dir_path_for(target))
     return run_baseline(
         attach_fn, out_dir=out_dir, tag=tag, limit=limit,
         baseline_black_rate=baseline_black_rate, model=model, tok=tok,
+        target=target,
         config_extra={"method": "actadd_single_pair", "alpha": alpha,
-                      "layer": layer, "n_items_fit": 1,
+                      "layer": layer, "n_items_fit": 1, "target": target,
                       "granularity": "block_residual"},
         **kw)
 
@@ -277,6 +296,13 @@ def _selftest():
         raised = True
     check("missing fit artifact raises (no silent CAA fallback)", raised)
 
+    # E8 target-parameterized fit-artifact paths.
+    check("dir_path_for('black') == DIR_PATH (round-1 regression)",
+          dir_path_for("black") == DIR_PATH)
+    check("dir_path_for gender -> cache/actadd_dir_<t>.pt",
+          dir_path_for("woman").endswith("cache/actadd_dir_woman.pt")
+          and dir_path_for("man").endswith("cache/actadd_dir_man.pt"))
+
     print(f"[selftest-actadd] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -293,11 +319,15 @@ def main():
     ap.add_argument("--pair-index", type=int, default=0,
                     help="which held-out contrast pair to use for the fit")
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA,
-                    help="injection strength (positive -> toward Black)")
+                    help="injection strength (positive -> toward the target)")
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help="block layer to add the vector at (native: residual)")
-    ap.add_argument("--items", default=common.SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender heldout fit + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out-dir", default=RESULTS_DIR)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--baseline-black-rate", type=float, default=None)
@@ -306,12 +336,12 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit(pair_index=args.pair_index)
+        fit(pair_index=args.pair_index, target=args.target)
         return
     if args.run:
         run(out_dir=args.out_dir, alpha=args.alpha, layer=args.layer,
             limit=args.limit, baseline_black_rate=args.baseline_black_rate,
-            items_path=args.items)
+            items_path=args.items, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit (GPU) or --run (GPU)")
 

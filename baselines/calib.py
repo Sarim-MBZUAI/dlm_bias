@@ -38,14 +38,30 @@ here verbatim (see _pool_captured) and cited.  The held-out SELECTION helpers
 (select_heldout, load_full_race, eval_race_keys, sweep400_keys) ARE module-level
 and are imported, not reimplemented.
 
+TARGET PARAMETERIZATION (E8): every entry point takes target="black" (default,
+byte-identical to the round-1 behavior above: same selection, same cache paths
+cache/calib_<where>.pt, same source string).  target in {"woman","man"} swaps
+the held-out selection to the E3 gender manifest's heldout keys
+(multirace/items_manifest_gender.json via multirace/build_arrows.py's
+heldout_from_manifest: 400 keys per target, disjoint from the eval files and
+from each other), positive = the target-tagged option's answer text, negative =
+the other person's option (the exact mirror of the black/other pairing), and the
+cache files to cache/calib_<where>_<target>.pt.  Labels stay 1 = target-tagged
+response, 0 = other.
+
 collect_activations() NEEDS A GPU + the model.  --selftest only validates the
-pure pooling/labeling logic on synthetic captured tensors (no forward, no GPU).
+pure pooling/labeling logic on synthetic captured tensors (no forward, no GPU)
+plus, when the data caches are present, the offline heldout selection per
+target (including the black regression proof against the committed
+steering/direction_examples.jsonl).
 
 CLI:
     python -m baselines.calib --selftest                 # offline logic check
     python -m baselines.calib --fit --where block        # NEEDS GPU (do not run here)
+    python -m baselines.calib --fit --where block --target woman   # NEEDS GPU
 """
 import argparse
+import json
 import os
 import sys
 
@@ -65,44 +81,95 @@ from common import (  # noqa: E402
     N_LAYERS,
     load_model,
     CACHE_DIR,
+    CODE_ROOT,
     H_MODEL,
     H_MLP,
     N_HEADS,
     D_HEAD,
+    SUPPORTED_TARGETS,
+    target_suffix,
 )
 
 WHERE_CHOICES = ("block", "mlp_hidden", "attn_head")
 FEAT_DIM = {"block": H_MODEL, "mlp_hidden": H_MLP, "attn_head": H_MODEL}
 CAP = 400
 
+# Calib-blob source strings.  BLACK IS VERBATIM the round-1 string (byte-compat
+# of new black fits with the existing caches); gender mirrors the string
+# multirace/build_arrows.py stamps on arrows_{woman,man}.pt (manifest seed 42).
+SOURCE_BY_TARGET = {
+    "black": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400",
+    "woman": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint",
+    "man": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint",
+}
+
+_MB = None
+
+
+def _multirace_builder():
+    """Load multirace/build_arrows.py from THIS code tree by absolute path
+    (importlib; the module shares its basename with steering/build_arrows.py,
+    which this file already imports as `build_arrows` -- same loading pattern
+    as multirace/make_items.load_llada_builder)."""
+    global _MB
+    if _MB is None:
+        import importlib.util
+        path = os.path.join(CODE_ROOT, "multirace", "build_arrows.py")
+        spec = importlib.util.spec_from_file_location("multirace_build_arrows", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _MB = mod
+    return _MB
+
+
+def calib_path(where, target="black"):
+    """cache/calib_<where>.pt for black (round-1 path, unchanged);
+    cache/calib_<where>_<target>.pt otherwise."""
+    return os.path.join(CACHE_DIR, f"calib_{where}{target_suffix(target)}.pt")
+
 
 # --------------------------------------------------------------------------- #
 # Held-out contrast set (identical selection to build_arrows.py).              #
 # --------------------------------------------------------------------------- #
-def heldout_items(tok=None, cap=CAP):
-    """Return the contamination-safe held-out BBQ-Race contrast items.
+def heldout_items(tok=None, cap=CAP, target="black"):
+    """Return the contamination-safe held-out contrast items for `target`.
 
-    Selection is build_arrows' own: ambiguous, exactly-one-Black-option,
-    Race_ethnicity, disjoint from BOTH the seed-42 eval keys and _sweep400.jsonl
-    (build_arrows.select_heldout, .load_full_race, .eval_race_keys,
-    .sweep400_keys), capped at `cap` (build_arrows CAP=400).
+    target="black" (default): selection is build_arrows' own -- ambiguous,
+    exactly-one-Black-option, Race_ethnicity, disjoint from BOTH the seed-42
+    eval keys and _sweep400.jsonl (build_arrows.select_heldout,
+    .load_full_race, .eval_race_keys, .sweep400_keys), capped at `cap`
+    (build_arrows CAP=400).  IDENTICAL to the round-1 selection.
+
+    target in {"woman","man"}: the E3 gender manifest's heldout keys
+    (multirace/items_manifest_gender.json, 400 keys per target, disjoint from
+    the _sweep400_{woman,man} eval files and from each other), resolved by
+    multirace/build_arrows.heldout_from_manifest -- the SAME triples the
+    gender arrows were fitted from.  Positive = the target-tagged option's
+    answer text; negative = the other-gendered person's option (the mirror of
+    the black/other pairing).
 
     Each returned dict has:
-        row, black_idx, other_idx,
-        black_answer_text, other_answer_text,
-        chat_prompt  (None unless a tokenizer is passed -- apply_chat_template).
+        row, target_idx, other_idx,
+        target_answer_text, other_answer_text,
+        chat_prompt  (None unless a tokenizer is passed -- apply_chat_template)
+    plus, for target="black" only, the legacy aliases black_idx /
+    black_answer_text (same values) so pre-E8 consumers keep working.
 
-    Reads cached BBQ jsonl only; no GPU/network (files are cached under
-    data/bbq_cache/).  A tokenizer is optional and only needed to materialize
-    the chat_prompt string for collect_activations().
+    Reads cached BBQ jsonl + committed manifests only; no GPU/network.  A
+    tokenizer is optional and only needed to materialize the chat_prompt
+    string for collect_activations().
     """
-    full = build_arrows.load_full_race()
-    exclude = build_arrows.eval_race_keys() | build_arrows.sweep400_keys()
-    heldout = build_arrows.select_heldout(full, exclude)
+    if target == "black":
+        full = build_arrows.load_full_race()
+        exclude = build_arrows.eval_race_keys() | build_arrows.sweep400_keys()
+        heldout = build_arrows.select_heldout(full, exclude)
+    else:
+        target_suffix(target)  # validate
+        heldout, _mani = _multirace_builder().heldout_from_manifest(target)
     if len(heldout) > cap:
         heldout = heldout[:cap]
     items = []
-    for row, bidx, oidx in heldout:
+    for row, tidx, oidx in heldout:
         prompt = bbq_eval.build_prompt(row)
         chat = None
         if tok is not None:
@@ -110,14 +177,18 @@ def heldout_items(tok=None, cap=CAP):
                 [{"role": "user", "content": prompt}],
                 add_generation_prompt=True, tokenize=False,
             )
-        items.append({
+        it = {
             "row": row,
-            "black_idx": bidx,
+            "target_idx": tidx,
             "other_idx": oidx,
-            "black_answer_text": str(row[f"ans{bidx}"]).strip(),
+            "target_answer_text": str(row[f"ans{tidx}"]).strip(),
             "other_answer_text": str(row[f"ans{oidx}"]).strip(),
             "chat_prompt": chat,
-        })
+        }
+        if target == "black":  # legacy aliases (round-1 key names)
+            it["black_idx"] = tidx
+            it["black_answer_text"] = it["target_answer_text"]
+        items.append(it)
     return items
 
 
@@ -145,26 +216,29 @@ def _pool_captured(captured, start, n_layers=N_LAYERS):
 # Collection (NEEDS GPU + model).                                              #
 # --------------------------------------------------------------------------- #
 def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
-                        save=True, out_path=None):
-    """Collect labelled Black/other pooled activations at granularity `where`.
+                        save=True, out_path=None, target="black"):
+    """Collect labelled target/other pooled activations at granularity `where`.
 
     For each held-out contrast item, run TWO clean forwards (materialized
-    chat_prompt + black_answer_text, and + other_answer_text), pool each with the
-    build_arrows masked-mean, and label Black=1 / other=0.
+    chat_prompt + target_answer_text, and + other_answer_text), pool each with
+    the build_arrows masked-mean, and label target=1 / other=0 (target="black"
+    -> the round-1 Black=1/other=0 labelling, unchanged).
 
     Returns a dict:
         acts   : (2*n_items, N_LAYERS, feat)  float32
-        labels : (2*n_items,)                 int64 (1=Black, 0=other)
-        where, feat, n_items, source
-    and (if save) writes it to cache/calib_<where>.pt.
+        labels : (2*n_items,)                 int64 (1=target, 0=other)
+        where, feat, n_items, source, target
+    and (if save) writes it to cache/calib_<where>.pt for black (round-1 path)
+    or cache/calib_<where>_<target>.pt otherwise.
 
     NEEDS A GPU.  See --selftest for the offline logic check.
     """
     assert where in WHERE_CHOICES, f"where must be one of {WHERE_CHOICES}"
+    assert target in SUPPORTED_TARGETS, f"target must be one of {SUPPORTED_TARGETS}"
     if model is None or tok is None:
         model, tok = load_model()
     if items is None:
-        items = heldout_items(tok=tok, cap=cap)
+        items = heldout_items(tok=tok, cap=cap, target=target)
 
     blocks = resolve_module(model, BLOCKS_PATH)
     assert len(blocks) == N_LAYERS, f"expected {N_LAYERS} blocks, got {len(blocks)}"
@@ -202,7 +276,7 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
     try:
         for i, it in enumerate(items):
             chat = it["chat_prompt"]
-            hb = pooled(chat, it["black_answer_text"])
+            hb = pooled(chat, it["target_answer_text"])
             ho = pooled(chat, it["other_answer_text"])
             acts.append(hb); labels.append(1)
             acts.append(ho); labels.append(0)
@@ -218,19 +292,20 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
         "acts": A, "labels": L, "where": where,
         "feat": A.shape[-1], "n_layers": N_LAYERS, "n_items": len(items),
         "n_heads": N_HEADS, "d_head": D_HEAD,
-        "source": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400",
+        "source": SOURCE_BY_TARGET[target],
+        "target": target,
     }
     if save:
-        out_path = out_path or os.path.join(CACHE_DIR, f"calib_{where}.pt")
+        out_path = out_path or calib_path(where, target)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         torch.save(blob, out_path)
         print(f"[calib:{where}] SAVED {tuple(A.shape)} -> {out_path}", flush=True)
     return blob
 
 
-def load_calib(where, path=None):
-    """Load a previously fitted cache/calib_<where>.pt."""
-    path = path or os.path.join(CACHE_DIR, f"calib_{where}.pt")
+def load_calib(where, path=None, target="black"):
+    """Load a previously fitted cache/calib_<where>[_<target>].pt."""
+    path = path or calib_path(where, target)
     return torch.load(path, map_location="cpu")
 
 
@@ -277,6 +352,71 @@ def _selftest():
           (FEAT_DIM["block"], FEAT_DIM["mlp_hidden"], FEAT_DIM["attn_head"])
           == (4096, 12288, 4096))
 
+    # --- E8 target parameterization: cache paths (pure). --------------------- #
+    check("calib_path black == round-1 cache/calib_<where>.pt (regression)",
+          all(calib_path(w, "black") == os.path.join(CACHE_DIR, f"calib_{w}.pt")
+              for w in WHERE_CHOICES))
+    check("calib_path gender == cache/calib_<where>_<target>.pt",
+          calib_path("block", "woman").endswith("cache/calib_block_woman.pt")
+          and calib_path("attn_head", "man").endswith("cache/calib_attn_head_man.pt"))
+    check("black source string verbatim (round-1)",
+          SOURCE_BY_TARGET["black"]
+          == "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400")
+
+    # --- E8 heldout selection (offline DATA checks; SKIP when caches absent). #
+    race_cache = os.path.join(ROOT, "data", "bbq_cache", "Race_ethnicity.jsonl")
+    gender_cache = os.path.join(ROOT, "data", "bbq_cache", "Gender_identity.jsonl")
+    dir_ex = os.path.join(CODE_ROOT, "steering", "direction_examples.jsonl")
+    if os.path.exists(race_cache) and os.path.exists(dir_ex):
+        items = heldout_items(target="black")
+        with open(dir_ex) as f:
+            ref = [json.loads(l) for l in f if l.strip()]
+        check("black: 400 heldout items (round-1 cap)",
+              len(items) == len(ref) == 400)
+        check("black REGRESSION: selection == committed direction_examples.jsonl "
+              "(order, keys, pos/neg answer texts)",
+              all(it["row"].get("example_id") == r["example_id"]
+                  and str(it["row"].get("question_index")) == str(r["question_index"])
+                  and it["target_answer_text"] == r["positive_text"]
+                  and it["other_answer_text"] == r["negative_text"]
+                  for it, r in zip(items, ref)))
+        check("black: legacy aliases black_idx/black_answer_text present+equal",
+              all(it["black_idx"] == it["target_idx"]
+                  and it["black_answer_text"] == it["target_answer_text"]
+                  for it in items))
+    else:
+        print("[selftest-calib] black heldout regression: SKIP (data caches or "
+              "steering/direction_examples.jsonl not available)")
+    if os.path.exists(gender_cache):
+        mb = _multirace_builder()
+        gkeys = {}
+        for t in ("woman", "man"):
+            other = "man" if t == "woman" else "woman"
+            gitems = heldout_items(target=t)
+            check(f"{t}: heldout resolves to 400 rows", len(gitems) == 400)
+            check(f"{t}: positive tag in TARGET_TAGS[{t}]",
+                  all(str(bbq_eval.get_answer_info(it["row"], it["target_idx"])[-1])
+                      .strip().lower() in mb.TARGET_TAGS[t] for it in gitems))
+            check(f"{t}: negative = other-gendered person (mirror pairing)",
+                  all(str(bbq_eval.get_answer_info(it["row"], it["other_idx"])[-1])
+                      .strip().lower() in mb.TARGET_TAGS[other] for it in gitems))
+            check(f"{t}: no legacy black_* keys on gender items",
+                  all("black_idx" not in it and "black_answer_text" not in it
+                      for it in gitems))
+            gkeys[t] = {(int(it["row"].get("example_id", -1)),
+                         str(it["row"].get("question_index", ""))) for it in gitems}
+            ev_path = os.path.join(ROOT, "data", "bbq_items", f"_sweep400_{t}.jsonl")
+            if os.path.exists(ev_path):
+                with open(ev_path) as f:
+                    ev = {(int(r.get("example_id", -1)), str(r.get("question_index", "")))
+                          for r in map(json.loads, filter(str.strip, f))}
+                check(f"{t}: heldout disjoint from its 400-item eval file",
+                      gkeys[t].isdisjoint(ev) and len(ev) == 400)
+        check("woman/man heldout sets mutually disjoint",
+              gkeys["woman"].isdisjoint(gkeys["man"]))
+    else:
+        print("[selftest-calib] gender heldout checks: SKIP (no Gender_identity cache)")
+
     print(f"[selftest-calib] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -289,12 +429,15 @@ def main():
                     help="collect activations (NEEDS GPU + model)")
     ap.add_argument("--where", choices=WHERE_CHOICES, default="block")
     ap.add_argument("--cap", type=int, default=CAP)
+    ap.add_argument("--target", choices=SUPPORTED_TARGETS, default="black",
+                    help="steering target; black (default) = round-1 selection "
+                         "and paths, woman/man = E3 gender manifest heldout")
     args = ap.parse_args()
 
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        collect_activations(args.where, cap=args.cap)
+        collect_activations(args.where, cap=args.cap, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline) or --fit (GPU)")
 

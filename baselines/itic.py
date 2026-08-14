@@ -73,11 +73,13 @@ from common import (  # noqa: E402
     run_baseline,       # the shared GPU eval loop
     load_model,
     CACHE_DIR,
-    SWEEP400,           # default BBQ items file
+    SWEEP400,           # default BBQ items file (black; see sweep400_path)
     N_LAYERS,           # 32
     N_HEADS,            # 32
     D_HEAD,             # 128
     H_MODEL,            # 4096
+    SUPPORTED_TARGETS,  # E8: ("black","woman","man")
+    target_suffix,      # E8: '' for black (round-1 paths), '_<t>' otherwise
 )
 import calib  # noqa: E402  (collect_activations('attn_head'))
 
@@ -90,6 +92,12 @@ PROBES_PATH = os.path.join(CACHE_DIR, "itic_probes.pt")
 DEFAULT_TOPK = 48
 DEFAULT_ALPHA = 15.0
 RESULTS_DIR = os.path.join(ROOT, "results", "itic")
+
+
+def probes_path_for(target):
+    """cache/itic_probes.pt for black (round-1 path, unchanged);
+    cache/itic_probes_<target>.pt otherwise."""
+    return os.path.join(CACHE_DIR, f"itic_probes{target_suffix(target)}.pt")
 
 
 # --------------------------------------------------------------------------- #
@@ -157,15 +165,18 @@ def _fit_one_head(Xh, y, seed=0, val_frac=0.25):
     return val_acc, theta_unit, sigma
 
 
-def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=PROBES_PATH):
+def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
+        target="black"):
     """FIT stage (NEEDS A GPU -- do NOT execute in the offline harness).
 
-    1. calib.collect_activations('attn_head') -> pooled per-(layer) activation
-       of width 4096 for 2*n_items labelled Black/other calib responses.
+    1. calib.collect_activations('attn_head', target=...) -> pooled per-(layer)
+       activation of width 4096 for 2*n_items labelled target/other calib
+       responses (black default = round-1 heldout; woman/man = the E3 gender
+       manifest heldout).
     2. For every (layer, head), slice out the head's d_head=128 activation and
        run _fit_one_head -> (val_acc, theta_unit, sigma).
-    3. Save cache/itic_probes.pt with:
-         theta   : (N_LAYERS, N_HEADS, D_HEAD)  unit directions (Black-oriented)
+    3. Save cache/itic_probes[_<target>].pt with:
+         theta   : (N_LAYERS, N_HEADS, D_HEAD)  unit directions (target-oriented)
          sigma   : (N_LAYERS, N_HEADS)          per-head projection std
          val_acc : (N_LAYERS, N_HEADS)          probe validation accuracy
        plus meta (n_items, source, dims).
@@ -173,8 +184,9 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=PROBES_PATH):
     Selection of top-K and the concrete additive vectors happen later in
     build_injection so K/alpha can be swept without re-collecting activations.
     """
+    out_path = out_path or probes_path_for(target)
     blob = calib.collect_activations("attn_head", model=model, tok=tok, cap=cap,
-                                     save=False)
+                                     save=False, target=target)
     acts = blob["acts"].to(torch.float32)   # (2n, N_LAYERS, 4096)
     labels = blob["labels"].long()          # (2n,)
     assert acts.shape[1] == N_LAYERS and acts.shape[2] == H_MODEL, acts.shape
@@ -198,7 +210,8 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=PROBES_PATH):
         "theta": theta, "sigma": sigma, "val_acc": val_acc,
         "n_layers": N_LAYERS, "n_heads": N_HEADS, "d_head": D_HEAD,
         "n_items": blob["n_items"], "source": blob["source"],
-        "method": "iti_c", "direction": "mass_mean_shift_black_minus_other",
+        "method": "iti_c", "target": target,
+        "direction": f"mass_mean_shift_{target}_minus_other",
     }
     if save:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -207,9 +220,9 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=PROBES_PATH):
     return out
 
 
-def load_probes(path=PROBES_PATH):
-    """Load cache/itic_probes.pt (produced by fit(), which needs a GPU)."""
-    return torch.load(path, map_location="cpu")
+def load_probes(path=None, target="black"):
+    """Load cache/itic_probes[_<target>].pt (produced by fit(); needs a GPU)."""
+    return torch.load(path or probes_path_for(target), map_location="cpu")
 
 
 # --------------------------------------------------------------------------- #
@@ -231,7 +244,8 @@ def select_topk(val_acc, K):
     return mask.reshape(va.shape)
 
 
-def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None):
+def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None,
+                    target="black"):
     """Build the constant per-head shift vectors for ITI-C (paper Eq. 2).
 
     For each SELECTED head (top-K by val_acc) the shift is
@@ -245,7 +259,7 @@ def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None):
         K, alpha
     """
     if probes is None:
-        probes = load_probes()
+        probes = load_probes(target=target)
     theta = probes["theta"].to(torch.float32)     # (L,H,d) unit
     sigma = probes["sigma"].to(torch.float32)     # (L,H)
     val_acc = probes["val_acc"].to(torch.float32) # (L,H)
@@ -292,10 +306,12 @@ def attach_fn(model, injection):
 
 def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         limit=0, model=None, tok=None, baseline_black_rate=None, probes=None,
-        items_path=SWEEP400):
+        items_path=None, target="black"):
     """RUN stage (NEEDS A GPU).  Build the top-K injection and evaluate on the
-    400-item BBQ sweep via the shared run_baseline loop."""
-    inj = build_injection(K=K, alpha=alpha, probes=probes)
+    400-item BBQ sweep via the shared run_baseline loop.  target selects the
+    per-head probe fit (cache/itic_probes[_<target>].pt) AND the eval
+    classification (black default = round-1 behavior)."""
+    inj = build_injection(K=K, alpha=alpha, probes=probes, target=target)
     if tag is None:
         tag = f"itic_K{inj['K']}_a{alpha:g}"
     return run_baseline(
@@ -303,9 +319,10 @@ def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         items_path=items_path,
         out_dir=out_dir, tag=tag, limit=limit, model=model, tok=tok,
         baseline_black_rate=baseline_black_rate,
+        target=target,
         config_extra={"method": "iti_c", "K": inj["K"], "alpha": float(alpha),
                       "n_layers_hooked": len(inj["layers"]),
-                      "probes_path": PROBES_PATH,
+                      "probes_path": probes_path_for(target), "target": target,
                       "hook_target": "blocks[k].attn_out (input, per-head)"},
     )
 
@@ -323,6 +340,13 @@ def _selftest():
         print(f"[selftest-itic] {name:52s} : {'PASS' if cond else 'FAIL'}")
 
     check("n_heads*d_head == d_model (4096)", N_HEADS * D_HEAD == H_MODEL)
+
+    # E8 target-parameterized fit-artifact paths.
+    check("probes_path_for('black') == PROBES_PATH (round-1 regression)",
+          probes_path_for("black") == PROBES_PATH)
+    check("probes_path_for gender -> cache/itic_probes_<t>.pt",
+          probes_path_for("woman").endswith("cache/itic_probes_woman.pt")
+          and probes_path_for("man").endswith("cache/itic_probes_man.pt"))
 
     # (a) head reshape round-trips EXACTLY.
     B, T = 2, 5
@@ -417,8 +441,12 @@ def main():
     ap.add_argument("--alpha", type=float, default=DEFAULT_ALPHA,
                     help=f"constant injection strength (default {DEFAULT_ALPHA})")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--items", default=SWEEP400,
-                    help="BBQ items jsonl (e.g. a position-balance rotation file)")
+    ap.add_argument("--target", choices=SUPPORTED_TARGETS, default="black",
+                    help="steering target (black = round-1 default; woman/man = "
+                         "E3 gender calib fit + classification)")
+    ap.add_argument("--items", default=None,
+                    help="BBQ items jsonl (e.g. a position-balance rotation "
+                         "file); default = the target's own _sweep400 file")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
     args = ap.parse_args()
@@ -426,11 +454,11 @@ def main():
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
     if args.fit:
-        fit()
+        fit(target=args.target)
         return
     if args.run:
         run(K=args.topk, alpha=args.alpha, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, items_path=args.items)
+            limit=args.limit, items_path=args.items, target=args.target)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit or --run (GPU)")
 

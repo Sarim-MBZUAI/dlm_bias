@@ -36,12 +36,28 @@ ARROWS_PATH = os.path.join(ROOT, "steering", "arrows.pt")
 # --------------------------------------------------------------------------- #
 # 1) Diff-in-means arrows, per-layer unit-normalized.                          #
 # --------------------------------------------------------------------------- #
-def load_arrows(path=ARROWS_PATH, raw=False):
-    """Return the (32,4096) Black-minus-other arrow set from steering/arrows.pt.
+def arrows_path_for(target):
+    """Arrow-set file per steering target: the round-1 steering/arrows.pt for
+    black (unchanged), multirace/arrows_<target>.pt (same {'r': (32,4096)}
+    format, built by multirace/build_arrows.py from the E3 gender manifest)
+    otherwise."""
+    if target == "black":
+        return ARROWS_PATH
+    return os.path.join(ROOT, "multirace", f"arrows_{target}.pt")
+
+
+def load_arrows(path=None, raw=False, target="black"):
+    """Return the (32,4096) target-minus-other arrow set.
+
+    Default (path=None, target="black"): steering/arrows.pt, IDENTICAL to the
+    round-1 behavior.  target="woman"/"man": multirace/arrows_<target>.pt (the
+    E3 gender diff-in-means; same 'r' key and sign convention -- positive
+    points toward the target).  An explicit `path` overrides the target lookup.
 
     Default: per-layer unit-normalized via pid_steer.unit_rows (pid_steer.py:91).
     raw=True: the raw (un-normed) diff-in-means (build_arrows.py:190).
     """
+    path = path or arrows_path_for(target)
     blob = torch.load(path, map_location="cpu")
     r = blob["r"].to(torch.float32)          # (32,4096) raw
     return r if raw else pid_steer.unit_rows(r)
@@ -249,6 +265,22 @@ def _selftest():
               and torch.allclose(norms, torch.ones(32), atol=1e-4))
     else:
         print(f"[selftest-directions] load_arrows: SKIP (no {ARROWS_PATH})")
+
+    # (1b) E8 target-parameterized arrow paths (pure) + gender arrows if present.
+    check("arrows_path_for('black') == ARROWS_PATH (round-1 regression)",
+          arrows_path_for("black") == ARROWS_PATH)
+    check("arrows_path_for gender -> multirace/arrows_<t>.pt",
+          arrows_path_for("woman").endswith("multirace/arrows_woman.pt")
+          and arrows_path_for("man").endswith("multirace/arrows_man.pt"))
+    for t in ("woman", "man"):
+        p = arrows_path_for(t)
+        if os.path.exists(p):
+            ug = load_arrows(target=t)
+            check(f"load_arrows target={t}: (32,4096) unit rows",
+                  tuple(ug.shape) == (32, 4096)
+                  and torch.allclose(ug.norm(dim=1), torch.ones(32), atol=1e-4))
+        else:
+            print(f"[selftest-directions] load_arrows target={t}: SKIP (no {p})")
 
     print(f"[selftest-directions] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
