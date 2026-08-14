@@ -73,6 +73,33 @@ regenerate with `python balanced_all/strict_round2.py`.
   negation-debiasing absorbs ~95% of the shift — the push is largely
   valence-independent. Metric: `unqover/unqover_metric.py`.
 
+### Round-3: suppression, sensor fix, gender axis, intersectional null
+
+Full tables and caveats: [`results/ROUND3_STRICT.md`](results/ROUND3_STRICT.md);
+regenerate with `python balanced_all/strict_round3.py` (+ families 5–6 of
+`strict_round2.py`).
+
+- **Defense (E5).** The same feedback loop with the setpoint flipped
+  (s\*=0, α ∈ [−6, 0]) holds the Black gap at **+0.002** at 1.8%
+  strict-invalid and mean |α| 0.72 — its effort-matched open loop is inert
+  (+0.022) and the equally-*strong* open loop (α=−4) is 95.8% invalid;
+  AurA vanilla barely moves it (+0.008).
+- **Sensor fix (E7, confirmed prediction).** The trajectory analysis
+  ([`analysis/trajectory/FINDINGS.md`](analysis/trajectory/FINDINGS.md), E1)
+  found the decode-space sensor was case-blind while the arab vector induces
+  lowercase answers; giving it lowercase vision (`--sensor-case both`) makes
+  the controller **back off** (mean α 4.56 → 3.60, saturation 0.38 → 0.16) at
+  an equivalent gap (+0.223 → +0.185) — round-2's hot arab telemetry was a
+  sensor artifact.
+- **Gender axis (E3).** woman decode-PI **+0.081** beats its effort-matched
+  open loop α=3 (+0.029; paired diff +0.052 [+0.015, +0.091]) — the naive
+  "open loop α=4 wins" reading was an unmatched-effort artifact. man is a
+  null, joining asian/white in the direction-dependence table.
+- **Intersectional direction (E6, clean null).** The gender-conditioned
+  f-black direction disinhibits without aiming: pick rates quadruple, gap
+  stays at zero (decode-PI −0.003) vs the coarse Black direction's +0.167 —
+  steerability is a property of the direction.
+
 The strict parse rule mirrors `tools/strict_reparse.py` in the
 [paper repo](https://github.com/Sarim-MBZUAI/DLM_Bias_overleaf): a response
 counts only if it *starts* with a standalone A/B/C letter; everything else is
@@ -92,18 +119,22 @@ eval/         BBQ harness (bbq_eval.py auto-downloads/caches BBQ,
 eval/balanced/  rotation makers for the Black headline sets: make_rotations.py,
               make_seed_rotations.py, make_superset.py, oracle_test.py
 balanced_all/ position-balanced eval for EVERY condition/target +
-              strict_pool.py / strict_round2.py (the authoritative analyses)
+              strict_pool.py / strict_round2.py / strict_round3.py
+              (the authoritative analyses)
 baselines/    faithful prior methods on the same harness: caa, actadd,
               meanact, linearact, aura, itic (+ calib/directions infra)
 unqover/      UnQover benchmark: download / loader / eval / metric + adapters
-slurm/        SLURM batch scripts for both experiment rounds (job*.sbatch,
-              round2_job*.sbatch)
+slurm/        SLURM batch scripts for all three experiment rounds
+              (job*.sbatch, round2_job*.sbatch, round3_*.sbatch)
 data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
 results/      committed result families: balanced/, balanced_all/,
               balanced_seeds/, dream_balanced/, multirace/, unqover/,
               unqover_v2/, base/, normal/, decode_pid/, layer_pid/,
               calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
-              linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md
+              linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md /
+              ROUND3_STRICT.md
+analysis/     trajectory/ — E1 step-axis analysis of the controller
+              (traj_analysis.py, FINDINGS.md, summary CSVs)
 docs/         paper.md, COMPARISON.md, DENOISING_PID.md, jailbreak_instruct.md
 chat.py / chat_llada.py   terminal chat REPLs (Dream / LLaDA)
 ```
@@ -138,7 +169,8 @@ relocate pre-existing local blobs, or reconstruct from scratch:
   `python eval/balanced/make_superset.py`.
 
 **SLURM.** All headline runs go through `slurm/*.sbatch` (round 1:
-`job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`). Two quirks:
+`job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`; round 3:
+`round3_job{G..O}` + `round3_smokeJ`). Two quirks:
 they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
 remote code can be materialized on compute nodes, and the round-2 scripts
 request `--qos=normal-plus` for the longer walltimes. Do not set
@@ -157,6 +189,8 @@ python steering/denoise_pid.py --cond PI \
 # authoritative strict-parse analyses (CPU, committed inputs)
 python balanced_all/strict_pool.py     # round-1 14-condition Black table
 python balanced_all/strict_round2.py   # multi-target / seeds / UnQover / Dream
+                                       #   + round-3 gender / fblack families
+python balanced_all/strict_round3.py   # round-3 suppression + case-full sensor
 
 # UnQover metric for one steered condition
 python unqover/unqover_metric.py --results results/unqover_v2/uq_decode_PI.jsonl \

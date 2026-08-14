@@ -27,6 +27,11 @@ handoff.md
 new_idea_sanity_test/HANDOFF.md
 .local_notes/
 
+# root-level LaTeX-run residue (explicit entries — a bare *.log would also
+# hide future logs we might want to track)
+/bib.log
+/compile.log
+
 # Dream port: built artifacts stay local (large tensors, eval caches)
 dream/arrows.pt
 dream/cache/
