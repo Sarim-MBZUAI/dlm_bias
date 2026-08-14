@@ -246,12 +246,14 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
     captured = {}
     handles = []
     for li, blk in enumerate(blocks):
+        # NOTE: must not be named `target` — that would shadow the function's
+        # target parameter, which is still needed at save time (SOURCE_BY_TARGET).
         if where == "block":
-            target = blk
+            hook_mod = blk
         elif where == "mlp_hidden":
-            target = blk.ff_out
+            hook_mod = blk.ff_out
         else:  # attn_head
-            target = blk.attn_out
+            hook_mod = blk.attn_out
 
         def mk(li):
             def hook(mod, inp, out):
@@ -260,7 +262,7 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
                 else:
                     captured[li] = inp[0]   # INPUT to ff_out / attn_out
             return hook
-        handles.append(target.register_forward_hook(mk(li)))
+        handles.append(hook_mod.register_forward_hook(mk(li)))
 
     @torch.no_grad()
     def pooled(chat, answer_text):
