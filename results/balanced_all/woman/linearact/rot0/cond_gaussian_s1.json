@@ -1,0 +1,39 @@
+{
+  "condition": "gaussian_s1",
+  "n": 400,
+  "counts": {
+    "target": 70,
+    "nontarget": 64,
+    "abstain": 266,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.175,
+    "nontarget_pick_rate": 0.16,
+    "abstain_rate": 0.665,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_target_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "results/balanced_all/rotations/_sweep400_woman_rot0.jsonl",
+  "hook_fire_count": 819200,
+  "elapsed_s": 762.6341755390167,
+  "cuda_visible_devices": "0",
+  "config": {
+    "method": "linear_act",
+    "variant": "gaussian",
+    "strength": 1.0,
+    "where": "mlp_hidden",
+    "target": "woman",
+    "layers": "all",
+    "intervention_position": "all_bidirectional",
+    "stats_path": "/shared/home/sarim.hashmi/dlm_bias/baselines/cache/linearact_stats_woman.pt"
+  },
+  "target": "woman"
+}

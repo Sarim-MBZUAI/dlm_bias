@@ -1,0 +1,40 @@
+{
+  "condition": "caa_L14_a16",
+  "n": 400,
+  "counts": {
+    "target": 30,
+    "nontarget": 19,
+    "abstain": 351,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.075,
+    "nontarget_pick_rate": 0.0475,
+    "abstain_rate": 0.8775,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_target_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "results/balanced_all/rotations/_sweep400_woman_rot2.jsonl",
+  "hook_fire_count": 25600,
+  "elapsed_s": 586.8014714717865,
+  "cuda_visible_devices": "0",
+  "config": {
+    "method": "caa",
+    "granularity": "block_residual_single_layer",
+    "layer": 14,
+    "alpha": 16.0,
+    "target": "woman",
+    "direction": "unit_diff_in_means_woman_minus_other",
+    "arrows_path": "/shared/home/sarim.hashmi/dlm_bias/multirace/arrows_woman.pt",
+    "intervention_position": "all",
+    "reference": "Rimsky et al. Contrastive Activation Addition; AcT mean map transport.py:258-259"
+  },
+  "target": "woman"
+}

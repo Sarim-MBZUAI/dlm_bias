@@ -1,0 +1,37 @@
+{
+  "condition": "actadd_a16",
+  "n": 400,
+  "counts": {
+    "target": 40,
+    "nontarget": 23,
+    "abstain": 337,
+    "unparseable": 0
+  },
+  "rates": {
+    "target_pick_rate": 0.1,
+    "nontarget_pick_rate": 0.0575,
+    "abstain_rate": 0.8425,
+    "unparseable_rate": 0.0
+  },
+  "d_gap": null,
+  "baseline_target_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_length": 32,
+  "steps": 64,
+  "block_length": 32,
+  "temperature": 0.0,
+  "items_path": "results/balanced_all/rotations/_sweep400_woman_rot2.jsonl",
+  "hook_fire_count": 25600,
+  "elapsed_s": 590.3223288059235,
+  "cuda_visible_devices": "0",
+  "config": {
+    "method": "actadd_single_pair",
+    "alpha": 16.0,
+    "layer": 14,
+    "n_items_fit": 1,
+    "target": "woman",
+    "granularity": "block_residual"
+  },
+  "target": "woman"
+}
