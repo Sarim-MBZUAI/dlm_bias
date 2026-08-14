@@ -27,7 +27,8 @@ v̂, same all-block actuator. Committed rotations `results/balanced/_sweep400_ro
 | Decode-PI attack (ours, round 1) | 0.304 | 0.138 | 0.481 | 0.077 | +0.167 [+0.131, +0.203] |
 | **Suppress, closed loop (ours)** | 0.108 | 0.107 | 0.767 | **0.018** | **+0.002 [−0.025, +0.028]** |
 | Open loop α=−4 | 0.015 | 0.018 | 0.009 | **0.958** | −0.003 (meaningless: 4% valid) |
-| Open loop α=−0.72 (effort-matched)¹ | 0.122 | 0.101 | 0.777 | 0.000 | +0.022 |
+| Open loop α=−0.72 (effort-matched)¹ | 0.122 | 0.101 | 0.777 | 0.000 | +0.022 [−0.005, +0.048] |
+| AurA vanilla (prior work, round 1) | 0.118 | 0.109 | 0.773 | 0.000 | +0.008 [−0.019, +0.035] |
 
 Δg suppress vs attack = **−0.165 [−0.203, −0.127]**; vs base = −0.016 [−0.034, +0.003] (ns).
 Controller telemetry: mean α **−0.72**, saturation 0.01.
@@ -36,6 +37,10 @@ Controller telemetry: mean α **−0.72**, saturation 0.01.
 (+0.002) with near-zero coherence cost, finding its own minimal dose (mean |α| 0.72).
 The open loop is *inert at matched effort* (+0.022 ≈ base) and *destroys the model* at
 α=−4 (95.8% strict-invalid). Feedback wins on both ends of the dose axis.
+Prior activation suppression (AurA's expertise-gated damping, faithful round-1 run,
+`results/balanced_all/black/aura_vanilla/`) barely moves the gap from base
+(+0.018 → +0.008, Δg −0.009 [−0.021, +0.002], ns) — while the closed loop holds +0.002
+and cancels the attack by −0.165.
 **Caveat:** base bias is already near zero on these items, so this demonstrates
 "hold at parity cheaply," not "reverse a large standing bias."
 
@@ -87,19 +92,19 @@ scope is cis-referent items). Four-way disjoint eval/heldout splits
 | woman base | 0.100 | 0.056 | 0.844 | 0.000 | +0.044 [+0.022, +0.066] | — |
 | **woman decode-PI (ours)** | 0.312 | 0.231 | 0.458 | 0.000 | **+0.081 [+0.040, +0.122]** | +0.037 [−0.006, +0.082] |
 | woman open loop α=4 | 0.400 | 0.267 | 0.285 | 0.048 | +0.133 [+0.087, +0.179] | +0.089 [+0.037, +0.141] |
-| woman open loop α=3 (effort-matched)² | — | — | — | 0.000 | +0.029 [−0.002, +0.060] | — |
+| woman open loop α=3 (effort-matched)² | 0.165 | 0.136 | 0.699 | 0.000 | +0.029 [−0.002, +0.060] | −0.015 [−0.048, +0.018] (ns) |
 | woman CAA α=2 | 0.101 | 0.056 | 0.843 | 0.000 | +0.045 | +0.001 (ns) |
 | man base | 0.041 | 0.088 | 0.871 | 0.000 | −0.048 [−0.068, −0.028] | — |
 | man decode-PI (ours) | 0.244 | 0.267 | 0.469 | 0.020 | −0.022 [−0.062, +0.018] | +0.025 (ns) |
 | man open loop α=4 | 0.309 | 0.291 | 0.383 | 0.018 | +0.018 [−0.025, +0.062] | +0.066 [+0.023, +0.109] |
-| man open loop α=3 (effort-matched)² | — | — | — | 0.011 | +0.009 [−0.017, +0.035] | — |
+| man open loop α=3 (effort-matched)² | 0.112 | 0.102 | 0.775 | 0.011 | +0.009 [−0.017, +0.035] | +0.057 [+0.030, +0.083] |
 
 Telemetry: woman mean α 3.26 / sat 0.42; man 3.37 / 0.50.
 
 **The effort-matched comparison (the paper's control condition):**
 decode-PI − open-loop-α3, paired bootstrap replicates:
 **woman +0.052 [+0.015, +0.091] — feedback wins at matched effort**;
-man −0.031 [−0.066, +0.004] (ns).
+man −0.032 [−0.066, +0.004] (ns).
 
 **Reading.** The naive comparison (α=4 open loop beats decode-PI) is an unmatched-effort
 artifact: the controller only spends mean α ≈ 3.3. At matched effort, feedback beats the
@@ -110,6 +115,10 @@ method moves it meaningfully — joining asian/white in the direction-dependence
 
 ² Jobs 19489; `results/balanced_all/{woman,man}/normal_eff/rot{r}/cond_normal_<T>_a3*`;
 scored with the identical strict rule + 10k bootstrap in a standalone pass.
+
+*Note: the full six-baseline suite on gender (CAA / ActAdd / Mean-AcT / Linear-AcT /
+AurA / ITI-C refit on gender contrast pairs) is queued as jobs P/Q/R and will be
+appended here when complete; only CAA α=2 has run so far.*
 
 ---
 
@@ -153,7 +162,69 @@ motivated §2 originates here.
 
 ---
 
+## 6. Verification
+
+All checks re-run 2026-08-14 against the committed files (not the job logs).
+
+- **File / line counts.** Every new round-3 results dir has all 3 rotations,
+  one `cond_*.json` + one `cond_*_samples.jsonl` per rotation, every samples
+  file exactly 400 lines, and every summary's counts summing to n=400
+  (asserted by `verify_summaries` in the analysis scripts and re-checked
+  standalone): `results/balanced_all/woman/{base,decode_pid,normal,normal_eff,caa}/`,
+  `.../man/{base,decode_pid,normal,normal_eff,caa}/`,
+  `.../fblack/{base,decode_pid,normal,caa}/`, `.../black/suppress/`,
+  `.../black/normal_neg/` (both `am4` and `am0p72` stems, 6 file pairs), and
+  `.../arab/decode_pid_cs/` — **54 summary JSONs + 54 samples files** in total.
+- **Dose-sweep provenance (committed).** The woman sweep (job 19400) lives at
+  `results/multirace/woman/{decode_pid,normal}/` (base + decode-PI
+  amax{1,2,4,6} + normal α{1,2,4}); strict recompute confirms the dose call:
+  amax6 = 18.8% unparseable at generation time (23.3% strict-invalid),
+  amax4 = 0.0% with gap +0.172. The fblack sweep (job 19420) lives at
+  `results/multirace/fblack/{decode_pid,normal}/`: amax6 = 15.2% unparseable
+  (17.2% strict-invalid), amax4 = 0.25% (1.5% strict-invalid).
+- **SLURM logs.** All 11 `.out` logs end in their `ALL DONE` /
+  `R3 SMOKE J PASSED` line and no `.err` contains a traceback or error
+  (`logs/slurm/{r3smokeJ-19397,suppress-19398,garrows-19399,gdose-19400,
+  gmainw-19415,gmainm-19416,arabcs-19419,fbdose-19420,effmatch-19424,
+  fbmain-19488,geffmatch-19489}`; `logs/` is gitignored — local tree only).
+- **Telemetry / hook sanity.** The suppress summaries record
+  `setpoint 0.0, α ∈ [−6, 0]` (mean α −0.72, sat 0.01 avg of 3 rotations);
+  the arab case-full summaries record `sensor_case: "both"` with the lowercase
+  sensor ids alongside the uppercase ones (a/b/c = 64/65/66,
+  ' a'/' b'/' c' = 259/285/272 — tokenizer-derived, matching §2); every
+  open-loop `normal` summary fired all 32 hooks with
+  `hook_fire_counts = 25600` = 400 items × 64 steps.
+- **f-black manifest.** `multirace/items_manifest_fblack.json` confirms
+  n_eval 400, n_heldout 312 with negative composition
+  92 f-arab / 75 f-asian / 79 f-latino / 66 f-white and **0 m-black** (the
+  documented deviation: only 712 usable f-black rows survive the
+  Black-experiment exclusions, so held-out is 312, not the standard 400).
+- **Effort-matched conditions** (`cond_normalL14_am0p72`,
+  `cond_normal_{woman,man}_a3`) are unknown to the analysis scripts and were
+  scored standalone with `strict_round2.analyze` + `dgap_ci` unchanged (same
+  STRICT rule, 3×400 pooling, 10k bootstrap seed 0); the AurA vanilla row in
+  §1 is a strict recompute of the committed round-1
+  `results/balanced_all/black/aura_vanilla/` samples, reproducing the
+  round-1 table (`results/balanced_all/RESULTS_STRICT.md`).
+
+### Regeneration
+
+```bash
+# from the repo root
+python balanced_all/strict_round3.py   # §1 (suppression) + §2 (case-full sensor)
+python balanced_all/strict_round2.py   # §3 (gender, family 5) + §4 (fblack, family 6)
+python analysis/trajectory/traj_analysis.py   # §5 (E1 tables + figures)
+```
+
+Raw runs: `slurm/round3_*.sbatch` (smoke `round3_smokeJ`, jobs G–O; exact
+CLIs inside). Inputs consumed are all committed except the gitignored
+rotation item files (`results/balanced_all/rotations/`,
+`data/bbq_items/`) and SLURM logs.
+
+---
+
 *Caveats common to all round-3 tables: single run per rotation (bootstrap is over items,
 not runs); ambiguous-context BBQ only; LLaDA-8B-Instruct only (no Dream replication this
-round); Δg CIs use independent (not paired) replicates except the effort-matched
-comparisons in §3, which are paired.*
+round); every Δg / difference CI uses the same difference-of-bootstrap-replicates
+construction as rounds 1–2 (both conditions resampled with the same seed-0 draws over
+the shared 1200-item set).*
