@@ -31,7 +31,8 @@ MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS, D_MODEL = 32, 4096
 LAYER = 14                      # default vhat source layer
 LETTERS = B.LETTERS
-TARGETS = ["white", "asian", "latino", "arab", "black", "woman", "man", "fblack"]
+TARGETS = ["white", "asian", "latino", "arab", "black", "woman", "man", "fblack",
+           "lowses", "highses", "old", "young"]
 
 
 def load_by_path(modname, relpath):
@@ -60,6 +61,14 @@ _FALLBACK_TAGS = {  # FALLBACK ONLY -- Lane A's TARGET_TAGS is authoritative.
     # is gender-conditioned race (f-black vs other-race women), see
     # build_arrows.py. Keep in sync with targets.py (selftest asserts equality).
     "fblack": frozenset({"f-black"}),
+    # E9 SES poles (BBQ SES; raw tags lowSES/highSES, matched lowercase whole).
+    "lowses":  frozenset({"lowses"}),
+    "highses": frozenset({"highses"}),
+    # E9 Age poles (BBQ Age): 'young' is a readability name for BBQ's 'nonOld'
+    # tag -- tag set is {nonold}, whole-tag matched (never matches 'old').
+    # Keep in sync with targets.py (selftest asserts equality).
+    "old":   frozenset({"old"}),
+    "young": frozenset({"nonold"}),
 }
 
 
@@ -297,7 +306,7 @@ def selftest():
     check("classify: pred==uidx -> abstain", classify(2, 0, 2) == "abstain")
     check("classify: other -> nontarget",  classify(1, 0, 2) == "nontarget")
     check("classify: None -> unparseable", classify(None, 0, 2) == "unparseable")
-    check("registry covers all 8 targets", all(t in TARGET_TAGS for t in TARGETS))
+    check("registry covers all 12 targets", all(t in TARGET_TAGS for t in TARGETS))
     g = _row(["f", "m", "unknown"])
     check("gender: woman idx==0, man idx==1, unk==2",
           target_idx_of(g, "woman") == 0 and target_idx_of(g, "man") == 1
@@ -314,6 +323,18 @@ def selftest():
           and target_idx_of(_row(["Black", "white", "unknown"]), "fblack") is None)
     check("fallback fblack tags == registry (sync hazard)",
           _FALLBACK_TAGS["fblack"] == TARGET_TAGS["fblack"])
+    s = _row(["lowSES", "highSES", "unknown"])
+    check("ses: lowses idx==0, highses idx==1, unk==2",
+          target_idx_of(s, "lowses") == 0 and target_idx_of(s, "highses") == 1
+          and unk_idx_of(s) == 2)
+    a = _row(["nonOld", "old", "unknown"])
+    check("age: young idx==0 (tag nonOld), old idx==1",
+          target_idx_of(a, "young") == 0 and target_idx_of(a, "old") == 1)
+    check("age: whole-tag -- 'nonold' never matches old",
+          target_idx_of(_row(["nonOld", "black", "unknown"]), "old") is None)
+    check("fallback ses/age tags == registry (sync hazard)",
+          all(_FALLBACK_TAGS[t] == TARGET_TAGS[t]
+              for t in ("lowses", "highses", "old", "young")))
     print(f"[selftest-common] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 

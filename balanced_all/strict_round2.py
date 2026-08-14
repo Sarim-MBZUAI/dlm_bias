@@ -36,6 +36,16 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      decode-PI gap +0.167). Different item sets, so the comparison is
      descriptive (no paired bootstrap).
 
+  7. SES BALANCED (E9)  results/balanced_all/{lowses,highses}/
+     {base,decode_pid,normal,caa}/rot{0,1,2} -- same soft-missing machinery
+     as family 5 (shared family_soft_targets): pooled strict gap + CIs +
+     Delta-g vs the SAME pole's pooled base + gap@A/gap@BC + decode-PI
+     telemetry; the normal dose is discovered from disk; MISSING pre-run.
+
+  8. AGE BALANCED (E9)  results/balanced_all/{old,young}/
+     {base,decode_pid,normal,caa}/rot{0,1,2} -- identical machinery. The
+     'young' target tag-matches BBQ's 'nonOld' tag (multirace/targets.py).
+
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
 
@@ -264,6 +274,8 @@ def family_dream(results):
 # ---------------------------------------------------------------------------
 GENDER_TARGETS = ["woman", "man"]
 FBLACK_TARGETS = ["fblack"]
+SES_TARGETS = ["lowses", "highses"]   # E9 (family 7)
+AGE_TARGETS = ["old", "young"]        # E9 (family 8; young = BBQ tag nonOld)
 
 
 def analyze_soft(paths, want_reps=False, n_expect=400):
@@ -394,6 +406,19 @@ def family_fblack(results):
     results["fblack_vs_black"] = cmp_out
 
 
+def family_ses(results):
+    family_soft_targets(results, "ses",
+                        "FAMILY 7: SES BALANCED (E9, pooled 3x400, strict)",
+                        SES_TARGETS)
+
+
+def family_age(results):
+    family_soft_targets(results, "age",
+                        "FAMILY 8: AGE BALANCED (E9, pooled 3x400, strict; "
+                        "young = BBQ tag nonOld)",
+                        AGE_TARGETS)
+
+
 # ---------------------------------------------------------------------------
 # Telemetry (decode-PI controller effort, averaged over rotations)
 # ---------------------------------------------------------------------------
@@ -486,6 +511,8 @@ def main():
     family_dream(results)
     family_gender(results)
     family_fblack(results)
+    family_ses(results)
+    family_age(results)
     telemetry(results)
     family_unqover(results)
 

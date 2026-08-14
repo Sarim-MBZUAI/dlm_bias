@@ -38,6 +38,21 @@ NOT apply (different BBQ category); manifest schema matches
 items_manifest.json plus "cross_target_disjoint": true. STRICT gender tag
 sets exclude the trans_/nontrans_ compounds (see targets.py).
 
+SES / AGE (E9, --category SES / --category Age): the SAME pair-axis situation
+as gender -- every ambiguous row of the category carries BOTH poles plus an
+unknown option, so the two poles' pools are identical and the split is the
+SAME gender-style 4-way mutually disjoint cut (ONE seed-42 shuffle):
+    SES  (3,432 shared rows >= 1,600):  lowses / highses
+        -> data/bbq_items/_sweep400_{lowses,highses}.jsonl
+           + multirace/items_manifest_ses.json
+    Age  (1,840 shared rows >= 1,600, tight but fits):  old / young
+        -> data/bbq_items/_sweep400_{old,young}.jsonl
+           + multirace/items_manifest_age.json
+No prior experiment touches these caches, so exclusions == {} (like gender).
+The 'young' target tag-matches BBQ's 'nonOld' tag (see targets.py). The
+gender path is UNCHANGED (byte-identical items + manifest): the shared
+pair-axis code below is main_gender generalized by category, same logic.
+
 INTERSECTIONAL TARGET (E6, --target-set intersectional): fblack (Black women,
 the single compound tag f-black) lives on the SAME Race_ethnicity cache as
 the Black experiment, so the SAME exclusions apply (seed-42 eval keys UNION
@@ -60,6 +75,8 @@ CPU-only, offline (BBQ cache already on disk).
 Run:            python multirace/make_items.py                  # race, unchanged
                 python multirace/make_items.py --category Gender_identity
                 python multirace/make_items.py --target-set intersectional  # E6
+                python multirace/make_items.py --category SES   # E9
+                python multirace/make_items.py --category Age   # E9
 Offline check:  python multirace/make_items.py --selftest
 """
 import argparse
@@ -74,8 +91,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
-                     INTERSECTIONAL_TARGETS, TARGET_CATEGORY,
-                     target_idx_of, unk_idx_of)
+                     INTERSECTIONAL_TARGETS, SES_TARGETS, AGE_TARGETS,
+                     TARGET_CATEGORY, target_idx_of, unk_idx_of)
 
 
 # Reuse the LLaDA arrow builder's exclusion helpers VERBATIM. Loaded by absolute
@@ -93,13 +110,27 @@ ITEMS_DIR = os.path.join(ROOT, "data", "bbq_items")
 MANIFEST = os.path.join(HERE, "items_manifest.json")
 MANIFEST_GENDER = os.path.join(HERE, "items_manifest_gender.json")
 MANIFEST_FBLACK = os.path.join(HERE, "items_manifest_fblack.json")
+MANIFEST_SES = os.path.join(HERE, "items_manifest_ses.json")
+MANIFEST_AGE = os.path.join(HERE, "items_manifest_age.json")
 GENDER_CACHE = os.path.join(ROOT, "data", "bbq_cache", "Gender_identity.jsonl")
 SEED = 42
 N_EVAL = 400
 N_HELDOUT_CAP = 400
 MIN_USABLE = 800
-N_GENDER_SET = 400          # each of the 4 disjoint gender sets
+N_GENDER_SET = 400          # each of the 4 disjoint pair-axis sets
 MIN_GENDER_POOL = 4 * N_GENDER_SET
+
+# Pair-axis registry (E3 gender, E9 SES/Age): categories whose two poles live
+# on the SAME rows, requiring the 4-way mutually disjoint split. The log tag
+# keeps gender's original "[items-gender]" prefix byte-identical.
+PAIR_AXES = {
+    "Gender_identity": {"targets": GENDER_TARGETS, "manifest": MANIFEST_GENDER,
+                        "log": "items-gender"},
+    "SES":             {"targets": SES_TARGETS, "manifest": MANIFEST_SES,
+                        "log": "items-ses"},
+    "Age":             {"targets": AGE_TARGETS, "manifest": MANIFEST_AGE,
+                        "log": "items-age"},
+}
 # E6 fblack: DOCUMENTED DEVIATION -- 712 usable after exclusions, so heldout
 # is ALL 312 remaining rows, not the standard 400 (asserted exactly below).
 N_FBLACK_HELDOUT = 312
@@ -138,42 +169,55 @@ def split_items(rows, seed=SEED):
     return ev, held
 
 
-def load_gender_cache():
-    """data/bbq_cache/Gender_identity.jsonl (category stamped, like load_full_race)."""
+def load_category_cache(category):
+    """data/bbq_cache/<category>.jsonl (category stamped, like load_full_race)."""
+    path = os.path.join(ROOT, "data", "bbq_cache", f"{category}.jsonl")
     rows = []
-    with open(GENDER_CACHE) as f:
+    with open(path) as f:
         for line in f:
             line = line.strip()
             if line:
                 r = json.loads(line)
-                r["category"] = "Gender_identity"
+                r["category"] = category
                 rows.append(r)
     return rows
 
 
+def load_gender_cache():
+    """Back-compat wrapper (build_arrows.py imports it)."""
+    return load_category_cache("Gender_identity")
+
+
 def split_gender_pool(shared_rows, seed=SEED, n=N_GENDER_SET):
-    """ONE seed-`seed` shuffle of the SHARED woman/man pool -> 4 mutually
-    disjoint sets: eval(woman), heldout(woman), eval(man), heldout(man)."""
+    """ONE seed-`seed` shuffle of the SHARED pair-axis pool -> 4 mutually
+    disjoint sets: eval(pole0), heldout(pole0), eval(pole1), heldout(pole1)
+    (gender: woman then man; SES: lowses then highses; Age: old then young)."""
     order = list(shared_rows)
     random.Random(seed).shuffle(order)
     return order[:n], order[n:2 * n], order[2 * n:3 * n], order[3 * n:4 * n]
 
 
-def main_gender():
-    full = load_gender_cache()
-    pools = {t: select_target_rows(full, t, set()) for t in GENDER_TARGETS}
-    keysets = {t: {row_key(r) for r in pools[t]} for t in GENDER_TARGETS}
-    shared_keys = keysets["woman"] & keysets["man"]
+def main_pair_axis(category):
+    """Shared pair-axis item builder (E3 gender = the original main_gender,
+    generalized by category; E9 SES/Age). Same logic, same manifest schema --
+    the gender output stays byte-identical."""
+    ax = PAIR_AXES[category]
+    t0, t1 = ax["targets"]
+    log, manifest_path = ax["log"], ax["manifest"]
+    full = load_category_cache(category)
+    pools = {t: select_target_rows(full, t, set()) for t in (t0, t1)}
+    keysets = {t: {row_key(r) for r in pools[t]} for t in (t0, t1)}
+    shared_keys = keysets[t0] & keysets[t1]
     # cache-order shared pool (deterministic input to the seeded shuffle)
-    shared = [r for r in pools["woman"] if row_key(r) in shared_keys]
-    print(f"[items-gender] full={len(full)} usable_woman={len(pools['woman'])} "
-          f"usable_man={len(pools['man'])} shared={len(shared)}", flush=True)
+    shared = [r for r in pools[t0] if row_key(r) in shared_keys]
+    print(f"[{log}] full={len(full)} usable_{t0}={len(pools[t0])} "
+          f"usable_{t1}={len(pools[t1])} shared={len(shared)}", flush=True)
     assert len(shared) >= MIN_GENDER_POOL, \
-        f"shared gender pool {len(shared)} < {MIN_GENDER_POOL}"
+        f"shared {category} pool {len(shared)} < {MIN_GENDER_POOL}"
 
-    ev_w, held_w, ev_m, held_m = split_gender_pool(shared)
-    sets = {("woman", "eval"): ev_w, ("woman", "heldout"): held_w,
-            ("man", "eval"): ev_m, ("man", "heldout"): held_m}
+    ev_0, held_0, ev_1, held_1 = split_gender_pool(shared)
+    sets = {(t0, "eval"): ev_0, (t0, "heldout"): held_0,
+            (t1, "eval"): ev_1, (t1, "heldout"): held_1}
     keys = {name: {row_key(r) for r in rows} for name, rows in sets.items()}
     names = list(sets)
     for name in names:
@@ -187,14 +231,14 @@ def main_gender():
         "seed": SEED,
         "n_eval": N_GENDER_SET,
         "n_heldout_cap": N_GENDER_SET,
-        "cache": os.path.join("data", "bbq_cache", "Gender_identity.jsonl"),  # ROOT-relative (portable)
-        "category": "Gender_identity",
+        "cache": os.path.join("data", "bbq_cache", f"{category}.jsonl"),  # ROOT-relative (portable)
+        "category": category,
         "cross_target_disjoint": True,  # 4 sets cut from ONE shuffle of the shared pool
         "n_shared_pool": len(shared),
-        "exclusions": {},  # race-experiment keys don't apply (different category)
+        "exclusions": {},  # no other experiment shares this category's cache
         "targets": {},
     }
-    for target, ev, held in (("woman", ev_w, held_w), ("man", ev_m, held_m)):
+    for target, ev, held in ((t0, ev_0, held_0), (t1, ev_1, held_1)):
         out = os.path.join(ITEMS_DIR, f"_sweep400_{target}.jsonl")
         with open(out, "w") as f:
             for r in ev:
@@ -207,12 +251,17 @@ def main_gender():
             "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
             "heldout_keys": sorted([list(k) for k in {row_key(r) for r in held}]),
         }
-        print(f"[items-gender] {target:6s} eval={len(ev)} heldout={len(held)} -> {out}",
+        print(f"[{log}] {target:6s} eval={len(ev)} heldout={len(held)} -> {out}",
               flush=True)
 
-    with open(MANIFEST_GENDER, "w") as f:
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
-    print(f"[items-gender] manifest -> {MANIFEST_GENDER}", flush=True)
+    print(f"[{log}] manifest -> {manifest_path}", flush=True)
+
+
+def main_gender():
+    """Back-compat entry point: the E3 gender build, now via main_pair_axis."""
+    main_pair_axis("Gender_identity")
 
 
 def negative_tag_of(row, target):
@@ -471,6 +520,52 @@ def _selftest():
           [row_key(r) for r in ev_w2] == [row_key(r) for r in ev_w]
           and [row_key(r) for r in held_m2] == [row_key(r) for r in held_m])
 
+    # --- E9 SES/Age: pair-axis selection + 4-way disjoint split ----------- #
+    check("PAIR_AXES registers gender + SES + Age",
+          set(PAIR_AXES) == {"Gender_identity", "SES", "Age"}
+          and PAIR_AXES["SES"]["targets"] == ("lowses", "highses")
+          and PAIR_AXES["Age"]["targets"] == ("old", "young"))
+    sfull = [
+        _mk_row(30, "q1", "ambig",    ["lowSES", "highSES", "unknown"]),  # keep both
+        _mk_row(31, "q2", "ambig",    ["highSES", "unknown", "lowSES"]),  # keep both
+        _mk_row(32, "q3", "disambig", ["lowSES", "highSES", "unknown"]),  # drop: disambig
+        _mk_row(33, "q4", "ambig",    ["lowSES", "highSES", "black"]),    # drop: no unknown
+        _mk_row(34, "q5", "ambig",    ["lowSES", "lowSES", "unknown"]),   # drop: 2 lowses
+    ]
+    kl = {row_key(r) for r in select_target_rows(sfull, "lowses", set())}
+    kh = {row_key(r) for r in select_target_rows(sfull, "highses", set())}
+    check("SES selection: lowses == highses == 2 shared rows",
+          kl == kh == {(30, "q1"), (31, "q2")})
+    afull = [
+        _mk_row(40, "q1", "ambig",    ["old", "nonOld", "unknown"]),   # keep both
+        _mk_row(41, "q2", "ambig",    ["nonOld", "unknown", "old"]),   # keep both
+        _mk_row(42, "q3", "ambig",    ["nonOld", "nonOld", "unknown"]),  # drop: 2 young, 0 old
+        _mk_row(43, "q4", "disambig", ["old", "nonOld", "unknown"]),   # drop: disambig
+    ]
+    ko = {row_key(r) for r in select_target_rows(afull, "old", set())}
+    ky = {row_key(r) for r in select_target_rows(afull, "young", set())}
+    check("Age selection: old == young == 2 shared rows (whole-tag nonold)",
+          ko == ky == {(40, "q1"), (41, "q2")})
+    check("Age: double-nonOld row unusable for both",
+          (42, "q3") not in ko and (42, "q3") not in ky)
+    # Age-sized pool (1,840 = the real shared count, tight but >= 1,600):
+    # 4-way split leaves 240 rows unused, all four sets disjoint.
+    apool = [_mk_row(3000 + i, "q", "ambig", ["old", "nonOld", "unknown"])
+             for i in range(1840)]
+    ev_o, held_o, ev_y, held_y = split_gender_pool(apool)
+    asets = {"eval_o": ev_o, "held_o": held_o, "eval_y": ev_y, "held_y": held_y}
+    akeys = {k: {row_key(r) for r in v} for k, v in asets.items()}
+    check("Age-sized pool 1840: 4 x 400 (240 unused)",
+          all(len(v) == 400 for v in asets.values()))
+    anames = list(akeys)
+    check("Age-sized split: pairwise disjoint (all 6 pairs)",
+          all(akeys[a].isdisjoint(akeys[b])
+              for i, a in enumerate(anames) for b in anames[i + 1:]))
+    ev_o2, _, _, held_y2 = split_gender_pool(apool)
+    check("pair-axis split deterministic under seed 42 (Age-sized)",
+          [row_key(r) for r in ev_o2] == [row_key(r) for r in ev_o]
+          and [row_key(r) for r in held_y2] == [row_key(r) for r in held_y])
+
     # --- E6 fblack: selection, negative composition, 400/312 split -------- #
     ffull = [
         _mk_row(20, "q1", "ambig",    ["F-Black", "M-White", "unknown"]),  # keep
@@ -507,9 +602,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--category", default="Race_ethnicity",
-                    choices=["Race_ethnicity", "Gender_identity"],
+                    choices=["Race_ethnicity", "Gender_identity", "SES", "Age"],
                     help="Race_ethnicity (default, byte-identical to the "
-                         "original behavior) or Gender_identity (E3)")
+                         "original behavior), Gender_identity (E3), or the E9 "
+                         "pair axes SES / Age")
     ap.add_argument("--target-set", default="race",
                     choices=["race", "intersectional"],
                     help="Race_ethnicity only: 'race' = the four round-2 "
@@ -518,10 +614,10 @@ if __name__ == "__main__":
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if _selftest() else 1)
-    if args.category == "Gender_identity":
+    if args.category in PAIR_AXES:
         if args.target_set != "race":
             ap.error("--target-set intersectional requires --category Race_ethnicity")
-        main_gender()
+        main_pair_axis(args.category)
     elif args.target_set == "intersectional":
         main_fblack()
     else:
