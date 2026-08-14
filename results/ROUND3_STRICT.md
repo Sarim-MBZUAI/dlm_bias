@@ -306,9 +306,10 @@ scored with the identical strict rule + 10k bootstrap (seed 0) in a standalone
 pass, same recipe as gender's jobO (footnote ² in §3). α=3 is the nearest
 integer to the four controllers' mean actuation (3.34 / 3.31 / 2.54 / 2.77);
 for old it *over*-matches the controller's 2.54, making old's effort-matched
-win conservative. Footnote shared with §5d. (Submitted as an ad-hoc jobO
-clone; no dedicated `.sbatch` is committed — the log `saeffmatch-19757` and
-the summaries' recorded α/layers are the provenance.)
+win conservative. Footnote shared with §5d. (Submitted ad hoc as a jobO
+clone; the equivalent script is archived as
+`slurm/round3_jobX_sesage_effmatch.sbatch`, and the log `saeffmatch-19757`
+plus the summaries' recorded α/layers are the provenance.)
 
 ---
 
@@ -509,12 +510,16 @@ python unqover/unqover_metric.py --results results/unqover_religion/uq_clean.jso
     --target-subject Muslim            # §5b (religion clean measurement)
 ```
 
-Raw runs: `slurm/round3_*.sbatch` (smoke `round3_smokeJ`, jobs G–W; exact
-CLIs inside; the one exception is the SES/Age effort-matched job 19757,
-an ad-hoc jobO clone with no committed `.sbatch` — see footnote ⁴ in §5c).
+Raw runs: `slurm/round3_*.sbatch` (smoke `round3_smokeJ`, jobs G–X; exact
+CLIs inside; the SES/Age effort-matched job 19757 was submitted ad hoc as a
+jobO clone and its equivalent script archived after the fact as
+`round3_jobX_sesage_effmatch.sbatch` — see footnote ⁴ in §5c).
 Inputs consumed are all committed except the gitignored
 rotation item files (`results/balanced_all/rotations/`,
-`data/bbq_items/`) and SLURM logs.
+`data/bbq_items/`), the gitignored UnQover item dumps (`data/unqover/`,
+including §5b's `religion.items.cap2000.jsonl` — rebuilt via
+`unqover/download_unqover.py` + `unqover/unqover_loader.py`, line counts
+asserted in §6), and SLURM logs.
 
 ---
 

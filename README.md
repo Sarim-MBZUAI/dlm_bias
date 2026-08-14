@@ -144,7 +144,7 @@ slurm/        SLURM batch scripts for all three experiment rounds
 data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
 results/      committed result families: balanced/, balanced_all/,
               balanced_seeds/, dream_balanced/, multirace/, unqover/,
-              unqover_v2/, base/, normal/, decode_pid/, layer_pid/,
+              unqover_v2/, unqover_religion/, base/, normal/, decode_pid/, layer_pid/,
               calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
               linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md /
               ROUND3_STRICT.md
@@ -185,7 +185,7 @@ relocate pre-existing local blobs, or reconstruct from scratch:
 
 **SLURM.** All headline runs go through `slurm/*.sbatch` (round 1:
 `job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`; round 3:
-`round3_job{G..W}` + `round3_smokeJ`). Two quirks:
+`round3_job{G..X}` + `round3_smokeJ`). Two quirks:
 they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
 remote code can be materialized on compute nodes, and the round-2 scripts
 request `--qos=normal-plus` for the longer walltimes. Do not set
