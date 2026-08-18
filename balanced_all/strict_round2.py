@@ -15,6 +15,11 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      over seeds.
   4. DREAM BALANCED  results/dream_balanced/{base,decode_pid,caa,actadd}/
      rot{0,1,2}  (Dream-v0-Instruct-7B). Delta-g vs the pooled dream base.
+     PARITY: the family ALSO reports the rest of the prior-work baseline
+     suite at the LLaDA balanced operating points (DREAM_BASELINE_CONDS:
+     meanact unit s2, linearact gaussian s1, aura inject g4, aura vanilla,
+     itic K48 a8 -- slurm/round3_jobY/jobZ; directions/gates fitted from
+     DREAM activations), soft-missing until those runs land.
 
   5. GENDER BALANCED (E3)  results/balanced_all/{woman,man}/
      {base,decode_pid,normal,caa}/rot{0,1,2} -- pooled strict gap + 10k
@@ -250,6 +255,21 @@ def family_seeds(results):
 DREAM_COND = [("base", "cond_dpid_base"), ("decode_pid", "cond_dpid_PI"),
               ("caa", "cond_caa_L14_a2"), ("actadd", "cond_actadd_a8")]
 
+# Dream baseline PARITY: the rest of the LLaDA prior-work baseline suite, at
+# the SAME balanced operating points + stems as results/balanced_all/black
+# (BASELINE_CONDS below), fitted from DREAM activations and run on the same
+# rotations by slurm/round3_jobY (fits) + round3_jobZ (runs).  (sub_dir, stem,
+# print label, result key); soft-missing until those jobs land.  Dream's caa
+# (L14 a2) / actadd (a8) doses stay the round-2 Dream-faithful mult-2 picks --
+# they are NOT duplicated at the LLaDA alpha16 (alpha is norm-relative).
+DREAM_BASELINE_CONDS = [
+    ("meanact", "cond_meanact_unit_s2", "meanact unit s2", "meanact_unit_s2"),
+    ("linearact", "cond_gaussian_s1", "linearact gauss s1", "linearact_gaussian_s1"),
+    ("aura_inject", "cond_inject_g4", "aura inject g4", "aura_inject_g4"),
+    ("aura_vanilla", "cond_vanilla", "aura vanilla", "aura_vanilla"),
+    ("itic", "cond_itic_K48_a8", "itic K48 a8", "itic_K48_a8"),
+]
+
 
 def family_dream(results):
     print("\n== FAMILY 4: DREAM BALANCED (Dream-v0-Instruct-7B, pooled 3x400) ==")
@@ -261,13 +281,26 @@ def family_dream(results):
         a = analyze(rots(tmpl + "_samples.jsonl"), want_reps=True)
         if sub == "base":
             base = a
-            print("%-12s %s" % (sub, fmt(a)))
+            print("%-18s %s" % (sub, fmt(a)))
         else:
             dg = a["gap"] - base["gap"]
             ci = dgap_ci(a["_reps"], base["_reps"])
             a["dgap_vs_base"], a["dgap_ci95"] = dg, ci
-            print("%-12s %s" % (sub, fmt(a, dg, ci)))
+            print("%-18s %s" % (sub, fmt(a, dg, ci)))
         fam[sub] = a
+    # Parity baseline suite (jobY/jobZ), soft-missing pre-run.
+    for sub, stem, label, ckey in DREAM_BASELINE_CONDS:
+        paths = rots("results/dream_balanced/%s/rot%%d/%s_samples.jsonl"
+                     % (sub, stem))
+        a = analyze_soft(paths, want_reps=True)
+        if a is None:
+            print("%-18s (MISSING -- not run yet)" % label)
+            continue
+        dg = a["gap"] - base["gap"]
+        ci = dgap_ci(a["_reps"], base["_reps"])
+        a["dgap_vs_base"], a["dgap_ci95"] = dg, ci
+        print("%-18s %s" % (label, fmt(a, dg, ci)))
+        fam[ckey] = a
     for a in fam.values():
         a.pop("_reps", None)
     results["dream"] = fam
