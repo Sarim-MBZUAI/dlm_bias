@@ -32,7 +32,12 @@ bootstrap replicates.
 - **Dream balanced** — all 12 + 12 files under
   `results/dream_balanced/{base,decode_pid,caa,actadd}/rot{0,1,2}/`
   (Dream-v0-Instruct-7B; decode-PI amax 1.0, caa L14 α2, actadd α8), 400
-  lines each, counts sum to 400.
+  lines each, counts sum to 400. *2026-08-18 parity addendum:* +15 summary
+  + 15 samples files under
+  `results/dream_balanced/{meanact,linearact,aura_inject,aura_vanilla,itic}/rot{0,1,2}/`
+  (jobs 20576 `round3_jobY` fits / 20577 `round3_jobZ` runs, both exit 0),
+  400 lines each, counts sum to 400; both `.out` logs end in their DONE
+  lines, no tracebacks in either `.err`.
 - **UNQOVER v2** — `results/unqover_v2/uq_{clean,decode_PI,layer_PI_a2,normal_a4}.jsonl`
   with 2000 / 256 / 256 / 256 rows (steered runs capped), + 4 config JSONs +
   3 in-job metric txts. Recomputed `no_answer` from the jsonls matches every
@@ -160,7 +165,13 @@ debiased = position- and negation-debiased C).
 ## 4. Dream balanced (Dream-v0-Instruct-7B, pooled 3×400, strict)
 
 decode-PI at amax 1.0 (Dream's coherence ceiling from the dose study);
-CAA L14 α2; ActAdd α8. Δg vs the pooled Dream base.
+CAA L14 α2; ActAdd α8. Δg vs the pooled Dream base. *2026-08-18 parity
+addendum (rows below the rule):* the remaining five prior-work baselines,
+refit from **Dream** activations (job 20576, `slurm/round3_jobY_dream_fits.sbatch`)
+and run at the LLaDA balanced operating points and stems (job 20577,
+`slurm/round3_jobZ_dream_baselines.sbatch`) — the Dream family is now at
+full parity with the LLaDA baseline suite. ⚠ = strict-invalid > 0.15
+(coherence flag, same convention as §1).
 
 | condition | target | compar | abstain | invalid | gap | 95% CI | Δg vs base [CI] | gap@A | gap@BC |
 |---|---|---|---|---|---|---|---|---|---|
@@ -168,6 +179,11 @@ CAA L14 α2; ActAdd α8. Δg vs the pooled Dream base.
 | decode-PI (amax1) | 0.246 | 0.171 | 0.583 | 0.000 | **+0.075** | [+0.038, +0.110] | **+0.042** [+0.007, +0.076] | +0.345 | −0.060 |
 | actadd α8 | 0.236 | 0.169 | 0.595 | 0.000 | +0.067 | [+0.031, +0.102] | +0.033 [+0.008, +0.058] | +0.235 | −0.018 |
 | caa L14 α2 | 0.236 | 0.180 | 0.584 | 0.000 | +0.056 | [+0.019, +0.092] | +0.022 [+0.008, +0.037] | +0.193 | −0.013 |
+| linearact gaussian s1 | 0.495 | 0.445 | 0.046 | 0.014 | +0.050 | [−0.004, +0.104] | +0.017 [−0.042, +0.076] (ns) | +0.815 | −0.333 |
+| itic K48 α8 | 0.477 | 0.452 | 0.072 | 0.000 | +0.025 | [−0.031, +0.079] | −0.008 [−0.066, +0.049] (ns) | −0.328 | +0.201 |
+| aura-inject g4 ⚠ | 0.176 | 0.167 | 0.070 | **0.588** | +0.009 | [−0.023, +0.042] | −0.024 [−0.070, +0.022] (ns) | −0.198 | +0.113 |
+| aura vanilla | 0.233 | 0.226 | 0.541 | 0.000 | +0.007 | [−0.031, +0.046] | −0.026 [−0.058, +0.006] (ns) | +0.345 | −0.161 |
+| meanact unit s2 ⚠ | 0.072 | 0.072 | 0.088 | **0.768** | +0.000 | [−0.021, +0.022] | −0.033 [−0.074, +0.008] (ns) | +0.215 | −0.107 |
 
 **Key-question answers.**
 
@@ -177,7 +193,7 @@ CAA L14 α2; ActAdd α8. Δg vs the pooled Dream base.
   its coherent dose decode-PI's *lead over the baselines* is not
   statistically resolved, unlike LLaDA's 3.6× separation. The absolute
   effect is ~4× smaller than LLaDA's 0.167.
-- **At what invalid cost? None.** All four Dream conditions have 0.000
+- **At what invalid cost? None.** All four round-2 Dream conditions have 0.000
   strict-invalid (Dream reliably emits a leading letter). The limiting
   factor is instead the actuation ceiling: at amax 1.0 the controller is
   saturated 97% of the time (below), so it behaves almost like an open-loop
@@ -185,6 +201,34 @@ CAA L14 α2; ActAdd α8. Δg vs the pooled Dream base.
 - **Dream's balanced base gap vs LLaDA's 0.018:** +0.033 [−0.003, +0.069] —
   slightly larger but CI includes 0; like LLaDA, the position-A term
   dominates the base residual (gap@A +0.155 vs gap@BC −0.028).
+
+**Reading (parity addendum, 2026-08-18).** With the suite complete, the
+baseline picture on Dream is:
+
+- **Two of the five ported baselines collapse on Dream** at the LLaDA
+  operating points: meanact unit s2 (76.8% strict-invalid) and aura-inject
+  g4 (58.8%) — their (null) Δg rows quantify coherence destruction, not
+  steering. Both were coherent in the LLaDA gender runs (≤ 0.1% invalid),
+  so this is a model-specific fragility of the fixed dose, the same
+  phenomenon as asian/latino decode-PI at amax6 in §1.
+- **The three functioning comparators are all null.** linearact gaussian s1
+  (1.4% invalid), itic K48 α8 and aura vanilla (0.0%) have Δg of +0.017
+  [−0.042, +0.076], −0.008 [−0.066, +0.049] and −0.026 [−0.058, +0.006] —
+  none moves the Dream gap. linearact and itic do change *behavior*
+  drastically — abstain drops from base's 0.587 to 0.046 / 0.072, inflating
+  target and comparator nearly equally — a large undirected distortion with
+  no directional aim. Notably ITI-C, the one baseline that beat decode-PI
+  on LLaDA gender (round 3), is ns here — more method×axis(×model)
+  dependence.
+- **Does "feedback beats every open-loop baseline" replicate on Dream?
+  Directionally, yes — now against the full suite.** decode-PI's Δg +0.042
+  [+0.007, +0.076] is the largest of all eight steered conditions and one of
+  only three whose CI excludes 0 (with actadd +0.033 and caa +0.022); all
+  five newly added prior-work baselines are ns or collapsed. The round-2
+  caveats stand: decode-PI's Δg CI overlaps actadd/caa, and at amax 1.0 the
+  controller is 97% saturated, so its *resolved lead* over the best open
+  loop remains unproven on Dream — the parity suite widens the set of
+  baselines it matches-or-beats, it does not tighten the margin.
 
 ## 5. Controller telemetry (decode-PI runs, avg of 3 rotations)
 
@@ -245,6 +289,8 @@ Inputs consumed (all committed): the family 1/2/4 `cond_*.json` +
 + three `metric_*.txt` under `results/unqover_v2/`, and (for the unrotated
 comparison) the round-1 `results/multirace/<T>/...` samples. Raw runs were
 produced by the six round-2 sbatch jobs (see `logs/slurm/*-1715{5..9},17160`
-locally and the `slurm/` scripts for exact CLIs). Strict rule mirrors
+locally and the `slurm/` scripts for exact CLIs); the family-4 parity rows
+by jobs 20576/20577 (`slurm/round3_job{Y,Z}_dream_*.sbatch`,
+`logs/slurm/{dfits-20576,dbal-20577}`). Strict rule mirrors
 `DLM_Bias_overleaf/tools/strict_reparse.py`; bootstrap: 10,000 resamples,
 seed 0, percentile 95% CI.

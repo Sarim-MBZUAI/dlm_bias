@@ -76,7 +76,7 @@ per-method strengths behind `dream/RESULTS.md` — use the per-method CLIs (or
 Fitted artifacts land in `dream/baselines/cache/` (gitignored); eval output in
 `results/dream/<method>/` (gitignored).
 
-### Position-balanced parity runs (SLURM)
+### Position-balanced parity runs (SLURM) — COMPLETE
 The balanced Dream family (`results/dream_balanced/`, rotations
 `results/balanced/_sweep400_rot{0,1,2}.jsonl`) got `caa` (L14 a2) and `actadd`
 (a8) via `slurm/round2_jobF_dream.sbatch`. The remaining five prior-work
@@ -90,6 +90,15 @@ sbatch --dependency=afterok:<jobY_id> slurm/round3_jobZ_dream_baselines.sbatch
 All fits are rebuilt from **Dream** activations (never reused from the LLaDA
 caches); `balanced_all/strict_round2.py`'s Dream family
 (`DREAM_BASELINE_CONDS`) picks the results up soft-missing.
+
+**Status (2026-08-18): landed.** jobY = 20576 (dfits), jobZ = 20577 (dbal),
+both exit 0; all 15 runs (5 conditions × rot0–2, 400 samples each) committed
+under `results/dream_balanced/{meanact,linearact,aura_inject,aura_vanilla,itic}/`.
+Full table + reading in `results/ROUND2_STRICT.md` §4 (parity addendum).
+Headline: meanact-unit-s2 and aura-inject-g4 **collapse** on Dream (76.8% /
+58.8% strict-invalid at the LLaDA doses); linearact / aura-vanilla / itic are
+coherent but ns on Δg — decode-PI keeps the largest (and a significant) Δg
+on Dream against the now-complete suite.
 
 ## Deviations from the LLaDA baselines (honest)
 - **Sampler**: Dream's native `diffusion_generate` (entropy alg), not the copied
