@@ -76,6 +76,21 @@ per-method strengths behind `dream/RESULTS.md` — use the per-method CLIs (or
 Fitted artifacts land in `dream/baselines/cache/` (gitignored); eval output in
 `results/dream/<method>/` (gitignored).
 
+### Position-balanced parity runs (SLURM)
+The balanced Dream family (`results/dream_balanced/`, rotations
+`results/balanced/_sweep400_rot{0,1,2}.jsonl`) got `caa` (L14 a2) and `actadd`
+(a8) via `slurm/round2_jobF_dream.sbatch`. The remaining five prior-work
+conditions run at the LLaDA balanced operating points and stems
+(`cond_meanact_unit_s2`, `cond_gaussian_s1`, `cond_inject_g4`, `cond_vanilla`,
+`cond_itic_K48_a8`) via:
+```
+sbatch slurm/round3_jobY_dream_fits.sbatch         # Dream calib + method fits
+sbatch --dependency=afterok:<jobY_id> slurm/round3_jobZ_dream_baselines.sbatch
+```
+All fits are rebuilt from **Dream** activations (never reused from the LLaDA
+caches); `balanced_all/strict_round2.py`'s Dream family
+(`DREAM_BASELINE_CONDS`) picks the results up soft-missing.
+
 ## Deviations from the LLaDA baselines (honest)
 - **Sampler**: Dream's native `diffusion_generate` (entropy alg), not the copied
   LLaDA block-diffusion `generate`.  Baselines are open-loop edits, so the sampler
