@@ -127,6 +127,10 @@ steering/     core method on LLaDA: build_arrows.py (offline direction),
               pid_steer.py (layer axis), denoise_pid.py (decode axis, ours)
 dream/        full port to Dream-v0-Instruct-7B: build_arrows.py,
               denoise_pid.py, pid_steer.py + baselines/ (caa, actadd, ...)
+llada_moe/    full port to LLaDA-MoE-7B-A1B-Instruct (MoE masked diffusion):
+              common_lladamoe.py, build_arrows.py, denoise_pid.py,
+              pid_steer.py + baselines/ (caa, actadd, meanact, linearact,
+              aura, itic, calib, directions, run_all)
 multirace/    steering-target generality (arab/asian/latino/white):
               targets.py registry, make_items.py, per-target arrows + runners
 eval/         BBQ harness (bbq_eval.py auto-downloads/caches BBQ,
@@ -139,11 +143,13 @@ balanced_all/ position-balanced eval for EVERY condition/target +
 baselines/    faithful prior methods on the same harness: caa, actadd,
               meanact, linearact, aura, itic (+ calib/directions infra)
 unqover/      UnQover benchmark: download / loader / eval / metric + adapters
-slurm/        SLURM batch scripts for all three experiment rounds
-              (job*.sbatch, round2_job*.sbatch, round3_*.sbatch)
+slurm/        SLURM batch scripts for all four experiment rounds
+              (job*.sbatch, round2_job*.sbatch, round3_*.sbatch,
+              round4_job*.sbatch)
 data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
 results/      committed result families: balanced/, balanced_all/,
-              balanced_seeds/, dream_balanced/, multirace/, unqover/,
+              balanced_seeds/, dream_balanced/, lladamoe_balanced/
+              (after round 4 lands), multirace/, unqover/,
               unqover_v2/, unqover_religion/, base/, normal/, decode_pid/, layer_pid/,
               calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
               linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md /
@@ -155,7 +161,8 @@ chat.py / chat_llada.py   terminal chat REPLs (Dream / LLaDA)
 ```
 
 Deep-dive readmes: [`steering/README.md`](steering/README.md),
-[`dream/README.md`](dream/README.md), [`multirace/README.md`](multirace/README.md),
+[`dream/README.md`](dream/README.md), [`llada_moe/README.md`](llada_moe/README.md),
+[`multirace/README.md`](multirace/README.md),
 [`balanced_all/README.md`](balanced_all/README.md), [`unqover/README.md`](unqover/README.md),
 [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md).
 
@@ -170,9 +177,9 @@ to **4.46.2** (LLaDA's remote code breaks on 4.47+/5.x). Torch must match
 your GPU: on Blackwell-class GPUs use **torch ≥ 2.13 with a cu13x wheel**
 (the reference env is torch 2.13.0+cu130, Python 3.11).
 
-**Model weights.** `LLaDA-8B-Instruct/` and `Dream-v0-Instruct-7B/` are
-expected at the repo root (here they are symlinks to local HF snapshots);
-point the symlinks at your own downloads.
+**Model weights.** `LLaDA-8B-Instruct/`, `Dream-v0-Instruct-7B/` and
+`LLaDA-MoE-7B-A1B-Instruct/` are expected at the repo root (here they are
+symlinks to local HF snapshots); point the symlinks at your own downloads.
 
 **Data.** `data/` is gitignored. Either run `./migrate_local_data.sh` to
 relocate pre-existing local blobs, or reconstruct from scratch:
@@ -186,7 +193,9 @@ relocate pre-existing local blobs, or reconstruct from scratch:
 **SLURM.** All headline runs go through `slurm/*.sbatch` (round 1:
 `job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`; round 3:
 `round3_job{G..Z}` + `round3_smokeJ` — jobY/jobZ are the Dream baseline-parity
-fits + balanced runs). Two quirks:
+fits + balanced runs; round 4: `round4_job{AA..AD}` — the LLaDA-MoE port:
+jobAA smoke gate, jobAB arrows + dose sweep, jobAC baseline fits,
+jobAD 9-condition balanced runs). Two quirks:
 they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
 remote code can be materialized on compute nodes, and the round-2 scripts
 request `--qos=normal-plus` for the longer walltimes. Do not set
