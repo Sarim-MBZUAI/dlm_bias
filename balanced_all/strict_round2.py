@@ -56,6 +56,14 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      {base,decode_pid,normal,caa}/rot{0,1,2} -- identical machinery. The
      'young' target tag-matches BBQ's 'nonOld' tag (multirace/targets.py).
 
+  9. LLADA-MOE BALANCED  results/lladamoe_balanced/{base,decode_pid,caa,
+     actadd,meanact,linearact,aura_inject,aura_vanilla,itic}/rot{0,1,2}
+     (LLaDA-MoE-7B-A1B-Instruct; llada_moe port, round4_jobAB..jobAD).
+     Delta-g vs the pooled lladamoe base.  FULLY soft: the family prints
+     NOTHING while results/lladamoe_balanced does not exist (output stays
+     byte-identical pre-round-4); dosed stems (decode-PI amax, caa/actadd
+     alpha) are discovered from disk like normal_stems.
+
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
 
@@ -480,6 +488,85 @@ def family_age(results):
 
 
 # ---------------------------------------------------------------------------
+# Family 9: LLaDA-MoE balanced (results/lladamoe_balanced; llada_moe port,
+# slurm/round4_jobAB..jobAD).  FULLY soft: when the directory does not exist
+# yet (pre-round-4 trees) the family prints NOTHING and adds no result key, so
+# the script's output stays byte-identical.  Once round4_jobAD lands, the 9
+# conditions (base, decode-PI ours, caa, actadd, meanact, linearact,
+# aura-inject, aura-vanilla, itic) are discovered from disk -- glob stems
+# present in all 3 rotations, like normal_stems -- because the caa/actadd/
+# decode-PI doses are fixed at submit time from the round4_jobAB sweep
+# ($MOE_AMAX / $MOE_CAA_ALPHA / $MOE_ACTADD_ALPHA), while the fixed-point
+# suite stems replicate the LLaDA balanced operating points exactly
+# (cond_meanact_unit_s2 / cond_gaussian_s1 / cond_inject_g4 / cond_vanilla /
+# cond_itic_K48_a8).  Delta-g is vs the pooled lladamoe base.
+# ---------------------------------------------------------------------------
+LLADAMOE_DIR = "results/lladamoe_balanced"
+LLADAMOE_SUBS = ["decode_pid", "caa", "actadd", "meanact", "linearact",
+                 "aura_inject", "aura_vanilla", "itic"]
+
+
+def lladamoe_stems(sub):
+    """Condition stems present in ALL 3 rotations of one lladamoe sub-dir
+    (dose fixed at submit time; discovered from disk, not hardcoded)."""
+    stems = None
+    for r in range(3):
+        pat = os.path.join(REPO, "%s/%s/rot%d/cond_*_samples.jsonl"
+                           % (LLADAMOE_DIR, sub, r))
+        got = {os.path.basename(p)[:-len("_samples.jsonl")]
+               for p in glob.glob(pat)}
+        stems = got if stems is None else (stems & got)
+    return sorted(stems or [])
+
+
+def family_lladamoe(results):
+    if not os.path.isdir(os.path.join(REPO, LLADAMOE_DIR)):
+        return   # pre-run trees: print nothing, keep output byte-identical
+    print("\n== FAMILY 9: LLADA-MOE BALANCED (LLaDA-MoE-7B-A1B-Instruct, "
+          "pooled 3x400) ==")
+    fam = {}
+    base = analyze_soft(
+        rots(LLADAMOE_DIR + "/base/rot%d/cond_dpid_base_samples.jsonl"),
+        want_reps=True)
+    if base is None:
+        print("%-18s (MISSING -- not run yet)" % "base")
+    else:
+        print("%-18s %s" % ("base", fmt(base)))
+        fam["base"] = base
+    for sub in LLADAMOE_SUBS:
+        stems = lladamoe_stems(sub)
+        if not stems:
+            print("%-18s (MISSING -- not run yet)" % sub)
+            continue
+        for stem in stems:
+            a = analyze_soft(rots("%s/%s/rot%%d/%s_samples.jsonl"
+                                  % (LLADAMOE_DIR, sub, stem)), want_reps=True)
+            if a is None:
+                continue
+            label = stem.replace("cond_", "")
+            if base is not None:
+                dg = a["gap"] - base["gap"]
+                ci = dgap_ci(a["_reps"], base["_reps"])
+                a["dgap_vs_base"], a["dgap_ci95"] = dg, ci
+                print("%-18s %s" % (label, fmt(a, dg, ci)))
+            else:
+                print("%-18s %s | dg=N/A (base missing)" % (label, fmt(a)))
+            fam[label] = a
+    for a in fam.values():
+        a.pop("_reps", None)
+    # telemetry: decode-PI controller effort (only if the runs exist)
+    for stem in lladamoe_stems("decode_pid"):
+        tele_paths = rots("%s/decode_pid/rot%%d/%s.json" % (LLADAMOE_DIR, stem))
+        if all(os.path.exists(p) for p in tele_paths):
+            te = summary_avg(tele_paths, ["mean_alpha", "mean_sat_frac"])
+            fam["%s_telemetry" % stem.replace("cond_", "")] = te
+            print("   telemetry %-11s mean_alpha=%.2f  sat_frac=%.2f"
+                  % (stem.replace("cond_", ""), te["mean_alpha"],
+                     te["mean_sat_frac"]))
+    results["lladamoe"] = fam
+
+
+# ---------------------------------------------------------------------------
 # Telemetry (decode-PI controller effort, averaged over rotations)
 # ---------------------------------------------------------------------------
 def telemetry(results):
@@ -573,6 +660,7 @@ def main():
     family_fblack(results)
     family_ses(results)
     family_age(results)
+    family_lladamoe(results)
     telemetry(results)
     family_unqover(results)
 

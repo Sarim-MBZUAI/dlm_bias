@@ -1,10 +1,12 @@
 Dream-v0-Base-7B/
 Dream-v0-Instruct-7B/
 LLaDA-8B-Instruct/
+LLaDA-MoE-7B-A1B-Instruct/
 # also match symlinked model dirs (trailing-slash patterns skip symlinks)
 /Dream-v0-Base-7B
 /Dream-v0-Instruct-7B
 /LLaDA-8B-Instruct
+/LLaDA-MoE-7B-A1B-Instruct
 .env
 __pycache__/
 *.pyc
@@ -39,6 +41,13 @@ dream/direction_examples.jsonl
 dream/baselines/cache/
 results/dream/
 logs/
+
+# LLaDA-MoE port: built artifacts stay local (large tensors, eval caches)
+llada_moe/arrows.pt
+llada_moe/cache/
+llada_moe/direction_examples.jsonl
+llada_moe/baselines/cache/
+results/lladamoe/
 
 # multirace: built artifacts stay local (large tensors, contrast dumps)
 multirace/arrows_*.pt
