@@ -158,3 +158,81 @@ Any strict-table ingestion of `results/lladamoe/*` must not trust
 rule 2 counts `blackblack…`/`mathbf…` as answers. A "clean single letter"
 check (e.g. `^\s*[ABCabc][.)]?\s*$`) or a rule-2-usage audit per condition
 (as above) separates real answers from force-parsed degeneration.
+
+## PI calibration round (2026-08-21) — trajectory diagnosis + pre-registered grid
+
+Every baseline got a calibration sweep; this is decode-PI's. Diagnosis first
+(from `decode_pid/cond_dpid_PI_L8_amax2_samples.jsonl`, 400 items, per-item
+`alpha_traj`/`pblack_traj`), grid + predictions written **before** running
+`slurm/round4_jobAB3_lladamoe_pical.sbatch` so the calibration is auditable.
+
+### Why sat = 0.72: (b) plateau at the ceiling, on a graded (not bimodal) continuum
+
+- **The answer slot commits at step ~32/64.** Per-item, p_black locks (all
+  subsequent |Δp| < 0.005) at median step 32 (pct10/90 = 32/40); after the
+  commit p is just a readout of the committed token (0.02 if it lost, ~0.26
+  if it won), so the *controllable window is only the first half* of the run.
+  Post-lock, the error is frozen high on lost items, so α stays pinned —
+  roughly half of the reported sat_frac 0.72 is this post-decision tail.
+- **(b), not (a):** on the 210 failed items (pred≠black) α is pinned
+  essentially the whole pre-lock window (pre-lock mean α 1.88; failure
+  sat_frac 0.84) yet p plateaus: pre-lock p_max mean 0.46 (pct10/50/90 =
+  0.27/0.44/0.70), and of the 162 pinned failures only 36 were still rising
+  (slope > +0.005/step) when the slot locked — 126 were flat or falling.
+  More *time* at α = 2 cannot help; the ceiling is binding.
+- **Not (c):** pre-lock p_max across all 400 items is a broad unimodal
+  continuum (hist over [0,1]: 0,5,27,49,79,64,56,53,35,32). 60% of items ever
+  reach p ≥ 0.5, 17% reach 0.8, only 8% touch the 0.9 setpoint. Graded
+  difficulty under one shared ceiling, not two populations.
+- **The controller itself is healthy** (so the gains axis is dropped):
+  per-item corr(p(t), α(t+1)) = −0.58 mean; the 17 items starting at
+  p(0) ≥ 0.85 get mean α 0.78 vs 1.96 for the 187 items with p(0) ≤ 0.30;
+  items that hit the setpoint show α backing off 2.0 → ~0.7. mean_alpha
+  spans 0.01–2.00 across items (success 1.66 ± 0.40, failure 1.94 ± 0.10) —
+  the dose is item-adaptive exactly as designed, it just runs out of range.
+- Successes reach pre-lock p_max 0.71 at mean α 1.48 — the channel responds;
+  the failures' plateau at α = 2 leaves open whether the fix is **more dose at
+  L8**, a **better site**, or **distributed actuation** — which is the grid.
+
+### Site evidence (why L10/L12 candidates, why L6 is dropped)
+
+ITI-c probe separability of the Black direction (`baselines/cache/
+itic_probes.pt`, val_acc mean over 16 heads) *rises* with depth: L6 .609,
+L7 .673, **L8 .675**, L9 .730, **L10 .751**, L11 .806, **L12 .822** (L13-15
+≥ .91 but sit under the norm blow-up ||h|| 21→150 — actuation there is the
+degenerate-readout regime from the all-16 forensics). L8 was inherited from
+the LLaDA port, never chosen. L6 is anti-motivated twice (probe .609 < L8;
+unit α = 2 is ~148% of pooled ||h|| = 1.35 → predicted collapse) — dropped.
+Relative dose of unit α = 2 by site: L8 83% of ||h||, L10 43%, L12 17%.
+
+### The grid (jobAB3 "moeab3", 7 runs × ~1.3–1.6 h measured ≈ 9.5–11.2 h < 12 h; priority-ordered)
+
+| # | tag | run | why (one line) | prediction (pre-registered) |
+|---|-----|-----|----------------|------------------------------|
+| 1 | dpid_PI_L8_amax3 | `--layers 8 --amax 3` | lift the binding ceiling at the incumbent site; feedback spends 3 only pre-lock on hard items | gap +0.24–0.32, inv ≈ 0 (const-3 untested but const-4 broke; transient 3 should hold) |
+| 2 | dpid_PI_L10_amax4 | `--layers 10 --amax 4` | relative-dose parity (4/4.61 = 87% ≈ L8a2's 83%) at a better-informed site (.751 vs .675) | best single-site cell if site quality dominates: gap +0.25–0.38, inv < 0.03 |
+| 3 | dpid_PI_L8_amax4 | `--layers 8 --amax 4` | dose-response upper end; CAA broke at CONSTANT 4 — tests whether the L8 wall is dose or duration | gap +0.20–0.35 with inv 0–0.05 if the wall is duration; gap collapse toward 0 with inv > 0.05 if it is dose |
+| 4 | dpid_PI_L789_amax1 | `--layers 7,8,9 --amax 1` | distribute budget 3 across three mid sites at sub-collapse per-site dose (CAA a1 was clean) | ≈ L8-amax3 aim with lower break risk: gap +0.20–0.30, inv ≈ 0 |
+| 5 | dpid_PI_L10_amax2 | `--layers 10 --amax 2` | same nominal budget as incumbent best at the better site (43% rel dose); separates site from dose | gap +0.10–0.25, inv 0 (likely underdosed relative to L8a2) |
+| 6 | dpid_PI_L9to12_amax1 | `--layers 9-12 --amax 1` | budget 4 across the highest-signal band (.730–.822), per-site rel dose ≤ 31% | gap +0.20–0.35, inv ≈ 0; wins overall if distributed actuation beats any single site |
+| 7 | dpid_PI_L12_amax4 | `--layers 12 --amax 4` | most separable plausible site (.822) at 34% rel dose (a2 = 17% would be a predictable underdose — skipped) | gap +0.10–0.25, inv 0; tests info-quality vs dose when dose is thin |
+
+Dropped axes: **gains** (no sluggishness — α pins immediately; sat comes from
+the ceiling, not slow ramp), **L6** (see above), **amax > 4** (CAA const-4
+already breaks; if transient 4 also breaks, 6 certainly does).
+
+Falsifiable headline prediction: at least one cell beats CAA a2's +0.237 with
+inv ≤ 0.01 — the method's thesis is that feedback exploits doses constant
+injection cannot. If **no** cell does, decode-PI's honest operating point on
+this model stays `--layers 8 --amax 2` (gap +0.195) and the paper reports
+closed-loop as *matching but not beating* tuned CAA here.
+
+Known risk to watch in the readout: post-lock α stays pinned on lost items
+(frozen error), so amax-4 cells inject dose 4 into the *second half* of
+generation on ~half the items — if invalidity appears, audit whether it is
+post-answer garbage (clean-letter check, §Caveat above) rather than a broken
+answer slot.
+
+Submit: `sbatch slurm/round4_jobAB3_lladamoe_pical.sbatch` (idempotent per
+run; new stems, no collision with jobAB/jobAB2/jobAD outputs; does not touch
+`results/lladamoe_balanced`).
