@@ -3,10 +3,10 @@
 Port of the complete pipeline (arrows, decode-PID ours, layer-PID/normal
 open loop, and the 6-method prior-work baseline suite) to
 **inclusionAI/LLaDA-MoE-7B-A1B-Instruct**, exactly parallel to the Dream port
-(`dream/`).  Target: the same 9-row balanced Black table
-(base, decode-PI ours, CAA, ActAdd, Mean-AcT, Linear-AcT, AurA-inject,
-AurA-vanilla, ITI-C) on `results/balanced/_sweep400_rot{0,1,2}.jsonl`, scored
-by `balanced_all/strict_round2.py` (family 9, soft-missing).
+(`dream/`).  Target: the 10-row balanced Black table
+(base, decode-PI ours, normal open-loop, CAA, ActAdd, Mean-AcT, Linear-AcT,
+AurA-inject, AurA-vanilla, ITI-C) on `results/balanced/_sweep400_rot{0,1,2}.jsonl`,
+scored by `balanced_all/strict_round2.py` (family 9, soft-missing).
 
 ## Model facts (verified: local snapshot config + modeling code, CPU meta-load
 ## under the repo's pinned transformers 4.46.2)
@@ -83,18 +83,39 @@ points are `--smoke` / `--fit` / `--run` / `--cond`.
 sbatch slurm/round4_jobAA_lladamoe_smoke.sbatch     # debug partition gate
 #   GATE: 20-item clean unparseable_rate must be low (~<0.2) before continuing
 A=$(sbatch --parsable slurm/round4_jobAB_lladamoe_arrows.sbatch)
+sbatch --dependency=afterok:$A slurm/round4_jobAB2_lladamoe_minisweep.sbatch
 B=$(sbatch --parsable --dependency=afterok:$A slurm/round4_jobAC_lladamoe_fits.sbatch)
-# read the jobAB dose sweep, then:
-sbatch --dependency=afterok:$B \
-  --export=ALL,MOE_AMAX=1.0,MOE_CAA_ALPHA=2,MOE_ACTADD_ALPHA=8 \
-  slurm/round4_jobAD_lladamoe_balanced.sbatch
+# read the jobAB + jobAB2 sweeps (results/lladamoe/SWEEP_NOTES.md), then:
+sbatch --dependency=afterok:$B slurm/round4_jobAD_lladamoe_balanced.sbatch
+#   (defaults ARE the calibrated operating points below; env overrides:
+#    MOE_PI_LAYERS / MOE_AMAX / MOE_NORMAL_ALPHA / MOE_CAA_ALPHA / MOE_ACTADD_ALPHA)
 ```
 
-Outputs: dose sweep under `results/lladamoe/`, the 9×3 balanced table under
+Outputs: dose sweep under `results/lladamoe/`, the 10×3 balanced table under
 `results/lladamoe_balanced/<cond>/rot{r}/`, analyzed by
 `python balanced_all/strict_round2.py` (family 9 activates automatically once
 the directory exists; stems, incl. the submit-time doses, are discovered from
 disk).
+
+## Operating points (2026-08-21)
+
+Calibrated on the unrotated 400-item sweeps — jobAB (jobs 20720/20915) +
+jobAB2 mini-sweep (job 20944); full forensics in
+`results/lladamoe/SWEEP_NOTES.md`:
+
+| condition | operating point | evidence (gap / invalid) |
+|---|---|---|
+| decode-PI (ours) | `--layers 8 --amax 2` | +0.195 / 0.000, mean_alpha 1.81, sat 0.72 |
+| normal (open loop) | L8, alpha 2 | geometry+effort match: round(1.81) = 2, round-3 Age convention |
+| CAA | L8, alpha 2 | +0.237 / 0.000 |
+| ActAdd | L8, alpha 2 | +0.137 / 0.000 (jobAB's 4/8/16 all collapsed) |
+| fixed-point suite | LLaDA published points | Dream parity convention; collapse reported honestly with † |
+
+Not chosen: all-16 unit broadcast (collapsed at every dose — the apparent
+coherence at amax 0.5/4 is a lenient-parser artifact, see SWEEP_NOTES) and
+`--layer-scale raw` all-16 at amax 2 (+0.065, weaker than L8).  The strict
+table is immune to the parser artifact: family 9 re-parses every sample with
+`strict_pool.strict_letter`.
 
 ## Compatibility
 

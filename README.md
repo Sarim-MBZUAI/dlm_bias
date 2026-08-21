@@ -194,8 +194,9 @@ relocate pre-existing local blobs, or reconstruct from scratch:
 `job0`–`job4`; round 2: `round2_job{A..F}` + `round2_smoke`; round 3:
 `round3_job{G..Z}` + `round3_smokeJ` — jobY/jobZ are the Dream baseline-parity
 fits + balanced runs; round 4: `round4_job{AA..AD}` — the LLaDA-MoE port:
-jobAA smoke gate, jobAB arrows + dose sweep, jobAC baseline fits,
-jobAD 9-condition balanced runs). Two quirks:
+jobAA smoke gate, jobAB arrows + dose sweep, jobAB2 single-layer/raw-scale
+mini-sweep, jobAC baseline fits, jobAD 10-condition balanced runs at the
+calibrated operating points from `results/lladamoe/SWEEP_NOTES.md`). Two quirks:
 they export `HF_MODULES_CACHE` to a node-local writable dir so LLaDA/Dream
 remote code can be materialized on compute nodes, and the round-2 scripts
 request `--qos=normal-plus` for the longer walltimes. Do not set
