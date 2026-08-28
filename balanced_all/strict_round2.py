@@ -56,13 +56,20 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
      {base,decode_pid,normal,caa}/rot{0,1,2} -- identical machinery. The
      'young' target tag-matches BBQ's 'nonOld' tag (multirace/targets.py).
 
-  9. LLADA-MOE BALANCED  results/lladamoe_balanced/{base,decode_pid,caa,
-     actadd,meanact,linearact,aura_inject,aura_vanilla,itic}/rot{0,1,2}
-     (LLaDA-MoE-7B-A1B-Instruct; llada_moe port, round4_jobAB..jobAD).
+  9. LLADA-MOE BALANCED  results/lladamoe_balanced/{base,decode_pid,normal,
+     caa,actadd,meanact,linearact,aura_inject,aura_vanilla,itic}/rot{0,1,2}
+     (LLaDA-MoE-7B-A1B-Instruct; llada_moe port, round4_jobAB..jobAD;
+     normal = the geometry-matched open-loop control, L8 alpha 2).
      Delta-g vs the pooled lladamoe base.  FULLY soft: the family prints
      NOTHING while results/lladamoe_balanced does not exist (output stays
-     byte-identical pre-round-4); dosed stems (decode-PI amax, caa/actadd
-     alpha) are discovered from disk like normal_stems.
+     byte-identical pre-round-4); dosed stems (decode-PI amax, normal/caa/
+     actadd alpha) are discovered from disk like normal_stems.
+     DISCLOSED SECONDARY (round4_jobAD2): decode_pid_L9to12 (PI --layers 9-12
+     --amax 1, promoted by the pre-registered jobAB3 grid -- see
+     results/lladamoe/SWEEP_NOTES.md "Post-grid decision") + normal_L9to12
+     (its geometry/effort-matched open loop, alpha 1 at blocks 9-12).  Both
+     sub-dirs are SILENTLY skipped while absent, so pre-jobAD2 output stays
+     byte-identical.
 
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
@@ -491,19 +498,34 @@ def family_age(results):
 # Family 9: LLaDA-MoE balanced (results/lladamoe_balanced; llada_moe port,
 # slurm/round4_jobAB..jobAD).  FULLY soft: when the directory does not exist
 # yet (pre-round-4 trees) the family prints NOTHING and adds no result key, so
-# the script's output stays byte-identical.  Once round4_jobAD lands, the 9
-# conditions (base, decode-PI ours, caa, actadd, meanact, linearact,
-# aura-inject, aura-vanilla, itic) are discovered from disk -- glob stems
-# present in all 3 rotations, like normal_stems -- because the caa/actadd/
-# decode-PI doses are fixed at submit time from the round4_jobAB sweep
-# ($MOE_AMAX / $MOE_CAA_ALPHA / $MOE_ACTADD_ALPHA), while the fixed-point
-# suite stems replicate the LLaDA balanced operating points exactly
-# (cond_meanact_unit_s2 / cond_gaussian_s1 / cond_inject_g4 / cond_vanilla /
-# cond_itic_K48_a8).  Delta-g is vs the pooled lladamoe base.
+# the script's output stays byte-identical.  Once round4_jobAD lands, the 10
+# conditions (base, decode-PI ours, normal open-loop, caa, actadd, meanact,
+# linearact, aura-inject, aura-vanilla, itic) are discovered from disk -- glob
+# stems present in all 3 rotations, like normal_stems -- because the normal/
+# caa/actadd/decode-PI doses are fixed at submit time from the round4_jobAB(2)
+# sweeps ($MOE_PI_LAYERS / $MOE_AMAX / $MOE_NORMAL_ALPHA / $MOE_CAA_ALPHA /
+# $MOE_ACTADD_ALPHA), while the fixed-point suite stems replicate the LLaDA
+# balanced operating points exactly (cond_meanact_unit_s2 / cond_gaussian_s1 /
+# cond_inject_g4 / cond_vanilla / cond_itic_K48_a8).  Delta-g is vs the
+# pooled lladamoe base.  DISCLOSED SECONDARY (round4_jobAD2, "Post-grid
+# decision" in results/lladamoe/SWEEP_NOTES.md): decode_pid_L9to12
+# (cond_dpid_PI_L9to12; PI --layers 9-12 --amax 1) + normal_L9to12
+# (cond_normal_L9to12_a1; the geometry/effort-matched open loop).  These two
+# sub-dirs are in LLADAMOE_SOFT_SUBS: while absent they are skipped SILENTLY
+# (no MISSING line), keeping pre-jobAD2 output byte-identical.  NOTE on
+# parsing: this family (like every family) re-parses each sample's
+# model_output with strict_pool.strict_letter -- summary counts are only
+# consistency-checked, never scored -- so the lenient eval-time parser
+# (results/lladamoe/SWEEP_NOTES.md) cannot leak force-parsed degenerate
+# outputs into the pooled strict table.
 # ---------------------------------------------------------------------------
 LLADAMOE_DIR = "results/lladamoe_balanced"
-LLADAMOE_SUBS = ["decode_pid", "caa", "actadd", "meanact", "linearact",
-                 "aura_inject", "aura_vanilla", "itic"]
+LLADAMOE_SUBS = ["decode_pid", "decode_pid_L9to12", "normal", "normal_L9to12",
+                 "caa", "actadd", "meanact", "linearact", "aura_inject",
+                 "aura_vanilla", "itic"]
+# Disclosed secondary sub-dirs (round4_jobAD2): skipped silently while absent
+# so the family's output is unchanged until those runs land.
+LLADAMOE_SOFT_SUBS = {"decode_pid_L9to12", "normal_L9to12"}
 
 
 def lladamoe_stems(sub):
@@ -536,7 +558,8 @@ def family_lladamoe(results):
     for sub in LLADAMOE_SUBS:
         stems = lladamoe_stems(sub)
         if not stems:
-            print("%-18s (MISSING -- not run yet)" % sub)
+            if sub not in LLADAMOE_SOFT_SUBS:
+                print("%-18s (MISSING -- not run yet)" % sub)
             continue
         for stem in stems:
             a = analyze_soft(rots("%s/%s/rot%%d/%s_samples.jsonl"
@@ -554,15 +577,17 @@ def family_lladamoe(results):
             fam[label] = a
     for a in fam.values():
         a.pop("_reps", None)
-    # telemetry: decode-PI controller effort (only if the runs exist)
-    for stem in lladamoe_stems("decode_pid"):
-        tele_paths = rots("%s/decode_pid/rot%%d/%s.json" % (LLADAMOE_DIR, stem))
-        if all(os.path.exists(p) for p in tele_paths):
-            te = summary_avg(tele_paths, ["mean_alpha", "mean_sat_frac"])
-            fam["%s_telemetry" % stem.replace("cond_", "")] = te
-            print("   telemetry %-11s mean_alpha=%.2f  sat_frac=%.2f"
-                  % (stem.replace("cond_", ""), te["mean_alpha"],
-                     te["mean_sat_frac"]))
+    # telemetry: decode-PI controller effort (only if the runs exist), for the
+    # headline decode_pid sub AND the disclosed secondary decode_pid_L9to12.
+    for sub in [s for s in LLADAMOE_SUBS if s.startswith("decode_pid")]:
+        for stem in lladamoe_stems(sub):
+            tele_paths = rots("%s/%s/rot%%d/%s.json" % (LLADAMOE_DIR, sub, stem))
+            if all(os.path.exists(p) for p in tele_paths):
+                te = summary_avg(tele_paths, ["mean_alpha", "mean_sat_frac"])
+                fam["%s_telemetry" % stem.replace("cond_", "")] = te
+                print("   telemetry %-11s mean_alpha=%.2f  sat_frac=%.2f"
+                      % (stem.replace("cond_", ""), te["mean_alpha"],
+                         te["mean_sat_frac"]))
     results["lladamoe"] = fam
 
 

@@ -47,7 +47,10 @@ llada_moe/arrows.pt
 llada_moe/cache/
 llada_moe/direction_examples.jsonl
 llada_moe/baselines/cache/
-results/lladamoe/
+# (dir/** + re-include so the dose-sweep forensics notes are tracked while
+#  the run artifacts stay local, same pattern as results/balanced_all below)
+results/lladamoe/**
+!results/lladamoe/SWEEP_NOTES.md
 
 # multirace: built artifacts stay local (large tensors, contrast dumps)
 multirace/arrows_*.pt

@@ -13,10 +13,23 @@ model's mask id) with the PID update inline per step:
     e(t)       = s* - p_black(t)                       (s* = SETPOINT = 0.9)
     alpha(t)   = clamp( Kp*e + Ki*Iacc + Kd*d , 0, amax )   (imported PID law)
 
-ACTUATOR = ALL 16 LLaDAMoEDecoderLayers. The SAME alpha(t)*vhat is added to every
-block residual each step (vhat = unit(arrows["r"][8])). Direction from ONE layer,
-actuated at all 16 -- mirrors the LLaDA/Dream design so decode-PID is comparable
-to the `normal` open-loop baseline (constant alpha vs feedback alpha(t)).
+ACTUATOR (default) = ALL 16 LLaDAMoEDecoderLayers. The SAME alpha(t)*vhat is added
+to every block residual each step (vhat = unit(arrows["r"][8])). Direction from ONE
+layer, actuated at all 16 -- mirrors the LLaDA/Dream design so decode-PID is
+comparable to the `normal` open-loop baseline (constant alpha vs feedback alpha(t)).
+
+ACTUATOR VARIANTS (round-4 collapse forensics; defaults keep the behavior above):
+    --layers "8" | "4-11" | "0,2,8"   restrict injection to a block subset
+                                      (e.g. L8-only = closed-loop CAA parity).
+    --layer-scale raw                 inject alpha(t)*r[k] with the RAW per-layer
+                                      diff-in-means norms ([0.12..10.8]) instead of
+                                      the flat unit broadcast.  Rationale: pooled
+                                      hidden norms grow 0.37 -> 150 across the 16
+                                      blocks, so a constant unit vector is ~135%
+                                      of ||h|| at block 0 but 0.3% at block 15;
+                                      raw arrows are a flat 7-32% of the local
+                                      ||h|| at EVERY block (alpha=1 == exactly the
+                                      natural Black-vs-other mean shift).
 
 ALPHA_MAX: default 1.0 -- the CONSERVATIVE Dream-parity starting point (LLaDA's
 amax 6 was 97% garbage on Dream; the MoE residual is 2048-d and its activation
@@ -85,29 +98,34 @@ RESULTS = os.path.join(ROOT, "results", "lladamoe", "decode_pid")
 
 
 # --------------------------------------------------------------------------- #
-# All-layer steerer: add a SETTABLE alpha*vhat to EVERY block residual (all pos).
-# The 16 hooks share ONE mutable alpha, so one assignment steers the whole stack.
+# Steerer: add a SETTABLE alpha*V[k] to block k's residual (all pos) for every
+# k in `layers` (default all 16; V rows identical in the default unit mode, so
+# that is exactly the original all-16 broadcast).  The hooks share ONE mutable
+# alpha, so one assignment steers the whole actuated set.
 # Uses common_lladamoe's tuple contract (hidden_from_output / output_with_hidden).
 # --------------------------------------------------------------------------- #
 class AllLayerSteerer:
-    def __init__(self, vhat):
-        self.vhat = vhat            # (H,) unit
+    def __init__(self, V, layers=None):
+        self.V = V                  # (N_LAYERS, H) per-block injection rows
+        self.layers = list(range(C.N_LAYERS)) if layers is None else list(layers)
         self.alpha = 0.0
         self.fires = 0
         self.handles = []
 
-    def _hook(self, mod, inp, out):
-        self.fires += 1
-        if self.alpha == 0.0:
-            return None
-        h = C.hidden_from_output(out)
-        steer = (self.alpha * self.vhat).to(h.dtype).to(h.device)
-        return C.output_with_hidden(out, h + steer)
+    def _mk_hook(self, k):
+        def hook(mod, inp, out):
+            self.fires += 1
+            if self.alpha == 0.0:
+                return None
+            h = C.hidden_from_output(out)
+            steer = (self.alpha * self.V[k]).to(h.dtype).to(h.device)
+            return C.output_with_hidden(out, h + steer)
+        return hook
 
     def attach(self, model):
-        paths = [C.block_path(k) for k in range(C.N_LAYERS)]
-        self.handles = C.attach(model, paths, self._hook, pre=False)
-        assert len(self.handles) == C.N_LAYERS
+        for k in self.layers:
+            self.handles += C.attach(model, [C.block_path(k)], self._mk_hook(k), pre=False)
+        assert len(self.handles) == len(self.layers)
 
     def detach(self):
         for h in self.handles:
@@ -222,6 +240,31 @@ def selftest():
     check("get_num_transfer_tokens sums to block width",
           int(ntt.sum()) == BLOCK_LENGTH and ntt.shape == (1, STEPS // nb))
 
+    # --layers / --layer-scale plumbing (offline; dummy arrows are seeded randn).
+    check("parse_layers 'all' -> 0..15", parse_layers("all") == list(range(C.N_LAYERS)))
+    check("parse_layers '8' -> [8]", parse_layers("8") == [8])
+    check("parse_layers '4-6,8' -> [4,5,6,8]", parse_layers("4-6,8") == [4, 5, 6, 8])
+    Vu = build_injection_matrix(True, layer_scale="unit")
+    torch.manual_seed(1234)
+    rr = torch.randn(C.N_LAYERS, C.D_MODEL, dtype=torch.float32)
+    check("unit matrix: all rows == unit(r[LAYER])",
+          tuple(Vu.shape) == (C.N_LAYERS, C.D_MODEL)
+          and torch.allclose(Vu, (rr[LAYER] / rr[LAYER].norm()).expand_as(Vu), atol=1e-6))
+    check("unit matrix rows are unit-norm",
+          torch.allclose(Vu.norm(dim=1), torch.ones(C.N_LAYERS), atol=1e-5))
+    Vr = build_injection_matrix(True, layer_scale="raw")
+    check("raw matrix == raw arrows (natural per-layer norms)", torch.allclose(Vr, rr))
+    check("raw matrix norms NOT flat (natural profile preserved)",
+          float(Vr.norm(dim=1).std()) > 0.0)
+    # Steerer subset wiring: hooks only on requested blocks, alpha*V[k] applied.
+    st = AllLayerSteerer(Vr, layers=[8])
+    st.alpha = 2.0
+    out = st._mk_hook(8)(None, None, (torch.zeros(1, 3, C.D_MODEL),))
+    check("subset steerer adds alpha*V[8] at every position",
+          torch.allclose(out[0], (2.0 * Vr[8]).expand(1, 3, -1)))
+    check("steerer default layers == all 16",
+          AllLayerSteerer(Vr).layers == list(range(C.N_LAYERS)))
+
     print(f"[selftest-dpid] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -229,14 +272,40 @@ def selftest():
 # --------------------------------------------------------------------------- #
 # Arrows / items.
 # --------------------------------------------------------------------------- #
-def load_vhat(dummy_arrows, arrows_path=DEFAULT_ARROWS, layer=LAYER):
+def parse_layers(spec):
+    """'all' -> 0..15; '8' -> [8]; '4-11' -> [4..11]; '0,2,8' -> [0,2,8]."""
+    if spec is None or spec == "all":
+        return list(range(C.N_LAYERS))
+    out = []
+    for part in str(spec).split(","):
+        part = part.strip()
+        if "-" in part:
+            lo, hi = part.split("-")
+            out += list(range(int(lo), int(hi) + 1))
+        elif part:
+            out.append(int(part))
+    out = sorted(set(out))
+    assert out and all(0 <= k < C.N_LAYERS for k in out), f"bad --layers spec {spec!r}"
+    return out
+
+
+def build_injection_matrix(dummy_arrows, arrows_path=DEFAULT_ARROWS, layer=LAYER,
+                           layer_scale="unit"):
+    """(N_LAYERS, H) rows the steerer scales by alpha(t).
+
+    unit: every row = unit(r[layer])  -- the original flat broadcast.
+    raw : row k = r[k] RAW (natural per-layer diff-in-means norm profile)."""
     if dummy_arrows:
         torch.manual_seed(1234)
-        rL = torch.randn(C.D_MODEL, dtype=torch.float32)
+        r = torch.randn(C.N_LAYERS, C.D_MODEL, dtype=torch.float32)
     else:
-        blob = torch.load(arrows_path, map_location="cpu")
-        rL = blob["r"][layer].to(torch.float32)
-    return rL / rL.norm().clamp(min=1e-12)
+        r = torch.load(arrows_path, map_location="cpu")["r"].to(torch.float32)
+    assert r.shape == (C.N_LAYERS, C.D_MODEL)
+    if layer_scale == "raw":
+        return r.clone()
+    rL = r[layer]
+    vhat = rL / rL.norm().clamp(min=1e-12)
+    return vhat.unsqueeze(0).expand(C.N_LAYERS, -1).contiguous()
 
 
 def load_items(limit, items_path):
@@ -254,21 +323,24 @@ def build_input(tok, row, device):
 # --------------------------------------------------------------------------- #
 # Eval / smoke shared driver.
 # --------------------------------------------------------------------------- #
-def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, smoke):
+def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, smoke,
+         layers_spec="all", layer_scale="unit"):
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
     eff_kd = kd if use_kd else 0.0
     steer_on = cond != "base"
+    layers = parse_layers(layers_spec)
 
     model, tok = C.load_model_tok()
-    vhat = load_vhat(dummy_arrows).to(model.device)
+    V = build_injection_matrix(dummy_arrows, layer_scale=layer_scale).to(model.device)
     plain, space = letter_token_ids(tok)
-    steerer = AllLayerSteerer(vhat)
+    steerer = AllLayerSteerer(V, layers=layers)
     steerer.attach(model)
     ctrl = PID(kp, eff_ki, eff_kd, SETPOINT, amax, antiwindup=True)
     rows = load_items(limit, items_path)
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
-          f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{C.N_LAYERS} "
+          f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} "
+          f"actuator={len(layers)}of{C.N_LAYERS}({layers_spec}) scale={layer_scale} "
           f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={SETPOINT} amax={amax} steer_on={steer_on} "
           f"dummy={dummy_arrows} steps={STEPS}", flush=True)
 
@@ -288,7 +360,7 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
                 model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=steer_on)
             hook_fires += steerer.fires   # counts EVERY invocation (bump precedes the
                                           # alpha==0 short-circuit): expect
-                                          # n*(1+steps)*16 in ALL conditions, base incl.
+                                          # n*(1+steps)*len(layers), base incl.
             gen = tok.batch_decode(x[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
             letter = C.parse_letter(gen, row)
             pred = LETTERS.index(letter) if letter else None
@@ -327,7 +399,7 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
                 "pblack_traj": [round(v, 4) for v in pb.tolist()],
             })
             if smoke:
-                fwd = steerer.fires // C.N_LAYERS
+                fwd = steerer.fires // len(layers)
                 print(f"\n[smoke] item {idx} ex={row.get('example_id')} target={tgt} "
                       f"parsed='{letter}' cls={cls}", flush=True)
                 print(f"[smoke]   forwards={fwd} (expect 1 probe + {STEPS} = {STEPS + 1}) "
@@ -365,7 +437,10 @@ def _run(cond, kp, ki, kd, amax, limit, items_path, out_dir, tag, dummy_arrows, 
         "d_gap": None, "baseline_black_rate": None,
         "acc_disambig": (dis_correct / dis_n) if dis_n else None, "n_disambig": dis_n,
         "gains": {"Kp": kp, "Ki": eff_ki, "Kd": eff_kd},
-        "actuator": f"all_{C.N_LAYERS}_layers", "anti_windup": True,
+        "actuator": (f"all_{C.N_LAYERS}_layers" if len(layers) == C.N_LAYERS
+                     else "layers_" + ",".join(str(k) for k in layers)),
+        "steer_layers": layers, "layer_scale": layer_scale,
+        "anti_windup": True,
         "setpoint": SETPOINT, "alpha_max": amax, "vhat_layer": LAYER,
         "mean_total_actuation": float(np.mean(alpha_sums)) if alpha_sums else 0.0,
         "mean_alpha": float(np.mean(alpha_means)) if alpha_means else 0.0,
@@ -401,8 +476,13 @@ def main():
     ap.add_argument("--items", default=C.SWEEP400)
     ap.add_argument("--out-dir", default=RESULTS)
     ap.add_argument("--tag", default=None, help="output stem override: cond_<tag>.json")
+    ap.add_argument("--layers", default="all",
+                    help='actuated blocks: "all" (default), "8", "4-11", "0,2,8"')
+    ap.add_argument("--layer-scale", choices=["unit", "raw"], default="unit",
+                    help="unit: alpha*unit(r[8]) at every actuated block (default); "
+                         "raw: alpha*r[k] with the natural per-layer norms")
     ap.add_argument("--dummy-arrows", action="store_true",
-                    help="use a random (2048,) vhat (GPU smoke only; arrows.pt not built yet)")
+                    help="use random (16,2048) arrows (GPU smoke only; arrows.pt not built yet)")
     args = ap.parse_args()
 
     if args.selftest:
@@ -410,12 +490,14 @@ def main():
     if args.smoke:
         cond = args.cond or "PI"
         _run(cond, args.kp, args.ki, args.kd, args.amax, args.limit or 2, args.items,
-             args.out_dir, args.tag, args.dummy_arrows, smoke=True)
+             args.out_dir, args.tag, args.dummy_arrows, smoke=True,
+             layers_spec=args.layers, layer_scale=args.layer_scale)
         return
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     _run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit, args.items,
-         args.out_dir, args.tag, args.dummy_arrows, smoke=False)
+         args.out_dir, args.tag, args.dummy_arrows, smoke=False,
+         layers_spec=args.layers, layer_scale=args.layer_scale)
 
 
 if __name__ == "__main__":

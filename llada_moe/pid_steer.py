@@ -14,6 +14,20 @@ this model's mask id).
         fixed additive injection alpha*u(k) at every block, every denoising step.
     --mode normal --source-layer 8 --alpha A
         single diff-in-means vhat = unit(r[L]) broadcast to ALL 16 blocks (alpha*vhat).
+    --layers "8" | "4-11" | "0,2,8"
+        restrict the ACTUATED block subset (default "all" = the original all-16
+        broadcast; parser reused from llada_moe/denoise_pid.py).  --mode normal
+        --source-layer 8 --layers 8 --alpha 2 is the GEOMETRY-MATCHED open-loop
+        control for decode-PI --layers 8 --amax 2: same site (block 8 output),
+        same direction, constant integer alpha instead of feedback alpha(t).
+        The same identity holds for MULTI-BLOCK subsets: decode-PI's default
+        unit mode injects the ONE source vector unit(r[8]) at every actuated
+        block (denoise_pid.build_injection_matrix, layer_scale="unit" -- NOT
+        per-layer r[k]; that is layer_scale="raw"), so --mode normal
+        --source-layer 8 --layers 9-12 --alpha 1 is already the exact
+        geometry-matched control for decode-PI --layers 9-12 --amax 1
+        (round4_jobAD2 disclosed secondary condition): alpha*unit(r[8]) at
+        blocks 9,10,11,12, no extra flag needed.
 
 Open-loop => we PREFER common_lladamoe.run_items(attach_fn=...) directly: it does
 the generation, BBQ classification, fire-count assertion, and writes the shared
@@ -53,6 +67,9 @@ build_u = _LP.build_u
 unit_rows = _LP.unit_rows
 GAINS = _LP.GAINS
 
+_DP = _load("llada_moe_denoise_pid", "llada_moe/denoise_pid.py")
+parse_layers = _DP.parse_layers    # 'all' | '8' | '4-11' | '0,2,8' -> [ints]
+
 DEFAULT_SOURCE_LAYER = 8            # midpoint of the 16-layer stack
 DEFAULT_ARROWS = os.path.join(ROOT, "llada_moe", "arrows.pt")
 RESULTS = os.path.join(ROOT, "results", "lladamoe", "layer_pid")
@@ -83,11 +100,14 @@ def build_injection(mode, cond, r, source_layer, alpha):
     return alpha * build_u(unit_rows(r), kp, ki, kd)
 
 
-def make_attach_fn(inject):
-    """attach_fn(model) -> handles: one common_lladamoe add_vec_hook per block (16)."""
+def make_attach_fn(inject, layers=None):
+    """attach_fn(model) -> handles: one common_lladamoe add_vec_hook per ACTUATED
+    block (row k of `inject` at block k, for k in `layers`; default all 16)."""
+    ks = list(range(C.N_LAYERS)) if layers is None else list(layers)
+
     def attach_fn(model):
         handles = []
-        for k in range(C.N_LAYERS):
+        for k in ks:
             handles += C.attach(model, [C.block_path(k)], C.add_vec_hook(inject[k]), pre=False)
         return handles
     return attach_fn
@@ -135,6 +155,22 @@ def selftest():
     check("normal: 16 rows identical == alpha*vhat",
           all(torch.allclose(inj[k], 2.0 * vhat, atol=1e-6) for k in range(N)))
 
+    # --layers plumbing (parser reused from llada_moe/denoise_pid.py).
+    check("parse_layers 'all' -> 0..15", parse_layers("all") == list(range(C.N_LAYERS)))
+    check("parse_layers '8' -> [8]", parse_layers("8") == [8])
+    check("parse_layers '4-6,8' -> [4,5,6,8]", parse_layers("4-6,8") == [4, 5, 6, 8])
+
+    # Geometry match for the round4_jobAD2 secondary condition: normal
+    # --source-layer 8 restricted to layers 9-12 injects EXACTLY the rows
+    # decode-PI's default unit mode injects there (alpha * unit(r[8])).
+    Vd = _DP.build_injection_matrix(True, layer_scale="unit")   # seeded randn r
+    torch.manual_seed(1234)
+    rr = torch.randn(C.N_LAYERS, C.D_MODEL, dtype=torch.float32)
+    inj9 = build_injection("normal", None, rr, 8, 1.0)
+    check("normal L8 rows 9-12 == decode-PI unit rows 9-12 (alpha=1)",
+          all(torch.allclose(inj9[k], Vd[k], atol=1e-6)
+              for k in parse_layers("9-12")))
+
     print(f"[selftest-pid] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
@@ -155,6 +191,8 @@ def main():
                     help="random (16,2048) arrows (GPU smoke; arrows.pt not built yet)")
     ap.add_argument("--out-dir", default=RESULTS)
     ap.add_argument("--tag", default=None, help="output stem override: cond_<tag>.json")
+    ap.add_argument("--layers", default="all",
+                    help='actuated blocks: "all" (default), "8", "4-11", "0,2,8"')
     args = ap.parse_args()
 
     if args.selftest:
@@ -180,16 +218,21 @@ def main():
     else:
         tag = f"{cond_label}_a{args.alpha:g}".replace(".", "p")
 
-    attach_fn = make_attach_fn(inject) if inject is not None else None
+    layers = parse_layers(args.layers)
+    attach_fn = make_attach_fn(inject, layers=layers) if inject is not None else None
     gen_overrides = {"steps": args.steps, "gen_length": args.gen_length}
     config_extra = {
         "mode": args.mode, "condition": cond_label,
         "source_layer": args.source_layer if args.mode == "normal" else None,
         "alpha": args.alpha, "gains": {"Kp": kp, "Ki": ki, "Kd": kd},
+        "steer_layers": layers,
+        "actuator": (f"all_{C.N_LAYERS}_layers" if len(layers) == C.N_LAYERS
+                     else "layers_" + ",".join(str(k) for k in layers)),
         "dummy_arrows": bool(args.dummy_arrows), "arrows_path": None if not need_arrows else args.arrows,
     }
     print(f"[{cond_label}] mode={args.mode} CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
-          f"alpha={args.alpha} Kp={kp} Ki={ki} Kd={kd} dummy={args.dummy_arrows} "
+          f"alpha={args.alpha} actuator={len(layers)}of{C.N_LAYERS}({args.layers}) "
+          f"Kp={kp} Ki={ki} Kd={kd} dummy={args.dummy_arrows} "
           f"steps={args.steps}", flush=True)
 
     C.run_items(attach_fn=attach_fn, items_path=args.items, out_dir=args.out_dir,
