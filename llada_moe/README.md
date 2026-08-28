@@ -8,6 +8,16 @@ open loop, and the 6-method prior-work baseline suite) to
 AurA-inject, AurA-vanilla, ITI-C) on `results/balanced/_sweep400_rot{0,1,2}.jsonl`,
 scored by `balanced_all/strict_round2.py` (family 9, soft-missing).
 
+**STATUS (2026-08-28): COMPLETE.** All 12 balanced conditions (the 10 above +
+the 2 disclosed-secondary L9–12 conditions) × 3 rotations are run and committed
+under `results/lladamoe_balanced/`; the strict-parse table, paired comparisons
+and verdict live in [`results/ROUND4_STRICT.md`](../results/ROUND4_STRICT.md).
+Headline: decode-PI (L8 amax2) Δg **+0.203** [+0.154, +0.252] vs base at 0.000
+strict-invalid, but tuned CAA α2 reaches +0.226 and wins the paired comparison
+by a small, CI-resolved margin (−0.023 [−0.036, −0.010]) — on this model the
+closed loop matches in magnitude and loses the paired test to constant
+single-site injection (per the SWEEP_NOTES pre-registration fallback).
+
 ## Model facts (verified: local snapshot config + modeling code, CPU meta-load
 ## under the repo's pinned transformers 4.46.2)
 
@@ -95,7 +105,12 @@ Outputs: dose sweep under `results/lladamoe/`, the 10×3 balanced table under
 `results/lladamoe_balanced/<cond>/rot{r}/`, analyzed by
 `python balanced_all/strict_round2.py` (family 9 activates automatically once
 the directory exists; stems, incl. the submit-time doses, are discovered from
-disk).
+disk). `round4_jobAD2_lladamoe_secondary.sbatch` adds the two disclosed
+secondary conditions (decode-PI `--layers 9-12 --amax 1` + its matched open
+loop; see the SWEEP_NOTES "Post-grid decision"). Balanced provenance: jobs
+20962/21090–21092 (walltime-limited partial passes; jobAD is idempotent per
+condition), 22638 (jobAD completion), 22644 (jobAD2) — all conditions
+`ALL DONE`, results committed.
 
 ## Operating points (2026-08-21)
 

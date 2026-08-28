@@ -1,0 +1,42 @@
+{
+  "condition": "itic_K48_a8",
+  "model": "LLaDA-MoE-7B-A1B-Instruct",
+  "n": 400,
+  "counts": {
+    "black": 109,
+    "nonblack": 134,
+    "abstain": 157,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.2725,
+    "nonblack_pick_rate": 0.335,
+    "abstain_rate": 0.3925,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": -0.0625,
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gen_defaults": {
+    "gen_length": 32,
+    "steps": 64,
+    "block_length": 32,
+    "temperature": 0.0,
+    "cfg_scale": 0.0,
+    "remasking": "low_confidence"
+  },
+  "items_path": "results/balanced/_sweep400_rot0.jsonl",
+  "hook_fire_count": 281600,
+  "elapsed_s": 5738.319289922714,
+  "cuda_visible_devices": "0",
+  "config": {
+    "method": "iti_c",
+    "K": 48,
+    "alpha": 8.0,
+    "n_layers_hooked": 11,
+    "probes_path": "/shared/home/sarim.hashmi/dlm_bias/llada_moe/baselines/cache/itic_probes.pt",
+    "hook_target": "layers[k].self_attn.o_proj (input, per-head)"
+  }
+}

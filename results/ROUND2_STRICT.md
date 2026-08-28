@@ -19,6 +19,9 @@ Gap = target − comparator. Every condition pools its 3 rotations (3×400 =
 percentile CI of the difference of the condition's and its baseline's
 bootstrap replicates.
 
+*(Later rounds analyzed by the same script: round-3 families 5–8 are in
+`ROUND3_STRICT.md`; the round-4 LLaDA-MoE family 9 is in `ROUND4_STRICT.md`.)*
+
 ## 0. Verification
 
 - **Multi-target balanced** — all 36 summary JSONs + 36 samples files exist
