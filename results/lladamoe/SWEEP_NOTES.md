@@ -236,3 +236,27 @@ answer slot.
 Submit: `sbatch slurm/round4_jobAB3_lladamoe_pical.sbatch` (idempotent per
 run; new stems, no collision with jobAB/jobAB2/jobAD outputs; does not touch
 `results/lladamoe_balanced`).
+
+## Post-grid decision (2026-08-21)
+
+The pre-registered bar was **not met**: no jobAB3 cell (job 20975) beat CAA
+a2's +0.237 at inv ≤ 0.01. Readout (400 unrotated items): L8-amax3 **+0.270
+@ inv 0.098**; L8-amax4 +0.180 @ 0.135; L789-amax1 +0.037 @ 0.033;
+L10-amax2/L10-amax4/L12-amax4 all clean (inv 0.000) but under-aimed
+(+0.080/+0.140/+0.090); **L9to12-amax1 +0.225 @ inv 0.000** (mean_alpha
+0.94) — the best clean cell, within noise of CAA a2 but not above it.
+Decisions: (1) the **headline** decode-PI operating point stays `--layers 8
+--amax 2` (already run, 3 rotations in `results/lladamoe_balanced/
+decode_pid/`), and the paper reports closed-loop as matching-not-beating
+tuned CAA on this model, per the pre-registration. (2) `--layers 9-12
+--amax 1` is promoted to a **disclosed secondary** balanced condition —
+`slurm/round4_jobAD2_lladamoe_secondary.sbatch` ("moebal2":
+cond_dpid_PI_L9to12 + its geometry/effort-matched open loop
+cond_normal_L9to12_a1, alpha 1 = mean_alpha 0.94 rounded up, × rot0-2) —
+so pooled 3×400 CIs, not
+a single unrotated sweep, decide the CAA-parity claim; strict_round2
+family 9 discovers both sub-dirs. (3) L8-amax3 (+0.270 @ inv 0.098) is
+recorded as the **aim–coherence frontier ablation** — evidence that feedback
+converts extra ceiling into aim at the cost of the coherence gate every
+operating point was held to — NOT an operating point; it enters the paper
+only as an ablation row with its invalidity disclosed.

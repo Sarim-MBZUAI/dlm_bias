@@ -20,6 +20,14 @@ this model's mask id).
         --source-layer 8 --layers 8 --alpha 2 is the GEOMETRY-MATCHED open-loop
         control for decode-PI --layers 8 --amax 2: same site (block 8 output),
         same direction, constant integer alpha instead of feedback alpha(t).
+        The same identity holds for MULTI-BLOCK subsets: decode-PI's default
+        unit mode injects the ONE source vector unit(r[8]) at every actuated
+        block (denoise_pid.build_injection_matrix, layer_scale="unit" -- NOT
+        per-layer r[k]; that is layer_scale="raw"), so --mode normal
+        --source-layer 8 --layers 9-12 --alpha 1 is already the exact
+        geometry-matched control for decode-PI --layers 9-12 --amax 1
+        (round4_jobAD2 disclosed secondary condition): alpha*unit(r[8]) at
+        blocks 9,10,11,12, no extra flag needed.
 
 Open-loop => we PREFER common_lladamoe.run_items(attach_fn=...) directly: it does
 the generation, BBQ classification, fire-count assertion, and writes the shared
@@ -151,6 +159,17 @@ def selftest():
     check("parse_layers 'all' -> 0..15", parse_layers("all") == list(range(C.N_LAYERS)))
     check("parse_layers '8' -> [8]", parse_layers("8") == [8])
     check("parse_layers '4-6,8' -> [4,5,6,8]", parse_layers("4-6,8") == [4, 5, 6, 8])
+
+    # Geometry match for the round4_jobAD2 secondary condition: normal
+    # --source-layer 8 restricted to layers 9-12 injects EXACTLY the rows
+    # decode-PI's default unit mode injects there (alpha * unit(r[8])).
+    Vd = _DP.build_injection_matrix(True, layer_scale="unit")   # seeded randn r
+    torch.manual_seed(1234)
+    rr = torch.randn(C.N_LAYERS, C.D_MODEL, dtype=torch.float32)
+    inj9 = build_injection("normal", None, rr, 8, 1.0)
+    check("normal L8 rows 9-12 == decode-PI unit rows 9-12 (alpha=1)",
+          all(torch.allclose(inj9[k], Vd[k], atol=1e-6)
+              for k in parse_layers("9-12")))
 
     print(f"[selftest-pid] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
