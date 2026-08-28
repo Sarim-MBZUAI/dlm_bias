@@ -1,0 +1,57 @@
+{
+  "condition": "PI",
+  "model": "LLaDA-MoE-7B-A1B-Instruct",
+  "n": 400,
+  "counts": {
+    "black": 185,
+    "nonblack": 95,
+    "abstain": 120,
+    "unparseable": 0
+  },
+  "rates": {
+    "black_pick_rate": 0.4625,
+    "nonblack_pick_rate": 0.2375,
+    "abstain_rate": 0.3,
+    "unparseable_rate": 0.0
+  },
+  "gap_within": 0.22500000000000003,
+  "d_gap": null,
+  "baseline_black_rate": null,
+  "acc_disambig": null,
+  "n_disambig": 0,
+  "gains": {
+    "Kp": 3.0,
+    "Ki": 0.1,
+    "Kd": 0.0
+  },
+  "actuator": "layers_9,10,11,12",
+  "steer_layers": [
+    9,
+    10,
+    11,
+    12
+  ],
+  "layer_scale": "unit",
+  "anti_windup": true,
+  "setpoint": 0.9,
+  "alpha_max": 1.0,
+  "vhat_layer": 8,
+  "mean_total_actuation": 60.11864500644393,
+  "mean_alpha": 0.9393538282256864,
+  "mean_final_alpha": 0.9577066587094032,
+  "mean_sat_frac": 0.9141796875,
+  "hook_fire_count": 104000,
+  "gen_defaults": {
+    "gen_length": 32,
+    "steps": 64,
+    "block_length": 32,
+    "temperature": 0.0,
+    "cfg_scale": 0.0,
+    "remasking": "low_confidence"
+  },
+  "steps": 64,
+  "dummy_arrows": false,
+  "items_path": "results/balanced/_sweep400_rot0.jsonl",
+  "cuda_visible_devices": "0",
+  "elapsed_s": 5767.786520242691
+}

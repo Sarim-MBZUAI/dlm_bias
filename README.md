@@ -115,6 +115,31 @@ regenerate with `python balanced_all/strict_round3.py` (+ families 5–8 of
   **religion** baseline (E9: μ=0.279, Muslim γ +0.218 / pref_gap +0.210 debiased,
   steered runs deliberately deferred).
 
+### Round-4: third model (LLaDA-MoE), an honest loss at matched effort
+
+Full table, paired comparisons and provenance:
+[`results/ROUND4_STRICT.md`](results/ROUND4_STRICT.md); regenerate with
+`python balanced_all/strict_round2.py` (family 9).
+
+- **Full port to LLaDA-MoE-7B-A1B-Instruct** (`llada_moe/`; MoE masked
+  diffusion, 16 blocks, ~1B active params): 12 balanced conditions × 3
+  rotations, all committed under `results/lladamoe_balanced/`.
+- **Decode-PI aims strongly and cleanly**: Δg **+0.203** [+0.154, +0.252]
+  vs base (gap +0.233) at **0.000 strict-invalid** — far above every
+  non-CAA baseline (best: ActAdd α2 Δg +0.112).
+- **But tuned CAA wins the paired test**: CAA L8 α2 reaches Δg +0.226
+  (gap +0.256), beating decode-PI by a small, CI-resolved margin
+  (paired −0.023 [−0.036, −0.010]); both decode-PI operating points also
+  lose to their geometry/effort-matched open loops (−0.023 at L8, −0.015
+  at L9–12). The mechanism: at this model's tuned dose, constant injection
+  costs *zero* coherence, so feedback's back-off buys nothing. The
+  operating points were fixed by a pre-registered grid whose "beat CAA"
+  bar was not met (`results/lladamoe/SWEEP_NOTES.md`).
+- **Cross-model picture**: feedback wins big on LLaDA-8B, leads with an
+  unresolved margin on Dream, and matches-but-measurably-loses to tuned
+  CAA on LLaDA-MoE — the closed-loop advantage appears exactly where an
+  effective constant dose breaks coherence.
+
 The strict parse rule mirrors `tools/strict_reparse.py` in the
 [paper repo](https://github.com/Sarim-MBZUAI/DLM_Bias_overleaf): a response
 counts only if it *starts* with a standalone A/B/C letter; everything else is
@@ -148,12 +173,12 @@ slurm/        SLURM batch scripts for all four experiment rounds
               round4_job*.sbatch)
 data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
 results/      committed result families: balanced/, balanced_all/,
-              balanced_seeds/, dream_balanced/, lladamoe_balanced/
-              (after round 4 lands), multirace/, unqover/,
+              balanced_seeds/, dream_balanced/, lladamoe_balanced/,
+              multirace/, unqover/,
               unqover_v2/, unqover_religion/, base/, normal/, decode_pid/, layer_pid/,
               calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
               linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md /
-              ROUND3_STRICT.md
+              ROUND3_STRICT.md / ROUND4_STRICT.md
 analysis/     trajectory/ — E1 step-axis analysis of the controller
               (traj_analysis.py, FINDINGS.md, summary CSVs)
 docs/         paper.md, COMPARISON.md, DENOISING_PID.md, jailbreak_instruct.md
@@ -216,6 +241,7 @@ python steering/denoise_pid.py --cond PI \
 python balanced_all/strict_pool.py     # round-1 14-condition Black table
 python balanced_all/strict_round2.py   # multi-target / seeds / UnQover / Dream
                                        #   + round-3 gender / fblack / SES / Age families
+                                       #   + round-4 LLaDA-MoE (family 9)
 python balanced_all/strict_round3.py   # round-3 suppression + case-full sensor
 
 # UnQover metric for one steered condition
