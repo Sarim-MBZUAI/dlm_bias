@@ -122,3 +122,10 @@ results/balanced_all/**
 !results/balanced_all/young/**/
 !results/balanced_all/young/**/cond_*.json
 !results/balanced_all/young/**/cond_*_samples.jsonl
+
+# UNQOVER-native standalone benchmark (jobAI): built direction/fits + run outputs
+# stay local -- regenerated from the committed split manifest
+# (unqover/items_manifest_unqover_black.json) by build_arrows_unqover.py and the
+# jobAI sbatch. Only the manifest + code are tracked.
+results/unqover_native/
+unqover/cache_native/
