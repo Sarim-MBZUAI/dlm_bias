@@ -97,10 +97,16 @@ CAP = 400
 # Calib-blob source strings.  BLACK IS VERBATIM the round-1 string (byte-compat
 # of new black fits with the existing caches); gender mirrors the string
 # multirace/build_arrows.py stamps on arrows_{woman,man}.pt (manifest seed 42).
+# The added E9 targets mirror the exact string multirace/build_arrows.py stamps
+# on arrows_<target>.pt (all seed 42): arab is a Race_ethnicity pole (build_arrows
+# 'else' branch), lowses/old are the SES/Age cross_target_disjoint poles.
 SOURCE_BY_TARGET = {
     "black": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400",
     "woman": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint",
     "man": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint",
+    "arab": "multirace_manifest_heldout_seed42_disjoint_black_seed42_and_sweep400",
+    "lowses": "multirace_ses_manifest_heldout_seed42_cross_target_disjoint",
+    "old": "multirace_age_manifest_heldout_seed42_cross_target_disjoint",
 }
 
 _MB = None
