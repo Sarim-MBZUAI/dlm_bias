@@ -89,6 +89,38 @@ UQ_TARGET = "Black"                 # the UNQOVER subject string (item filter + 
 FIT_TARGET = "black"                # the baseline fit-artifact target (lowercase)
 DEFAULT_OUT_DIR = os.path.join(_ROOT, "results", "unqover_v2")
 
+# --------------------------------------------------------------------------- #
+# UNQOVER-NATIVE fits (jobAI): when configured, every builder loads its fit from
+# the UNQOVER-native cache (unqover/cache_native/, built by build_arrows_unqover.py
+# from the UNQOVER BUILD split) and CAA/Mean-AcT use the UNQOVER-native arrow set,
+# instead of the BBQ black artifacts. NOTHING else changes -- SAME Table-1 (Black)
+# operating points, SAME hooks. Set via --native-cache / --native-arrows in main().
+# --------------------------------------------------------------------------- #
+NATIVE = {"cache_dir": None, "arrows": None, "unit_arrows": None}
+
+
+def native_on():
+    return NATIVE["cache_dir"] is not None
+
+
+def _native(name):
+    """Absolute path of a native fit artifact under the native cache dir."""
+    return os.path.join(NATIVE["cache_dir"], name)
+
+
+def _load_native_arrows(path):
+    """Load the UNQOVER-native (32,H) arrow set once; keep raw + per-layer unit.
+    Tolerant of an unbuilt file (CPU --selftest before the GPU build): leaves the
+    arrows None, and the offline gate SKIPs the CAA/Mean-AcT builders."""
+    if not os.path.exists(path):
+        print(f"[baselines_unqover] native arrows not built yet ({path}); "
+              f"CAA/Mean-AcT builders will be exercised after --build.", flush=True)
+        return
+    blob = torch.load(path, map_location="cpu")
+    r = blob["r"].to(torch.float32)
+    NATIVE["arrows"] = r
+    NATIVE["unit_arrows"] = C.unit_rows(r)      # per-layer unit-normalized (CAA/Mean-AcT "unit")
+
 
 # --------------------------------------------------------------------------- #
 # Per-method attach_fn builders. Each returns attach_fn(model) -> handles,     #
@@ -100,71 +132,94 @@ DEFAULT_OUT_DIR = os.path.join(_ROOT, "results", "unqover_v2")
 # --------------------------------------------------------------------------- #
 def _mk_caa():
     import caa
+    if native_on():   # UNQOVER-native arrow set (per-layer unit), SAME L14 a16
+        return caa.make_attach_fn(layer=14, alpha=16.0, arrows=NATIVE["unit_arrows"])
     return caa.make_attach_fn(layer=14, alpha=16.0, target=FIT_TARGET)
 
 
 def _paths_caa():
+    if native_on():
+        return [NATIVE_ARROWS_PATH[0]]
     import directions
     return [directions.arrows_path_for(FIT_TARGET)]
 
 
 def _mk_actadd():
     import actadd
-    return actadd.make_attach_fn(alpha=16.0, layer=14,
-                                 path=actadd.dir_path_for(FIT_TARGET))
+    path = _native("actadd_dir.pt") if native_on() else actadd.dir_path_for(FIT_TARGET)
+    return actadd.make_attach_fn(alpha=16.0, layer=14, path=path)
 
 
 def _paths_actadd():
     import actadd
-    return [actadd.dir_path_for(FIT_TARGET)]
+    return [_native("actadd_dir.pt") if native_on() else actadd.dir_path_for(FIT_TARGET)]
 
 
 def _mk_meanact():
     import meanact
+    if native_on():   # UNQOVER-native (mu2-mu1)=unit arrows, SAME unit s2
+        return meanact.build_attach_fn(2.0, direction="unit", arrows=NATIVE["unit_arrows"])
     return meanact.build_attach_fn(2.0, direction="unit", target=FIT_TARGET)
 
 
 def _paths_meanact():
+    if native_on():
+        return [NATIVE_ARROWS_PATH[0]]
     import directions
     return [directions.arrows_path_for(FIT_TARGET)]   # unit source = arrows.pt
 
 
 def _mk_linearact():
     import linearact
-    stats = linearact.load_stats(target=FIT_TARGET)
+    path = _native("linearact_stats.pt") if native_on() else linearact.stats_path_for(FIT_TARGET)
+    stats = linearact.load_stats(path=path)
     return lambda m: linearact.attach_fn(m, variant="gaussian", strength=1.0,
                                          stats=stats)
 
 
 def _paths_linearact():
     import linearact
-    return [linearact.stats_path_for(FIT_TARGET)]
+    return [_native("linearact_stats.pt") if native_on() else linearact.stats_path_for(FIT_TARGET)]
 
 
 def _mk_aura_inject():
     import aura
+    if native_on():
+        auroc = torch.load(_native("aura_auroc.pt"), map_location="cpu")["auroc"]
+        return aura.attach_fn("inject", gamma=4.0, auroc=auroc)
     return aura.attach_fn("inject", gamma=4.0, target=FIT_TARGET)
 
 
 def _mk_aura_vanilla():
     import aura
+    if native_on():
+        auroc = torch.load(_native("aura_auroc.pt"), map_location="cpu")["auroc"]
+        return aura.attach_fn("vanilla", auroc=auroc)
     return aura.attach_fn("vanilla", target=FIT_TARGET)
 
 
 def _paths_aura():
     import aura
-    return [aura.auroc_path_for(FIT_TARGET)]
+    return [_native("aura_auroc.pt") if native_on() else aura.auroc_path_for(FIT_TARGET)]
 
 
 def _mk_itic():
     import itic
-    inj = itic.build_injection(K=48, alpha=8.0, target=FIT_TARGET)
+    if native_on():
+        probes = itic.load_probes(path=_native("itic_probes.pt"))
+        inj = itic.build_injection(K=48, alpha=8.0, probes=probes)
+    else:
+        inj = itic.build_injection(K=48, alpha=8.0, target=FIT_TARGET)
     return lambda m: itic.attach_fn(m, inj)
 
 
 def _paths_itic():
     import itic
-    return [itic.probes_path_for(FIT_TARGET)]
+    return [_native("itic_probes.pt") if native_on() else itic.probes_path_for(FIT_TARGET)]
+
+
+# Set by main() when --native-arrows is given (a 1-list so _paths_* can cite it).
+NATIVE_ARROWS_PATH = [None]
 
 
 # Registry: uq stem -> (label, builder, artifact-paths fn, Table-1 config extra).
@@ -269,6 +324,8 @@ def run(stem, items_path, limit, out_path, gen_len, steps, blk, model=None, tok=
         "label": entry["label"], "target_subject": UQ_TARGET,
         "fit_target": FIT_TARGET, "artifacts": entry["paths"](),
         "item_independent": True, "items": items_path, "n_items": len(items),
+        "direction_source": ("unqover_native" if native_on() else "bbq_black"),
+        "native_cache": NATIVE["cache_dir"], "native_arrows": NATIVE_ARROWS_PATH[0],
         "no_answer": no_answer, "hook_fire_count": n_fired,
         "gen_length": gen_len, "steps": steps, "block_length": blk,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
@@ -304,14 +361,27 @@ def selftest(items_path):
         check(f"Black filter: {len(items)} items / {n_inst} instances, all contain 'Black'",
               contains and len(items) > 0)
 
-    # (1) each black fit artifact exists on disk (via the module's own path fn).
+    # (1) each fit artifact exists on disk (native cache when --native-cache is
+    #     set, else the BBQ black artifact via the module's own path fn). Native
+    #     artifacts are GPU-built by build_arrows_unqover.py; if not built yet,
+    #     SKIP (not FAIL) so the offline CPU gate passes before the build step.
+    src = "native" if native_on() else "black"
     for stem in METHOD_ORDER:
         for art in METHODS[stem]["paths"]():
-            check(f"{stem}: artifact {os.path.basename(art)} exists", os.path.exists(art))
+            if native_on() and not os.path.exists(art):
+                print(f"[selftest] {stem}: native artifact {os.path.basename(art)} "
+                      f": SKIP (built on GPU by build_arrows_unqover.py --build)")
+            else:
+                check(f"{stem}: {src} artifact {os.path.basename(art)} exists",
+                      os.path.exists(art))
 
     # (2) each attach_fn builder loads its artifact and returns a callable
-    #     (CPU tensor math; no model needed).
+    #     (CPU tensor math; no model needed). Skipped for native until built.
     for stem in METHOD_ORDER:
+        arts = METHODS[stem]["paths"]()
+        if native_on() and not all(os.path.exists(a) for a in arts):
+            print(f"[selftest] {stem}: builder -> callable : SKIP (native fit not built yet)")
+            continue
         try:
             af = METHODS[stem]["make"]()
             check(f"{stem}: builder -> callable attach_fn", callable(af))
@@ -353,7 +423,24 @@ def main():
     ap.add_argument("--gen-length", type=int, default=32)
     ap.add_argument("--steps", type=int, default=64)
     ap.add_argument("--block-length", type=int, default=32)
+    ap.add_argument("--native-cache", default=None,
+                    help="UNQOVER-native fit cache dir (unqover/cache_native/): load "
+                         "actadd/linearact/aura/itic fits from here instead of the BBQ "
+                         "black artifacts. SAME Table-1 operating points.")
+    ap.add_argument("--native-arrows", default=None,
+                    help="UNQOVER-native arrow set (.pt with 'r'=(32,H)) for CAA/Mean-AcT "
+                         "instead of steering/arrows.pt. Required with --native-cache.")
     args = ap.parse_args()
+
+    if args.native_cache:
+        NATIVE["cache_dir"] = args.native_cache
+        if not args.native_arrows:
+            ap.error("--native-arrows is required with --native-cache "
+                     "(CAA/Mean-AcT need the UNQOVER-native direction).")
+        NATIVE_ARROWS_PATH[0] = args.native_arrows
+        _load_native_arrows(args.native_arrows)
+        print(f"[baselines_unqover] UNQOVER-NATIVE fits: cache={args.native_cache} "
+              f"arrows={args.native_arrows}", flush=True)
 
     if args.selftest:
         sys.exit(0 if selftest(args.items) else 1)
