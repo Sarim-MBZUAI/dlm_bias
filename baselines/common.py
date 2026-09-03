@@ -98,7 +98,13 @@ D_HEAD = 128         # d_model / n_heads
 # Extending to further manifest targets = add them here (they must have a      #
 # manifest entry + arrows_<target>.pt).                                        #
 # --------------------------------------------------------------------------- #
-SUPPORTED_TARGETS = ("black", "woman", "man")
+# E8/E9: black (round-1 ref) + gender (woman/man) + one pole each of the E9
+# race (arab), SES (lowses) and Age (old) axes -- the targets whose result
+# tables get the full Table-1 baseline suite (slurm/round3_jobAE/jobAF). Each
+# added target has a multirace/arrows_<target>.pt AND a manifest heldout entry
+# (multirace/build_arrows.heldout_from_manifest), so calib.heldout_items and
+# directions.load_arrows resolve them exactly as they do woman/man.
+SUPPORTED_TARGETS = ("black", "woman", "man", "arab", "lowses", "old")
 
 
 def target_suffix(target):

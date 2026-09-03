@@ -217,6 +217,25 @@ def family_multitarget(results, skip_unrotated):
                 ci = dgap_ci(a["_reps"], base["_reps"])
                 print("%-22s %s" % (label, fmt(a, dg, ci)))
                 a["dgap_vs_base"], a["dgap_ci95"] = dg, ci
+        # E9: full Table-1 baseline suite (BASELINE_CONDS), SOFT-DISCOVERED --
+        # only sub-dirs present in ALL 3 rotations are analyzed/printed (arab
+        # gets them from slurm/round3_jobAE/jobAF; asian/latino/white and any
+        # pre-run tree have none present -> loop body skipped -> byte-identical
+        # output). Delta-g vs this target's own pooled base; result keys are the
+        # explicit BASELINE_CONDS keys, matching the gender/ses/age families.
+        for b_sub, b_stem, b_label, b_ckey in BASELINE_CONDS:
+            b_paths = mt_paths(t, b_sub, b_stem)
+            if not all(os.path.exists(p) for p in b_paths):
+                continue
+            ba = analyze_soft(b_paths, want_reps=True)
+            if ba is None:
+                continue
+            b_dg = ba["gap"] - base["gap"]
+            b_ci = dgap_ci(ba["_reps"], base["_reps"])
+            ba["dgap_vs_base"], ba["dgap_ci95"] = b_dg, b_ci
+            ba.pop("_reps", None)
+            print("%-22s %s" % ("%s %s" % (t, b_label), fmt(ba, b_dg, b_ci)))
+            conds[b_ckey] = ba
         for a in conds.values():
             a.pop("_reps", None)
         fam[t] = conds
@@ -373,12 +392,16 @@ BASELINE_CONDS = [
 ]
 
 
-def family_soft_targets(results, key, title, targets, include_baselines=False):
+def family_soft_targets(results, key, title, targets, include_baselines=False,
+                        soft_baselines=False):
     """Shared soft-missing family: pooled strict gap + CIs + Delta-g vs the
     SAME target's pooled base + gap@A/gap@BC + invalid rates + decode-PI
     telemetry, per target in `targets`. include_baselines additionally reports
-    the round-1 prior-work baseline suite (BASELINE_CONDS), soft-missing.
-    Returns the family dict."""
+    the round-1 prior-work baseline suite (BASELINE_CONDS). With
+    soft_baselines=False (gender/E8, where every baseline exists) an absent
+    baseline prints a MISSING line, exactly as before; with soft_baselines=True
+    (ses/age/E9) only the baselines present in ALL 3 rotations are appended, so
+    a target with no baseline runs yet leaves the output byte-identical."""
     print("\n== %s ==" % title)
     hdr = ("%-22s %6s %6s %6s %6s | %25s | %6s %6s" %
            ("target/condition", "target", "compar", "abstn", "inval",
@@ -396,7 +419,11 @@ def family_soft_targets(results, key, title, targets, include_baselines=False):
                    stem.replace("cond_", "")) for stem in nstems]
         conds += [("caa", "cond_caa_%s_a2" % t, "caa a2", "caa")]
         if include_baselines:
-            conds += BASELINE_CONDS
+            if soft_baselines:
+                conds += [c for c in BASELINE_CONDS
+                          if all(os.path.exists(p) for p in mt_paths(t, c[0], c[1]))]
+            else:
+                conds += BASELINE_CONDS
         base = None
         fam[t] = {}
         for sub, stem, label, ckey in conds:
@@ -484,14 +511,14 @@ def family_fblack(results):
 def family_ses(results):
     family_soft_targets(results, "ses",
                         "FAMILY 7: SES BALANCED (E9, pooled 3x400, strict)",
-                        SES_TARGETS)
+                        SES_TARGETS, include_baselines=True, soft_baselines=True)
 
 
 def family_age(results):
     family_soft_targets(results, "age",
                         "FAMILY 8: AGE BALANCED (E9, pooled 3x400, strict; "
                         "young = BBQ tag nonOld)",
-                        AGE_TARGETS)
+                        AGE_TARGETS, include_baselines=True, soft_baselines=True)
 
 
 # ---------------------------------------------------------------------------
