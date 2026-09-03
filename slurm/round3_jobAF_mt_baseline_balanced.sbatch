@@ -56,7 +56,7 @@ run_if_missing() {  # $1 = expected result json, rest = command
     fi
 }
 
-for T in arab lowses old; do
+for T in arab old; do
     OUT=results/balanced_all/$T
     for r in 0 1 2; do
         ITEMS=$ROTDIR/_sweep400_${T}_rot${r}.jsonl

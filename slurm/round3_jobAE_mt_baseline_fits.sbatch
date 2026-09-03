@@ -58,7 +58,7 @@ run_if_missing() {  # $1 = expected artifact, rest = command
 
 CACHE=baselines/cache
 
-for T in arab lowses old; do
+for T in arab old; do
     # caa prerequisite (built by multirace/build_arrows.py): fail loud if absent.
     test -f "multirace/arrows_${T}.pt" || {
         echo "FATAL: multirace/arrows_${T}.pt missing (build_arrows --target $T first)"; exit 1; }
