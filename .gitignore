@@ -21,8 +21,11 @@ bias_steering/directions/
 race_steering/.stereoset_cache/
 gw_*.log
 
-# UNQOVER: raw/generated data (large) + item dumps stay local
+# UNQOVER (ARCHIVED -- see archive/unqover/README.md): raw/generated data
+# (large) + item dumps stay local.  Both the pre-archive path and the archive
+# path are ignored so the on-disk artifacts stay untracked wherever they sit.
 data/unqover/
+archive/unqover/data/unqover/
 
 # internal session notes — keep local only
 handoff.md
@@ -123,16 +126,38 @@ results/balanced_all/**
 !results/balanced_all/young/**/cond_*.json
 !results/balanced_all/young/**/cond_*_samples.jsonl
 
-# UNQOVER-native standalone benchmark (jobAI): built direction/fits + run outputs
-# stay local -- regenerated from the committed split manifest
-# (unqover/items_manifest_unqover_black.json) by build_arrows_unqover.py and the
-# jobAI sbatch. Only the manifest + code are tracked.
+# UNQOVER-native standalone benchmark (jobAI, ARCHIVED): built direction/fits +
+# run outputs stay local -- regenerated from the committed split manifest
+# (archive/unqover/unqover/items_manifest_unqover_black.json) by
+# build_arrows_unqover.py and the jobAI sbatch. Only the manifest + code are
+# tracked.
 results/unqover_native/
 unqover/cache_native/
+archive/unqover/results/unqover_native/
+archive/unqover/unqover/cache_native/
 
-# UNQOVER-race second benchmark (unqover_hf/): the derived jsonl are large and
-# fully regenerated from the hirundo parquets + data/unqover/generated/
-# ethnicity.source.json by `python -m unqover_hf.loader` then
-# `python -m unqover_hf.splits`. Only the code and the two manifests
+# UNQOVER-race second benchmark (ARCHIVED, archive/unqover/unqover_hf/): the
+# derived jsonl are large and fully regenerated from the hirundo parquets +
+# data/unqover/generated/ethnicity.source.json by `python -m unqover_hf.loader`
+# then `python -m unqover_hf.splits`. Only the code and the two manifests
 # (split_manifest_race.json, loader_report_race.json) are tracked.
 data/unqover_hirundo/*.jsonl
+archive/unqover/data/unqover_hirundo/*.jsonl
+
+# unqover_hf (Phase 2, UNQOVER-race, ARCHIVED): local convenience symlinks into
+# the MAIN tree (data + model), the GPU-built fit cache, and the per-item raw
+# generations.  The run SUMMARIES and the selection tables ARE tracked -- they
+# are the result.
+/data/unqover
+/data/unqover_hirundo/unqover-race
+/data/unqover_hirundo/unqover-race-bias
+/data/unqover_hirundo/unqover-race-bias-free-text
+unqover_hf/cache_race/
+results/unqover_hf/**/*_raw.jsonl
+results/unqover_hf/smoke/
+archive/unqover/data/unqover_hirundo/unqover-race
+archive/unqover/data/unqover_hirundo/unqover-race-bias
+archive/unqover/data/unqover_hirundo/unqover-race-bias-free-text
+archive/unqover/unqover_hf/cache_race/
+archive/unqover/results/unqover_hf/**/*_raw.jsonl
+archive/unqover/results/unqover_hf/smoke/

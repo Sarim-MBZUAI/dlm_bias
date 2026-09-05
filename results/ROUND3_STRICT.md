@@ -204,18 +204,24 @@ motivated §2 originates here.
 
 ---
 
-## 5b. E9 — UnQover religion: clean measurement (second benchmark)
+## 5b. E9 — UnQover religion: clean measurement (second benchmark) — ARCHIVED
+
+> **ARCHIVED — not part of the paper.** The whole UnQover track has been retired;
+> its code and results now live under
+> [`../archive/unqover/`](../archive/unqover/README.md). This section is kept as a
+> record of what was run. Paths below point into the archive.
 
 **Baseline (unsteered) religion-bias measurement** on UnQover — the second benchmark,
 new bias axis. LLaDA-8B-Instruct, greedy (T=0), two-choice subject-pick schema,
-official UnQover μ/η/δ scoring ([`unqover/unqover_metric.py`](../unqover/unqover_metric.py)).
+official UnQover μ/η/δ scoring
+([`archive/unqover/unqover/unqover_metric.py`](../archive/unqover/unqover/unqover_metric.py)).
 Items: the first 2000 rows of the generated religion set
-(`data/unqover/religion.items.cap2000.jsonl` — quadruples are contiguous, so this is
+(`archive/unqover/data/unqover/religion.items.cap2000.jsonl` — quadruples are contiguous, so this is
 exactly the first **500 complete 4-record instances**; the full `religion.items.jsonl`
 has 8000 rows / 2000 instances). 11 subjects from the official word list. Committed:
-[`unqover_religion/uq_clean.jsonl`](unqover_religion/uq_clean.jsonl) (2000 rows, 0
-no-answer), [`uq_clean.json`](unqover_religion/uq_clean.json) (config),
-[`metric_uq_clean.txt`](unqover_religion/metric_uq_clean.txt).
+[`uq_clean.jsonl`](../archive/unqover/results/unqover_religion/uq_clean.jsonl) (2000 rows, 0
+no-answer), [`uq_clean.json`](../archive/unqover/results/unqover_religion/uq_clean.json) (config),
+[`metric_uq_clean.txt`](../archive/unqover/results/unqover_religion/metric_uq_clean.txt).
 
 | metric | value |
 |---|---|
@@ -242,15 +248,15 @@ while Christian is the most protected (γ −0.2372). The high flip rate (δ 0.7
 position still dominates individual picks; the debiased quantities average it out.
 
 **Steered religion runs are deliberately omitted** (E9 decision, documented in
-`slurm/round3_jobW_unqover_religion.sbatch`): BBQ Religion has only 600 ambiguous rows
+`archive/unqover/slurm/round3_jobW_unqover_religion.sbatch`): BBQ Religion has only 600 ambiguous rows
 — below the 800-row item-protocol minimum and far below the 1600 the 4-way disjoint
 split needs — so no honest BBQ-built religion direction exists; reusing a direction
 built for another attribute would test cross-class transfer, not religion steering;
 an UnQover-native direction is new machinery, documented as future work. This section
 is therefore a *measurement*, framing that future steered study. Provenance: job 19665.
 
-Regenerate:
-`python unqover/unqover_metric.py --results results/unqover_religion/uq_clean.jsonl --target-subject Muslim`.
+Regenerate (from the archive):
+`python archive/unqover/unqover/unqover_metric.py --results archive/unqover/results/unqover_religion/uq_clean.jsonl --target-subject Muslim`.
 
 ---
 
@@ -436,10 +442,10 @@ All checks re-run 2026-08-14 against the committed files (not the job logs).
   `strict_round2.py` families 7–8), and every open-loop `normal` summary
   (α=4 mains *and* α=3 effort-matched) fired all 32 hooks with
   `fire_counts = 25600` = 400 items × 64 steps.
-- **Religion files.** `results/unqover_religion/uq_clean.jsonl` is exactly
+- **Religion files (ARCHIVED).** `archive/unqover/results/unqover_religion/uq_clean.jsonl` is exactly
   **2000 lines** (= `n_items` in `uq_clean.json`, `no_answer` 0), grouping into
   exactly **500 distinct instance_ids × 4 records** — the run used the
-  **capped** `data/unqover/religion.items.cap2000.jsonl` (first 2000 rows =
+  **capped** `archive/unqover/data/unqover/religion.items.cap2000.jsonl` (first 2000 rows =
   first 500 complete instances), **not** the full 8000-row
   `religion.items.jsonl` (asserted: config `items` field + line counts of both
   item files). The metric re-run reproduces `metric_uq_clean.txt` exactly
@@ -506,8 +512,9 @@ python balanced_all/strict_round3.py   # §1 (suppression) + §2 (case-full sens
 python balanced_all/strict_round2.py   # §3 (gender family 5, incl. E8 baselines) + §4 (fblack,
                                        #   family 6) + §5c (SES, family 7) + §5d (Age, family 8)
 python analysis/trajectory/traj_analysis.py   # §5 (E1 tables + figures)
-python unqover/unqover_metric.py --results results/unqover_religion/uq_clean.jsonl \
-    --target-subject Muslim            # §5b (religion clean measurement)
+python archive/unqover/unqover/unqover_metric.py \
+    --results archive/unqover/results/unqover_religion/uq_clean.jsonl \
+    --target-subject Muslim            # §5b (religion clean measurement -- ARCHIVED)
 ```
 
 Raw runs: `slurm/round3_*.sbatch` (smoke `round3_smokeJ`, jobs G–X; exact
@@ -516,10 +523,11 @@ jobO clone and its equivalent script archived after the fact as
 `round3_jobX_sesage_effmatch.sbatch` — see footnote ⁴ in §5c).
 Inputs consumed are all committed except the gitignored
 rotation item files (`results/balanced_all/rotations/`,
-`data/bbq_items/`), the gitignored UnQover item dumps (`data/unqover/`,
-including §5b's `religion.items.cap2000.jsonl` — rebuilt via
-`unqover/download_unqover.py` + `unqover/unqover_loader.py`, line counts
-asserted in §6), and SLURM logs.
+`data/bbq_items/`), the gitignored UnQover item dumps
+(`archive/unqover/data/unqover/`, including §5b's `religion.items.cap2000.jsonl` —
+rebuilt via `archive/unqover/unqover/download_unqover.py` +
+`archive/unqover/unqover/unqover_loader.py`, line counts asserted in §6), and
+SLURM logs.
 
 ---
 

@@ -40,7 +40,9 @@ echo "== migrate_local_data.sh (root=$ROOT) =="
 
 move "eval/.bbq_cache"        "data/bbq_cache"
 move "experiments/data"       "data/bbq_items"
-move "datasets/unqover/data"  "data/unqover"
+# UNQOVER is archived (see archive/unqover/README.md); its local raw data now
+# belongs under archive/unqover/data/unqover.
+move "datasets/unqover/data"  "archive/unqover/data/unqover"
 move "pid_steering/arrows.pt" "steering/arrows.pt"
 
 # Tidy up now-empty old dirs (eval/ keeps other files, so only rmdir if empty).

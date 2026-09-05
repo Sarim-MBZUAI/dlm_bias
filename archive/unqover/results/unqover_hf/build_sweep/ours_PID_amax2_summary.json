@@ -1,0 +1,166 @@
+{
+ "n_records": 480,
+ "n_valid": 480,
+ "invalid_rate": 0.0,
+ "article_ambiguous": 0,
+ "article_ambiguous_rate": 0.0,
+ "n_instances": 120,
+ "n_complete_instances": 120,
+ "coverage": 1.0,
+ "pick_rate_by_order": {
+  "0": {
+   "A": 0.3583,
+   "B": 0.6417
+  },
+  "1": {
+   "A": 0.225,
+   "B": 0.775
+  }
+ },
+ "target_outcome_by_option_position": {
+  "A": {
+   "other": 0.6333,
+   "target": 0.3667
+  },
+  "B": {
+   "other": 0.2167,
+   "target": 0.7833
+  }
+ },
+ "letter_pick_rate": {
+  "A": 0.2917,
+  "B": 0.7083
+ },
+ "metric": {
+  "mu": 0.7888888888888889,
+  "eta": 0.49085213032581454,
+  "raw_skew_mu": 0.9666666666666667,
+  "delta": 0.5083333333333333,
+  "epsilon": 0.6166666666666667,
+  "mean_absC": 0.35833333333333334,
+  "mean_abs_raw": 0.49166666666666664,
+  "n_subjects": 15,
+  "n_records": 480,
+  "n_valid_records": 480,
+  "invalid_rate": 0.0,
+  "n_instances": 120,
+  "n_complete": 120,
+  "coverage": 1.0,
+  "attr_field": "attribute_id",
+  "cluster_field": "cluster_key",
+  "n_attributes": 15,
+  "n_clusters": 111,
+  "letter_pick_rate": {
+   "A": 0.2916666666666667,
+   "B": 0.7083333333333334
+  },
+  "mu_act_cluster": 0.5980952380952381,
+  "eta_act_cluster": 0.4334751573213112,
+  "raw_skew_mu_act_cluster": 0.7572649572649574,
+  "target_stats": {
+   "n_complete": 120,
+   "pref_gap_debiased": 0.125,
+   "pref_gap_raw": 0.275,
+   "target_pick_rate_first_named": 0.43333333333333335,
+   "target_pick_rate_second_named": 0.8416666666666667,
+   "n_clusters": 111,
+   "target": "black",
+   "members": [
+    "African",
+    "African-American",
+    "Black"
+   ],
+   "ci_raw": {
+    "lo": 0.1557377049180328,
+    "hi": 0.39655172413793105,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "ci_debiased": {
+    "lo": 0.028455284552845527,
+    "hi": 0.2217391304347826,
+    "n_clusters": 111,
+    "n_boot": 1000
+   }
+  },
+  "noise_floor": {
+   "mu": {
+    "mean": 0.7337333333333329,
+    "p95": 0.8416666666666667
+   },
+   "eta": {
+    "mean": 0.5189686716791979,
+    "p95": 0.5854636591478697
+   },
+   "raw_skew_mu": {
+    "mean": 0.9627,
+    "p95": 1.0
+   },
+   "mean_absC": {
+    "mean": 0.3771249999999998,
+    "p95": 0.425
+   },
+   "pref_gap_raw": {
+    "mean": -0.000666666666666664,
+    "p2.5": -0.10833333333333334,
+    "p97.5": 0.15833333333333333
+   },
+   "n_rep": 100
+  }
+ },
+ "target": "black",
+ "target_members": [
+  "African",
+  "African-American",
+  "Black"
+ ],
+ "parser": "balanced_all/strict_pool.py STRICT_RE, restricted to A/B; invalid kept in the denominator; no permissive fallback",
+ "article_ambiguous_note": "responses opening with a lowercase a/b + a word (the English article) that STRICT_RE reads as a letter; re-score with --article-guard to see the sensitivity",
+ "tag": "ours_PID_amax2",
+ "sweep_method": "ours_PID",
+ "knobs": {
+  "amax": 2.0
+ },
+ "config": {
+  "method": "decode_PID",
+  "gains": {
+   "Kp": 3.0,
+   "Ki": 0.1,
+   "Kd": 1.0
+  },
+  "setpoint": 0.9,
+  "alpha_max": 2.0,
+  "anti_windup": true,
+  "actuator": "all_32_blocks",
+  "vhat_layer": 14,
+  "arrows": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/unqover_hf/arrows_race_black.pt",
+  "granularity": "block_residual_all32"
+ },
+ "split_path": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/data/unqover_hirundo/build_race.jsonl",
+ "n_instances_run": 120,
+ "n_instances_available": 450,
+ "sweep_seed": 42,
+ "hook_fire_count": 998400,
+ "hook_fire_per_item": 2080.0,
+ "elapsed_s": 1731.7561855316162,
+ "s_per_item": 3.6078253865242003,
+ "gen_length": 32,
+ "steps": 64,
+ "block_length": 32,
+ "temperature": 0.0,
+ "remasking": "low_confidence",
+ "delta_norms_per_layer": null,
+ "delta_norm_mean_over_layers": null,
+ "actuation": {
+  "mean_alpha_full_run": 1.4986753899811378,
+  "mean_alpha_commit_window": 1.8026762488364683,
+  "mean_commit_step": 31.0,
+  "mean_commit_window_steps": 32.0,
+  "mean_sat_frac": 0.43206380208333334,
+  "mean_p_target_final": 0.5731004376916495,
+  "frac_p_target_final_ge_0p9": 0.575,
+  "basis_note": "alpha_mean_full_run averages alpha(t) over ALL 64 denoising steps; alpha_mean_commit_window averages over steps 0..commit_step of the answer-letter slot"
+ },
+ "git_sha": "e627db22bf5e83da5d4c825b99d69069c159eb6c",
+ "cuda_visible_devices": "0"
+}

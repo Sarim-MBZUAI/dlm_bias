@@ -41,11 +41,11 @@ bootstrap replicates.
   (jobs 20576 `round3_jobY` fits / 20577 `round3_jobZ` runs, both exit 0),
   400 lines each, counts sum to 400; both `.out` logs end in their DONE
   lines, no tracebacks in either `.err`.
-- **UNQOVER v2** — `results/unqover_v2/uq_{clean,decode_PI,layer_PI_a2,normal_a4}.jsonl`
+- **UNQOVER v2** (since PURGED, see §3) — `results/unqover_v2/uq_{clean,decode_PI,layer_PI_a2,normal_a4}.jsonl`
   with 2000 / 256 / 256 / 256 rows (steered runs capped), + 4 config JSONs +
   3 in-job metric txts. Recomputed `no_answer` from the jsonls matches every
   config (0 / 33 / 0 / 33). Rerunning
-  `unqover/unqover_metric.py --results <cond> --baseline uq_clean --target-subject Black`
+  `archive/unqover/unqover/unqover_metric.py --results <cond> --baseline uq_clean --target-subject Black`
   reproduces all three stored `metric_*.txt` byte-for-byte (modulo blank lines).
 - All six `.out` logs end in their ALL DONE line; no tracebacks/errors in any
   `.err` (`logs/slurm/{arrows2-17155,mtbal1-17156,mtbal2-17157,seeds-17158,unqover-17159,dream-17160}`).
@@ -128,7 +128,16 @@ the seed mean — the headline replicates on three fresh item draws with
 essentially the original effect size, and every per-seed CI excludes 0 by a
 wide margin while every base CI straddles 0.
 
-## 3. UNQOVER v2 (fixed generation-time parser; metric = `unqover/unqover_metric.py`)
+## 3. UNQOVER v2 — ARCHIVED AND PURGED (do not cite)
+
+> The whole UnQover track has been retired from the paper and archived under
+> [`../archive/unqover/`](../archive/unqover/README.md). The `results/unqover_v2/`
+> directory this section describes was **purged as flawed** (BBQ-transfer runs,
+> and a metric computed on a data release whose 2-order structure was collapsed),
+> so the files referenced below no longer exist and the table below is not
+> reproducible. `balanced_all/strict_round2.py` no longer computes this family.
+> Kept as a record of what was run. Metric code:
+> [`archive/unqover/unqover/unqover_metric.py`](../archive/unqover/unqover/unqover_metric.py).
 
 Steered runs capped at 256 items = 64 quadruple instances; clean ran 2000
 items = 500 instances. `pref_gap` toward **Black** on Black-containing
@@ -281,15 +290,12 @@ python balanced_all/strict_round2.py                 # all tables above
 python balanced_all/strict_round2.py --json out.json # + machine-readable dump
 python balanced_all/strict_round2.py --skip-unrotated  # skip multirace rows
 
-# UNQOVER metric, per steered condition (CPU; matches results/unqover_v2/metric_*.txt)
-python unqover/unqover_metric.py \
-  --results results/unqover_v2/uq_decode_PI.jsonl \
-  --baseline results/unqover_v2/uq_clean.jsonl --target-subject Black
+# The UNQOVER metric step is GONE: results/unqover_v2/ was purged and the track
+# is archived under archive/unqover/ (see §3).
 ```
 
 Inputs consumed (all committed): the family 1/2/4 `cond_*.json` +
-`cond_*_samples.jsonl` files listed in §0, the four `uq_*.jsonl` + `uq_*.json`
-+ three `metric_*.txt` under `results/unqover_v2/`, and (for the unrotated
+`cond_*_samples.jsonl` files listed in §0, and (for the unrotated
 comparison) the round-1 `results/multirace/<T>/...` samples. Raw runs were
 produced by the six round-2 sbatch jobs (see `logs/slurm/*-1715{5..9},17160`
 locally and the `slurm/` scripts for exact CLIs); the family-4 parity rows

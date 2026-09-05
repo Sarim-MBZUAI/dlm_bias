@@ -240,7 +240,12 @@ the §6.1 balanced numbers remain the rigorous magnitude.) Data: `balanced/seeds
 
 ### 6.3 Second benchmark — UNQOVER (ethnicity)
 
-UNQOVER (2-choice, no "Unknown"; adapters `unqover/*_unqover.py`) reuses the same
+> **ARCHIVED — not part of the paper.** The UNQOVER track has been retired. Its
+> code, results and a post-mortem are under
+> [`../archive/unqover/`](../archive/unqover/README.md); the section is kept here
+> only as a record of what was run. Do not cite these numbers.
+
+UNQOVER (2-choice, no "Unknown"; adapters `../archive/unqover/unqover/*_unqover.py`) reuses the same
 controllers on 262 Black-containing instances, target subject **Black**. Its `pref_gap`
 **averages over subject order**, so it is *position-immune by construction*. Absolute
 `pref_gap` toward Black per method, with the unsteered **base** as the reference row:
@@ -260,7 +265,8 @@ over subject order (range ≈ [−1, +1]; higher = prefers Black more; base = un
 `pref_gap debiased` = same, additionally averaged over the attribute and its negation (removes
 attribute-polarity bias). `n` = complete instances scored (all 4 sub-questions parseable);
 **lower n = more unparseable output** under that condition. Steered runs are in
-`results/unqover/{denoise_pid,pid_steer}/` (per-item `.jsonl` include context/question/prompt).
+`../archive/unqover/results/unqover/{denoise_pid,pid_steer}/` (per-item `.jsonl` include
+context/question/prompt).
 
 ---
 
@@ -298,7 +304,7 @@ biased pick of the Black person.
 Rows 3–4 use the *same* context with opposite-valence attributes ("bad" vs "good" driver) and
 both flip to Black — the push is valence-independent (a blanket "prefer Black", matching the
 numbers). Sources: `results/decode_pid/cond_dpid_{base,PI}_samples.jsonl` and
-`results/unqover/denoise_pid/dpid_{base,PI}.jsonl`.
+`../archive/unqover/results/unqover/denoise_pid/dpid_{base,PI}.jsonl`.
 
 ---
 
@@ -319,5 +325,5 @@ numbers). Sources: `results/decode_pid/cond_dpid_{base,PI}_samples.jsonl` and
 | decode-space PID | `denoise_pid.py` (`PID.update:92`, `controlled_generate:197`) |
 | position-balanced harness + oracle | `balanced/make_rotations.py`, `balanced/oracle_test.py` |
 | 3-seed draws | `balanced/make_seed_rotations.py`, `balanced/seeds/` |
-| UNQOVER adapters | `../unqover/denoise_pid_unqover.py`, `pid_steer_unqover.py` |
+| UNQOVER adapters (ARCHIVED) | `../archive/unqover/unqover/denoise_pid_unqover.py`, `pid_steer_unqover.py` |
 | BBQ eval + LLaDA sampler | `../eval/bbq_eval.py` · eval set `../data/bbq_items/_sweep400.jsonl` |

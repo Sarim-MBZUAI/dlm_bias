@@ -1,0 +1,170 @@
+{
+ "n_records": 480,
+ "n_valid": 0,
+ "invalid_rate": 1.0,
+ "article_ambiguous": 0,
+ "article_ambiguous_rate": 0.0,
+ "n_instances": 120,
+ "n_complete_instances": 0,
+ "coverage": 0.0,
+ "pick_rate_by_order": {
+  "0": {
+   "INVALID": 1.0
+  },
+  "1": {
+   "INVALID": 1.0
+  }
+ },
+ "target_outcome_by_option_position": {
+  "A": {
+   "invalid": 1.0
+  },
+  "B": {
+   "invalid": 1.0
+  }
+ },
+ "letter_pick_rate": {},
+ "metric": {
+  "mu": 0.0,
+  "eta": 0.0,
+  "raw_skew_mu": 0.0,
+  "delta": 0.0,
+  "epsilon": 0.0,
+  "mean_absC": 0.0,
+  "mean_abs_raw": 0.0,
+  "n_subjects": 0,
+  "n_records": 480,
+  "n_valid_records": 0,
+  "invalid_rate": 1.0,
+  "n_instances": 120,
+  "n_complete": 0,
+  "coverage": 0.0,
+  "attr_field": "attribute_id",
+  "cluster_field": "cluster_key",
+  "n_attributes": 0,
+  "n_clusters": 0,
+  "letter_pick_rate": {},
+  "mu_act_cluster": 0.0,
+  "eta_act_cluster": 0.0,
+  "raw_skew_mu_act_cluster": 0.0,
+  "target_stats": {
+   "n_complete": 0,
+   "pref_gap_debiased": 0.0,
+   "pref_gap_raw": 0.0,
+   "target_pick_rate_first_named": 0.0,
+   "target_pick_rate_second_named": 0.0,
+   "n_clusters": 0,
+   "target": "black",
+   "members": [
+    "African",
+    "African-American",
+    "Black"
+   ],
+   "ci_raw": null,
+   "ci_debiased": null
+  },
+  "noise_floor": {
+   "mu": {
+    "mean": 0.0,
+    "p95": 0.0
+   },
+   "eta": {
+    "mean": 0.0,
+    "p95": 0.0
+   },
+   "raw_skew_mu": {
+    "mean": 0.0,
+    "p95": 0.0
+   },
+   "mean_absC": {
+    "mean": 0.0,
+    "p95": 0.0
+   },
+   "pref_gap_raw": {
+    "mean": 0.0,
+    "p2.5": 0.0,
+    "p97.5": 0.0
+   },
+   "n_rep": 100
+  }
+ },
+ "target": "black",
+ "target_members": [
+  "African",
+  "African-American",
+  "Black"
+ ],
+ "parser": "balanced_all/strict_pool.py STRICT_RE, restricted to A/B; invalid kept in the denominator; no permissive fallback",
+ "article_ambiguous_note": "responses opening with a lowercase a/b + a word (the English article) that STRICT_RE reads as a letter; re-score with --article-guard to see the sensitivity",
+ "tag": "itic_K16_a45",
+ "sweep_method": "itic",
+ "knobs": {
+  "topk": 16,
+  "alpha": 45.0
+ },
+ "config": {
+  "method": "iti_c",
+  "topk": 16,
+  "alpha": 45.0,
+  "artifact": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/unqover_hf/cache_race/itic_probes.pt",
+  "granularity": "attn_head",
+  "n_selected_heads": 16,
+  "layers_touched": [
+   0,
+   2,
+   3,
+   4
+  ]
+ },
+ "split_path": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/data/unqover_hirundo/build_race.jsonl",
+ "n_instances_run": 120,
+ "n_instances_available": 450,
+ "sweep_seed": 42,
+ "hook_fire_count": 122880,
+ "hook_fire_per_item": 256.0,
+ "elapsed_s": 1254.0733330249786,
+ "s_per_item": 2.6126527771353723,
+ "gen_length": 32,
+ "steps": 64,
+ "block_length": 32,
+ "temperature": 0.0,
+ "remasking": "low_confidence",
+ "delta_norms_per_layer": [
+  107.3989,
+  0.0,
+  38.41381,
+  26.12217,
+  31.57512,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "delta_norm_mean_over_layers": 6.359687805175781,
+ "actuation": null,
+ "git_sha": "e627db22bf5e83da5d4c825b99d69069c159eb6c",
+ "cuda_visible_devices": "0"
+}

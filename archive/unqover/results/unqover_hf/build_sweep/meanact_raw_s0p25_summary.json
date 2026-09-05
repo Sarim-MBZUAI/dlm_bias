@@ -1,0 +1,181 @@
+{
+ "n_records": 480,
+ "n_valid": 62,
+ "invalid_rate": 0.870833,
+ "article_ambiguous": 0,
+ "article_ambiguous_rate": 0.0,
+ "n_instances": 120,
+ "n_complete_instances": 4,
+ "coverage": 0.033333,
+ "pick_rate_by_order": {
+  "0": {
+   "A": 0.1167,
+   "INVALID": 0.8833
+  },
+  "1": {
+   "A": 0.1417,
+   "INVALID": 0.8583
+  }
+ },
+ "target_outcome_by_option_position": {
+  "A": {
+   "invalid": 0.9,
+   "target": 0.1
+  },
+  "B": {
+   "invalid": 0.8417,
+   "other": 0.1583
+  }
+ },
+ "letter_pick_rate": {
+  "A": 1.0
+ },
+ "metric": {
+  "mu": 0.0,
+  "eta": 0.0,
+  "raw_skew_mu": 0.0,
+  "delta": 1.0,
+  "epsilon": 1.0,
+  "mean_absC": 0.0,
+  "mean_abs_raw": 0.0,
+  "n_subjects": 4,
+  "n_records": 480,
+  "n_valid_records": 62,
+  "invalid_rate": 0.8708333333333333,
+  "n_instances": 120,
+  "n_complete": 4,
+  "coverage": 0.03333333333333333,
+  "attr_field": "attribute_id",
+  "cluster_field": "cluster_key",
+  "n_attributes": 3,
+  "n_clusters": 4,
+  "letter_pick_rate": {
+   "A": 1.0
+  },
+  "mu_act_cluster": 0.0,
+  "eta_act_cluster": 0.0,
+  "raw_skew_mu_act_cluster": 0.0,
+  "target_stats": {
+   "n_complete": 4,
+   "pref_gap_debiased": 0.0,
+   "pref_gap_raw": 0.0,
+   "target_pick_rate_first_named": 1.0,
+   "target_pick_rate_second_named": 0.0,
+   "n_clusters": 4,
+   "target": "black",
+   "members": [
+    "African",
+    "African-American",
+    "Black"
+   ],
+   "ci_raw": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 4,
+    "n_boot": 1000
+   },
+   "ci_debiased": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 4,
+    "n_boot": 1000
+   }
+  },
+  "noise_floor": {
+   "mu": {
+    "mean": 0.47625,
+    "p95": 0.75
+   },
+   "eta": {
+    "mean": 0.6025,
+    "p95": 1.0
+   },
+   "raw_skew_mu": {
+    "mean": 0.7,
+    "p95": 1.0
+   },
+   "mean_absC": {
+    "mean": 0.3525,
+    "p95": 0.625
+   },
+   "pref_gap_raw": {
+    "mean": -0.0475,
+    "p2.5": -0.75,
+    "p97.5": 0.5
+   },
+   "n_rep": 100
+  }
+ },
+ "target": "black",
+ "target_members": [
+  "African",
+  "African-American",
+  "Black"
+ ],
+ "parser": "balanced_all/strict_pool.py STRICT_RE, restricted to A/B; invalid kept in the denominator; no permissive fallback",
+ "article_ambiguous_note": "responses opening with a lowercase a/b + a word (the English article) that STRICT_RE reads as a letter; re-score with --article-guard to see the sensitivity",
+ "tag": "meanact_raw_s0p25",
+ "sweep_method": "meanact_raw",
+ "knobs": {
+  "strength": 0.25
+ },
+ "config": {
+  "method": "mean_act",
+  "direction": "raw",
+  "strength": 0.25,
+  "gain": 1.2,
+  "arrows": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/unqover_hf/arrows_race_black.pt",
+  "granularity": "block_residual_all32"
+ },
+ "split_path": "/shared/home/sarim.hashmi/dlm_bias/.claude/worktrees/agent-a9f2f89e11792ec37/data/unqover_hirundo/build_race.jsonl",
+ "n_instances_run": 120,
+ "n_instances_available": 450,
+ "sweep_seed": 42,
+ "hook_fire_count": 983040,
+ "hook_fire_per_item": 2048.0,
+ "elapsed_s": 1236.7922995090485,
+ "s_per_item": 2.5766506239771845,
+ "gen_length": 32,
+ "steps": 64,
+ "block_length": 32,
+ "temperature": 0.0,
+ "remasking": "low_confidence",
+ "delta_norms_per_layer": [
+  2.54275,
+  2.83058,
+  3.14165,
+  3.81047,
+  4.30451,
+  4.81215,
+  5.2342,
+  5.50273,
+  5.5935,
+  5.64909,
+  5.76815,
+  5.69672,
+  5.62734,
+  5.46272,
+  5.27614,
+  5.36464,
+  5.41656,
+  5.51615,
+  5.65596,
+  5.79461,
+  5.8851,
+  6.36371,
+  6.74716,
+  7.50694,
+  7.81666,
+  11.73769,
+  12.85698,
+  17.17436,
+  20.74569,
+  22.87982,
+  25.65943,
+  28.30823
+ ],
+ "delta_norm_mean_over_layers": 8.521326065063477,
+ "actuation": null,
+ "git_sha": "e627db22bf5e83da5d4c825b99d69069c159eb6c",
+ "cuda_visible_devices": "0"
+}
