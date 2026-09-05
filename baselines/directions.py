@@ -30,7 +30,8 @@ sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
 import pid_steer  # noqa: E402  (unit_rows)
 
-ARROWS_PATH = os.path.join(ROOT, "steering", "arrows.pt")
+ARROWS_PATH = (os.environ.get("DLM_ARROWS_PATH")
+               or os.path.join(ROOT, "steering", "arrows.pt"))
 
 
 # --------------------------------------------------------------------------- #

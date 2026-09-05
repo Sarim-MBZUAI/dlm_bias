@@ -73,7 +73,8 @@ from pid_steer import (  # noqa: E402,F401
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
+CACHE_DIR = (os.environ.get("DLM_BASELINE_CACHE_DIR")
+             or os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache"))
 # CODE tree (this checkout), distinct from ROOT (the data/model tree): sibling
 # code modules like multirace/targets.py must come from the SAME checkout as
 # this file, while data reads honor DLM_BIAS_ROOT.

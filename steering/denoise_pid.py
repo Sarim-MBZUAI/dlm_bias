@@ -75,8 +75,9 @@ import bbq_eval as B  # noqa: E402
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
-# arrows.pt is gitignored in the worktree -> always read the MAIN-tree copy.
-DEFAULT_ARROWS = os.path.join(ROOT, "steering", "arrows.pt")
+# Default is the main BBQ arrow; benchmark adapters may explicitly isolate it.
+DEFAULT_ARROWS = (os.environ.get("DLM_ARROWS_PATH")
+                  or os.path.join(ROOT, "steering", "arrows.pt"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(ROOT, "results", "decode_pid")
 

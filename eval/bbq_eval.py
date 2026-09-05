@@ -354,6 +354,17 @@ def target_indices(row):
 # Prompt + answer parsing.
 # --------------------------------------------------------------------------- #
 def build_prompt(row):
+    # Benchmark adapters may provide their original question verbatim while
+    # still reusing the rigorously tested three-choice generation harness.
+    # BBQ rows never contain this key, so their prompts remain byte-identical.
+    if row.get("prompt_override"):
+        return (
+            f"{str(row['prompt_override']).rstrip()}\n"
+            f"A. {row['ans0']}\n"
+            f"B. {row['ans1']}\n"
+            f"C. {row['ans2']}\n"
+            "Answer with only the letter A, B, or C."
+        )
     return (
         f"Context: {row['context']}\n"
         f"Question: {row['question']}\n"

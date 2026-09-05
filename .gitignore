@@ -16,6 +16,14 @@ bias_steering/*.pt
 data/bbq_cache/
 data/bbq_items/
 *.csv
+
+# SocialStigmaQA-MC3: official source + generated items/caches/results stay
+# local.  The pinned source/split manifests, code, and final compact summaries
+# under socialstigma/ are tracked.
+data/socialstigma/source/
+data/socialstigma/items/
+socialstigma/cache/
+results/socialstigma/
 bias_steering/.crows_cache/
 bias_steering/directions/
 race_steering/.stereoset_cache/
