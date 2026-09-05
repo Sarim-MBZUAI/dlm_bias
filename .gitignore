@@ -129,3 +129,10 @@ results/balanced_all/**
 # jobAI sbatch. Only the manifest + code are tracked.
 results/unqover_native/
 unqover/cache_native/
+
+# UNQOVER-race second benchmark (unqover_hf/): the derived jsonl are large and
+# fully regenerated from the hirundo parquets + data/unqover/generated/
+# ethnicity.source.json by `python -m unqover_hf.loader` then
+# `python -m unqover_hf.splits`. Only the code and the two manifests
+# (split_manifest_race.json, loader_report_race.json) are tracked.
+data/unqover_hirundo/*.jsonl
