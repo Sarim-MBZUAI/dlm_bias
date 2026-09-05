@@ -1,0 +1,771 @@
+{
+ "prereg": "unqover_hf/PREREG.md section 4",
+ "coherence_gate": {
+  "formula": "max(0.10, base_invalid + 0.10)",
+  "base_invalid": 0.0,
+  "value": 0.1
+ },
+ "primary_endpoint": "pref_gap_raw toward the merged black family",
+ "eps_gap": 0.02,
+ "n_configs": 39,
+ "selected": {
+  "actadd": {
+   "tag": "actadd_p0_a32",
+   "knobs": {
+    "alpha": 32.0,
+    "pair_index": 0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 4/4 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.16666666666666666,
+   "ci_raw": {
+    "lo": 0.05042016806722689,
+    "hi": 0.2727272727272727,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.10416666666666667,
+   "ci_debiased": {
+    "lo": -0.00847457627118644,
+    "hi": 0.19834710743801653,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.3125,
+   "order1_A": 0.2333,
+   "target_at_A": 0.3042,
+   "target_at_B": 0.7583,
+   "mu": 0.8666666666666667,
+   "eta": 0.5284461152882205,
+   "raw_skew_mu": 1.0,
+   "delta": 0.5375,
+   "epsilon": 0.5541666666666667,
+   "degenerate": false,
+   "mu_above_own_chance_floor": true,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 1.0000005960464478,
+   "hook_fire_count": 30720,
+   "hook_fire_per_item": 64.0,
+   "elapsed_s": 962.4916412830353,
+   "summary_path": "results/unqover_hf/build_sweep/actadd_p0_a32_summary.json"
+  },
+  "aura_inject": {
+   "tag": "aura_inject_g2",
+   "knobs": {
+    "gamma": 2.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 2/4 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.06666666666666667,
+   "ci_raw": {
+    "lo": 0.008,
+    "hi": 0.1282051282051282,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.11666666666666667,
+   "ci_debiased": {
+    "lo": 0.05785123966942149,
+    "hi": 0.18181818181818182,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.0583,
+   "order1_A": 0.1083,
+   "target_at_A": 0.0583,
+   "target_at_B": 0.8917,
+   "mu": 0.5666666666666667,
+   "eta": 0.2788220551378446,
+   "raw_skew_mu": 0.6777777777777777,
+   "delta": 0.8333333333333334,
+   "epsilon": 0.8333333333333334,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 2.0,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 1480.0518395900726,
+   "summary_path": "results/unqover_hf/build_sweep/aura_inject_g2_summary.json"
+  },
+  "aura_vanilla": {
+   "tag": "aura_vanilla_g1",
+   "knobs": {
+    "gamma": 1.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 2/2 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.03333333333333333,
+   "ci_raw": {
+    "lo": -0.10084033613445378,
+    "hi": 0.1623931623931624,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.0625,
+   "ci_debiased": {
+    "lo": -0.0546218487394958,
+    "hi": 0.17355371900826447,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.5667,
+   "order1_A": 0.5958,
+   "target_at_A": 0.5667,
+   "target_at_B": 0.4042,
+   "mu": 0.9055555555555554,
+   "eta": 0.5666666666666667,
+   "raw_skew_mu": 1.0,
+   "delta": 0.44583333333333336,
+   "epsilon": 0.44583333333333336,
+   "degenerate": false,
+   "mu_above_own_chance_floor": true,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 1.0,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 2561.42640709877,
+   "summary_path": "results/unqover_hf/build_sweep/aura_vanilla_g1_summary.json"
+  },
+  "caa": {
+   "tag": "caa_a32",
+   "knobs": {
+    "alpha": 32.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 5/6 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.225,
+   "ci_raw": {
+    "lo": 0.12195121951219512,
+    "hi": 0.3162393162393162,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.10833333333333334,
+   "ci_debiased": {
+    "lo": 0.008403361344537815,
+    "hi": 0.19915254237288135,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.2917,
+   "order1_A": 0.175,
+   "target_at_A": 0.2917,
+   "target_at_B": 0.825,
+   "mu": 0.8777777777777779,
+   "eta": 0.4429824561403509,
+   "raw_skew_mu": 0.9777777777777779,
+   "delta": 0.6,
+   "epsilon": 0.625,
+   "degenerate": false,
+   "mu_above_own_chance_floor": true,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 1.0,
+   "hook_fire_count": 30720,
+   "hook_fire_per_item": 64.0,
+   "elapsed_s": 2187.110891342163,
+   "summary_path": "results/unqover_hf/build_sweep/caa_a32_summary.json"
+  },
+  "itic": {
+   "tag": "itic_K48_a15",
+   "knobs": {
+    "topk": 48,
+    "alpha": 15.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 1/2 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.0,
+   "ci_raw": {
+    "lo": -0.0975609756097561,
+    "hi": 0.09322033898305085,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.1125,
+   "ci_debiased": {
+    "lo": 0.046610169491525424,
+    "hi": 0.18032786885245902,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.4208,
+   "order1_A": 0.5,
+   "target_at_A": 0.4042,
+   "target_at_B": 0.4833,
+   "mu": 0.6333333333333333,
+   "eta": 0.34235588972431075,
+   "raw_skew_mu": 0.8666666666666667,
+   "delta": 0.6708333333333333,
+   "epsilon": 0.7291666666666666,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 8.607414245605469,
+   "hook_fire_count": 368640,
+   "hook_fire_per_item": 768.0,
+   "elapsed_s": 965.4759721755981,
+   "summary_path": "results/unqover_hf/build_sweep/itic_K48_a15_summary.json"
+  },
+  "linearact": {
+   "tag": "linearact_empirical_s0p5",
+   "knobs": {
+    "variant": "empirical",
+    "strength": 0.5
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 2/4 configs passing the gate (invalid <= 0.1000); 2 configs within EPS_GAP=0.02 of the max, broken by coverage -> invalid -> actuation -> tag",
+   "gap_raw": 0.0,
+   "ci_raw": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.0,
+   "ci_debiased": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 1.0,
+   "order1_A": 1.0,
+   "target_at_A": 1.0,
+   "target_at_B": null,
+   "mu": 0.0,
+   "eta": 0.0,
+   "raw_skew_mu": 0.0,
+   "delta": 1.0,
+   "epsilon": 1.0,
+   "degenerate": true,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 0.5,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 2152.676832675934,
+   "summary_path": "results/unqover_hf/build_sweep/linearact_empirical_s0p5_summary.json"
+  },
+  "meanact_raw": {
+   "tag": "meanact_raw_s0p25",
+   "knobs": {
+    "strength": 0.25
+   },
+   "clause": "CLAUSE 2 (FALLBACK): all 2 configs FAIL the coherence gate (invalid <= 0.1000); picked the lowest invalid_rate",
+   "gap_raw": 0.0,
+   "ci_raw": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 4,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.0,
+   "ci_debiased": {
+    "lo": 0.0,
+    "hi": 0.0,
+    "n_clusters": 4,
+    "n_boot": 1000
+   },
+   "invalid": 0.870833,
+   "coverage": 0.033333,
+   "order0_A": 0.1167,
+   "order1_A": 0.1417,
+   "target_at_A": 0.1,
+   "target_at_B": null,
+   "mu": 0.0,
+   "eta": 0.0,
+   "raw_skew_mu": 0.0,
+   "delta": 1.0,
+   "epsilon": 1.0,
+   "degenerate": true,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.47625,
+     "p95": 0.75
+    },
+    "eta": {
+     "mean": 0.6025,
+     "p95": 1.0
+    },
+    "raw_skew_mu": {
+     "mean": 0.7,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3525,
+     "p95": 0.625
+    },
+    "pref_gap_raw": {
+     "mean": -0.0475,
+     "p2.5": -0.75,
+     "p97.5": 0.5
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 8.521326065063477,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 1236.7922995090485,
+   "summary_path": "results/unqover_hf/build_sweep/meanact_raw_s0p25_summary.json"
+  },
+  "meanact_unit": {
+   "tag": "meanact_unit_s4",
+   "knobs": {
+    "strength": 4.0
+   },
+   "clause": "CLAUSE 2 (FALLBACK): all 2 configs FAIL the coherence gate (invalid <= 0.1000); picked the lowest invalid_rate",
+   "gap_raw": 0.0,
+   "ci_raw": null,
+   "gap_deb": 0.0,
+   "ci_debiased": null,
+   "invalid": 1.0,
+   "coverage": 0.0,
+   "order0_A": null,
+   "order1_A": null,
+   "target_at_A": null,
+   "target_at_B": null,
+   "mu": 0.0,
+   "eta": 0.0,
+   "raw_skew_mu": 0.0,
+   "delta": 0.0,
+   "epsilon": 0.0,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.0,
+     "p95": 0.0
+    },
+    "eta": {
+     "mean": 0.0,
+     "p95": 0.0
+    },
+    "raw_skew_mu": {
+     "mean": 0.0,
+     "p95": 0.0
+    },
+    "mean_absC": {
+     "mean": 0.0,
+     "p95": 0.0
+    },
+    "pref_gap_raw": {
+     "mean": 0.0,
+     "p2.5": 0.0,
+     "p97.5": 0.0
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 4.799999713897705,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 1563.2913191318512,
+   "summary_path": "results/unqover_hf/build_sweep/meanact_unit_s4_summary.json"
+  },
+  "normal": {
+   "tag": "normal_a2",
+   "knobs": {
+    "alpha": 2.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 1/4 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.275,
+   "ci_raw": {
+    "lo": 0.1557377049180328,
+    "hi": 0.39655172413793105,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.125,
+   "ci_debiased": {
+    "lo": 0.028455284552845527,
+    "hi": 0.2217391304347826,
+    "n_clusters": 111,
+    "n_boot": 1000
+   },
+   "invalid": 0.0,
+   "coverage": 1.0,
+   "order0_A": 0.3583,
+   "order1_A": 0.225,
+   "target_at_A": 0.3667,
+   "target_at_B": 0.7833,
+   "mu": 0.7888888888888889,
+   "eta": 0.49085213032581454,
+   "raw_skew_mu": 0.9666666666666667,
+   "delta": 0.5083333333333333,
+   "epsilon": 0.6166666666666667,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7337333333333329,
+     "p95": 0.8416666666666667
+    },
+    "eta": {
+     "mean": 0.5189686716791979,
+     "p95": 0.5854636591478697
+    },
+    "raw_skew_mu": {
+     "mean": 0.9627,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.3771249999999998,
+     "p95": 0.425
+    },
+    "pref_gap_raw": {
+     "mean": -0.000666666666666664,
+     "p2.5": -0.10833333333333334,
+     "p97.5": 0.15833333333333333
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 2.0,
+   "hook_fire_count": 983040,
+   "hook_fire_per_item": 2048.0,
+   "elapsed_s": 1836.1624705791473,
+   "summary_path": "results/unqover_hf/build_sweep/normal_a2_summary.json"
+  },
+  "ours_PI": {
+   "tag": "ours_PI_amax12",
+   "knobs": {
+    "amax": 12.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 3/3 configs passing the gate (invalid <= 0.1000)",
+   "gap_raw": 0.4827586206896552,
+   "ci_raw": {
+    "lo": 0.3893805309734513,
+    "hi": 0.5785123966942148,
+    "n_clusters": 107,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.017241379310344827,
+   "ci_debiased": {
+    "lo": -0.042735042735042736,
+    "hi": 0.08333333333333333,
+    "n_clusters": 107,
+    "n_boot": 1000
+   },
+   "invalid": 0.008333,
+   "coverage": 0.966667,
+   "order0_A": 0.45,
+   "order1_A": 0.0375,
+   "target_at_A": 0.475,
+   "target_at_B": 0.9875,
+   "mu": 0.5333333333333333,
+   "eta": 0.3770025839793281,
+   "raw_skew_mu": 1.0,
+   "delta": 0.5172413793103449,
+   "epsilon": 0.8017241379310345,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7422555555555551,
+     "p95": 0.8333333333333334
+    },
+    "eta": {
+     "mean": 0.5203759689922479,
+     "p95": 0.5887596899224806
+    },
+    "raw_skew_mu": {
+     "mean": 0.9600333333333334,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.38241379310344825,
+     "p95": 0.4267241379310345
+    },
+    "pref_gap_raw": {
+     "mean": -0.00353448275862069,
+     "p2.5": -0.1206896551724138,
+     "p97.5": 0.1206896551724138
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 2.324985725009412,
+   "hook_fire_count": 998400,
+   "hook_fire_per_item": 2080.0,
+   "elapsed_s": 799.2740471363068,
+   "summary_path": "results/unqover_hf/build_sweep/ours_PI_amax12_summary.json"
+  },
+  "ours_PID": {
+   "tag": "ours_PID_amax6",
+   "knobs": {
+    "amax": 6.0
+   },
+   "clause": "CLAUSE 1: max pref_gap_raw among the 5/5 configs passing the gate (invalid <= 0.1000); 4 configs within EPS_GAP=0.02 of the max, broken by coverage -> invalid -> actuation -> tag",
+   "gap_raw": 0.4298245614035088,
+   "ci_raw": {
+    "lo": 0.3333333333333333,
+    "hi": 0.5229357798165137,
+    "n_clusters": 105,
+    "n_boot": 1000
+   },
+   "gap_deb": 0.0,
+   "ci_debiased": {
+    "lo": -0.06578947368421052,
+    "hi": 0.06637168141592921,
+    "n_clusters": 105,
+    "n_boot": 1000
+   },
+   "invalid": 0.0125,
+   "coverage": 0.95,
+   "order0_A": 0.425,
+   "order1_A": 0.0458,
+   "target_at_A": 0.4458,
+   "target_at_B": 0.9708,
+   "mu": 0.5333333333333333,
+   "eta": 0.3890180878552971,
+   "raw_skew_mu": 1.0,
+   "delta": 0.5526315789473685,
+   "epsilon": 0.7807017543859649,
+   "degenerate": false,
+   "mu_above_own_chance_floor": false,
+   "noise_floor": {
+    "mu": {
+     "mean": 0.7326611111111108,
+     "p95": 0.8555555555555555
+    },
+    "eta": {
+     "mean": 0.514671834625323,
+     "p95": 0.5852713178294574
+    },
+    "raw_skew_mu": {
+     "mean": 0.9657000000000001,
+     "p95": 1.0
+    },
+    "mean_absC": {
+     "mean": 0.37271929824561384,
+     "p95": 0.4298245614035088
+    },
+    "pref_gap_raw": {
+     "mean": -0.003157894736842112,
+     "p2.5": -0.14035087719298245,
+     "p97.5": 0.10526315789473684
+    },
+    "n_rep": 100
+   },
+   "realized_actuation": 2.333658305542776,
+   "hook_fire_count": 998400,
+   "hook_fire_per_item": 2080.0,
+   "elapsed_s": 1684.4877817630768,
+   "summary_path": "results/unqover_hf/build_sweep/ours_PID_amax6_summary.json"
+  }
+ },
+ "effort_matching": {
+  "ours_PI": {
+   "selected_tag": "ours_PI_amax12",
+   "basis": "mean of alpha(t) over ALL 64 denoising steps, averaged over items",
+   "effort_matched_alpha_full_run": 2.325,
+   "alt_basis_commit_window": 2.1028,
+   "mean_commit_step": 30.94375,
+   "amax": 12.0,
+   "sat_frac": 0.00087890625,
+   "nearest_swept_normal_alpha": 2.0,
+   "note": "the effort-matched control is a NEW `normal` run at alpha = effort_matched_alpha_full_run; the nearest swept alpha is reported only for orientation"
+  },
+  "ours_PID": {
+   "selected_tag": "ours_PID_amax6",
+   "basis": "mean of alpha(t) over ALL 64 denoising steps, averaged over items",
+   "effort_matched_alpha_full_run": 2.3337,
+   "alt_basis_commit_window": 2.1164,
+   "mean_commit_step": 30.929166666666667,
+   "amax": 6.0,
+   "sat_frac": 0.07574869791666666,
+   "nearest_swept_normal_alpha": 2.0,
+   "note": "the effort-matched control is a NEW `normal` run at alpha = effort_matched_alpha_full_run; the nearest swept alpha is reported only for orientation"
+  }
+ },
+ "base": {
+  "tag": "base",
+  "gap_raw": 0.1,
+  "ci_raw": {
+   "lo": -0.034482758620689655,
+   "hi": 0.22131147540983606,
+   "n_clusters": 111,
+   "n_boot": 1000
+  },
+  "gap_deb": 0.14583333333333334,
+  "invalid": 0.0,
+  "coverage": 1.0,
+  "order0_A": 0.3125,
+  "order1_A": 0.3417,
+  "tgt_at_A": 0.3042,
+  "tgt_at_B": 0.65,
+  "mu": 0.9888888888888888,
+  "eta": 0.6486215538847119,
+  "raw_skew_mu": 1.0,
+  "epsilon": 0.45416666666666666,
+  "delta": 0.4625,
+  "n_instances": 120,
+  "n_clusters": 111,
+  "noise_floor": {
+   "mu": {
+    "mean": 0.7337333333333329,
+    "p95": 0.8416666666666667
+   },
+   "eta": {
+    "mean": 0.5189686716791979,
+    "p95": 0.5854636591478697
+   },
+   "raw_skew_mu": {
+    "mean": 0.9627,
+    "p95": 1.0
+   },
+   "mean_absC": {
+    "mean": 0.3771249999999998,
+    "p95": 0.425
+   },
+   "pref_gap_raw": {
+    "mean": -0.000666666666666664,
+    "p2.5": -0.10833333333333334,
+    "p97.5": 0.15833333333333333
+   },
+   "n_rep": 100
+  }
+ }
+}

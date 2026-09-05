@@ -68,10 +68,11 @@ regenerate with `python balanced_all/strict_round2.py`.
   (+0.022), all CIs excluding 0 and zero strict-invalid output. Caveat: at
   Dream's coherence ceiling (amax = 1.0) the controller is saturated 97% of
   the time, so the lead over baselines is directional, not resolved.
-- **Cross-benchmark (UnQover v2, fixed parser).** Decode-PI shifts the raw
-  (BBQ-like) Black preference gap by **+0.617** (−0.031 → +0.585). Caveat:
-  negation-debiasing absorbs ~95% of the shift — the push is largely
-  valence-independent. Metric: `unqover/unqover_metric.py`.
+- **Cross-benchmark (UnQover).** *Dropped from the paper and archived.* The
+  original run's results were purged as flawed and the repaired replacement
+  benchmark showed the steering shift to be entirely valence-independent, so
+  the whole line was retired. Code, results and the post-mortem now live under
+  [`archive/unqover/`](archive/unqover/README.md).
 
 ### Round-3: suppression, sensor fix, five bias axes, intersectional null
 
@@ -111,9 +112,9 @@ regenerate with `python balanced_all/strict_round3.py` (+ families 5–8 of
   effort on black/woman/lowses/old, loses on highses, ns on the nulls.
   young is a null, joining man/asian/white/fblack in the unsteerable set.
 - **Also:** the full 7-method prior-work baseline suite on gender (E8: ITI-C the
-  lone winner on woman at Δg +0.083; man resists all 8 methods) and a clean UnQover
-  **religion** baseline (E9: μ=0.279, Muslim γ +0.218 / pref_gap +0.210 debiased,
-  steered runs deliberately deferred).
+  lone winner on woman at Δg +0.083; man resists all 8 methods). The UnQover
+  **religion** baseline that also ran in E9 is archived with the rest of the
+  UnQover track under [`archive/unqover/`](archive/unqover/README.md).
 
 ### Round-4: third model (LLaDA-MoE), an honest loss at matched effort
 
@@ -167,15 +168,16 @@ balanced_all/ position-balanced eval for EVERY condition/target +
               (the authoritative analyses)
 baselines/    faithful prior methods on the same harness: caa, actadd,
               meanact, linearact, aura, itic (+ calib/directions infra)
-unqover/      UnQover benchmark: download / loader / eval / metric + adapters
+archive/      retired tracks, kept readable but out of the paper:
+              unqover/ (UnQover + UnQover-race benchmark, code + results +
+              slurm jobs + post-mortem README)
 slurm/        SLURM batch scripts for all four experiment rounds
               (job*.sbatch, round2_job*.sbatch, round3_*.sbatch,
               round4_job*.sbatch)
-data/         gitignored inputs: bbq_cache/, bbq_items/, unqover/
+data/         gitignored inputs: bbq_cache/, bbq_items/
 results/      committed result families: balanced/, balanced_all/,
               balanced_seeds/, dream_balanced/, lladamoe_balanced/,
-              multirace/, unqover/,
-              unqover_v2/, unqover_religion/, base/, normal/, decode_pid/, layer_pid/,
+              multirace/, base/, normal/, decode_pid/, layer_pid/,
               calibration/, plus per-baseline dirs (caa/, actadd/, meanact/,
               linearact/, aura/, itic/) and BASELINES.md / ROUND2_STRICT.md /
               ROUND3_STRICT.md / ROUND4_STRICT.md
@@ -188,7 +190,7 @@ chat.py / chat_llada.py   terminal chat REPLs (Dream / LLaDA)
 Deep-dive readmes: [`steering/README.md`](steering/README.md),
 [`dream/README.md`](dream/README.md), [`llada_moe/README.md`](llada_moe/README.md),
 [`multirace/README.md`](multirace/README.md),
-[`balanced_all/README.md`](balanced_all/README.md), [`unqover/README.md`](unqover/README.md),
+[`balanced_all/README.md`](balanced_all/README.md),
 [`docs/DENOISING_PID.md`](docs/DENOISING_PID.md).
 
 ## Setup
@@ -239,14 +241,11 @@ python steering/denoise_pid.py --cond PI \
 
 # authoritative strict-parse analyses (CPU, committed inputs)
 python balanced_all/strict_pool.py     # round-1 14-condition Black table
-python balanced_all/strict_round2.py   # multi-target / seeds / UnQover / Dream
+python balanced_all/strict_round2.py   # multi-target / seeds / Dream
                                        #   + round-3 gender / fblack / SES / Age families
                                        #   + round-4 LLaDA-MoE (family 9)
 python balanced_all/strict_round3.py   # round-3 suppression + case-full sensor
 
-# UnQover metric for one steered condition
-python unqover/unqover_metric.py --results results/unqover_v2/uq_decode_PI.jsonl \
-  --baseline results/unqover_v2/uq_clean.jsonl --target-subject Black
 ```
 
 ## Terminal chat (optional)

@@ -74,11 +74,9 @@ numpy default_rng(seed=0) fresh per condition) to the round-2 families:
   T. TELEMETRY  mean_alpha / mean_sat_frac of every new decode-PI run,
      averaged over its 3 rotations (read from the summary cond_*.json).
 
-  3. UNQOVER V2  results/unqover_v2/uq_{clean,decode_PI,layer_PI_a2,
-     normal_a4}.jsonl -- two-choice subject-pick schema (``pred_subject``),
-     scored with unqover/unqover_metric.py (official mu/eta/delta on
-     quadruple-complete instances + BBQ-comparable pref_gap toward Black).
-     Parse coverage = rows with a parsed pick / rows.
+  3. UNQOVER V2 -- REMOVED.  The UNQOVER track is archived (see
+     archive/unqover/README.md); it is not part of the paper and no longer
+     contributes a family here.
 
 CIs: 95% percentile bootstrap of the strict gap (10k resamples, seed 0).
 Delta-g CI: difference of the condition's and its baseline's bootstrap
@@ -89,7 +87,6 @@ Usage (repo root, branch portable-paths):
 """
 import argparse
 import glob
-import importlib.util
 import json
 import os
 import statistics
@@ -641,60 +638,16 @@ def telemetry(results):
 
 
 # ---------------------------------------------------------------------------
-# Family 3: UNQOVER v2
+# Family 3: UNQOVER -- ARCHIVED, no longer part of this analysis.
+#
+# The UNQOVER track was dropped from the paper.  Its code, results and slurm
+# jobs now live under archive/unqover/ (see archive/unqover/README.md).  The
+# family that used to be computed here read results/unqover_v2/, a directory
+# that was purged as flawed (BBQ-transfer runs, collapsed 2-order structure),
+# so it raised FileNotFoundError and killed this whole script before it could
+# write its --json output.  The family is removed rather than guarded: there
+# is no UNQOVER number in the paper for it to back.
 # ---------------------------------------------------------------------------
-UQ_CONDS = ["uq_clean", "uq_decode_PI", "uq_layer_PI_a2", "uq_normal_a4"]
-
-
-def load_uq_metric():
-    spec = importlib.util.spec_from_file_location(
-        "unqover_metric", os.path.join(REPO, "unqover", "unqover_metric.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def family_unqover(results):
-    print("\n== FAMILY 3: UNQOVER V2 (fixed generation-time parser) ==")
-    uqm = load_uq_metric()
-    fam = {}
-    for cond in UQ_CONDS:
-        rows = uqm.load(os.path.join(REPO, "results/unqover_v2/%s.jsonl" % cond))
-        n = len(rows)
-        no_ans = sum(1 for r in rows if r.get("pred_subject") is None)
-        with open(os.path.join(REPO, "results/unqover_v2/%s.json" % cond)) as f:
-            cfg = json.load(f)
-        assert cfg.get("no_answer", no_ans) == no_ans, cond
-        m = uqm.compute(rows)
-        tg = uqm.target_gap(rows, "Black")
-        fam[cond] = {
-            "n_rows": n, "no_answer": no_ans,
-            "parse_coverage": (n - no_ans) / n,
-            "n_instances": m["n_instances"], "n_complete": m["n_complete"],
-            "instance_coverage": m["coverage"],
-            "mu": m["mu"], "eta": m["eta"], "delta": m["delta"],
-            "mean_absC": m["mean_absC"],
-            "pref_gap_raw": tg["pref_gap_raw"],
-            "pref_gap_debiased": tg["pref_gap_debiased"],
-            "n_black_instances": tg["n"],
-        }
-        f = fam[cond]
-        print("%-16s rows=%4d no_ans=%2d (parse cov %.3f) | inst=%3d complete=%3d "
-              "| mu=%.3f eta=%.3f delta=%.3f |C|=%.3f | prefB raw=%+.3f deb=%+.3f (n=%d)"
-              % (cond, n, no_ans, f["parse_coverage"], m["n_instances"],
-                 m["n_complete"], m["mu"], m["eta"], m["delta"], m["mean_absC"],
-                 f["pref_gap_raw"], f["pref_gap_debiased"], tg["n"]))
-    clean = fam["uq_clean"]
-    print("-- deltas vs uq_clean --")
-    for cond in UQ_CONDS[1:]:
-        f = fam[cond]
-        f["d_mu"] = f["mu"] - clean["mu"]
-        f["d_pref_gap_raw"] = f["pref_gap_raw"] - clean["pref_gap_raw"]
-        f["d_pref_gap_debiased"] = f["pref_gap_debiased"] - clean["pref_gap_debiased"]
-        print("%-16s d_mu=%+.3f  d_prefB_raw=%+.4f  d_prefB_debiased=%+.4f"
-              % (cond, f["d_mu"], f["d_pref_gap_raw"], f["d_pref_gap_debiased"]))
-    results["unqover_v2"] = fam
-
 
 # ---------------------------------------------------------------------------
 def main():
@@ -714,7 +667,6 @@ def main():
     family_age(results)
     family_lladamoe(results)
     telemetry(results)
-    family_unqover(results)
 
     if args.json:
         with open(args.json, "w") as f:
