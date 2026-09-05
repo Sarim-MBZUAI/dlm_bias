@@ -158,6 +158,7 @@ results/unqover_hf/smoke/
 archive/unqover/data/unqover_hirundo/unqover-race
 archive/unqover/data/unqover_hirundo/unqover-race-bias
 archive/unqover/data/unqover_hirundo/unqover-race-bias-free-text
+archive/unqover/data/unqover_hirundo/texput.log
 archive/unqover/unqover_hf/cache_race/
 archive/unqover/results/unqover_hf/**/*_raw.jsonl
 archive/unqover/results/unqover_hf/smoke/

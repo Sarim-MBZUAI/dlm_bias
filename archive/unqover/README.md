@@ -19,12 +19,13 @@ archive/unqover/
   unqover_hf/     the replacement HF-based UNQOVER-race benchmark — loader.py,
                   splits.py, metric.py, eval_harness.py, build_arrows_race.py,
                   run_race.py, select_ops.py, sweep_grid.py, PREREG.md, README.md
-  data/           unqover_hirundo/ — the loader report and the build/eval split
-                  manifest for the race benchmark
+  data/           tracked manifests plus gitignored source data and derived
+                  BUILD/EVAL files when present in a local checkout
   results/        unqover/ (round-1 and round-2 runs), unqover_religion/
-                  (the E9 religion baseline), unqover_hf/build_sweep/
-                  (the BUILD-split sweep summaries, BUILD_TABLE.md, SELECTED.json)
-  slurm/          the twelve UNQOVER-only batch jobs plus _uqhf_prologue.sh
+                  (the E9 religion baseline), unqover_native/, and
+                  unqover_hf/build_sweep/ (summaries plus local raw generations)
+  slurm/          the fourteen UNQOVER-only batch jobs plus _uqhf_prologue.sh
+  logs/           local SLURM logs, gitignored
 ```
 
 ## The original track, and why its results are gone
@@ -76,9 +77,15 @@ measuring what the paper claims to measure, and that is the reason the whole
 UNQOVER line came out.
 
 The per-configuration table behind those numbers is
-`results/unqover_hf/build_sweep/BUILD_TABLE.md`, with one `*_summary.json` per
-configuration next to it and the mechanically-applied selection in
-`SELECTED.json`.
+`results/unqover_hf/build_sweep/BUILD_TABLE.md`. It and `SELECTED.json` are an
+**interim snapshot over 39 configurations**, not a completed selection. The
+61-configuration sweep was stopped during archival after 48 configurations had
+finished. All 48 available summaries and raw generations are preserved locally;
+the nine runs completed after the table snapshot are not represented in
+`BUILD_TABLE.md` or `SELECTED.json`. Do not treat the recorded selection as the
+pre-registered final operating-point selection. The four tasks still running at
+retirement (`25732_{2,3,4}` and `25735_9`) were cancelled; no EVAL task was
+submitted.
 
 ## What these numbers are and are not
 
@@ -94,28 +101,31 @@ The **EVAL split was never run**. It holds 842 complete Black-family instances
 it. Pre-registration for that run is in `unqover_hf/PREREG.md`, written and
 committed before any EVAL-split run precisely so it could be run honestly later.
 
-## What is not in this tree
+## Local-only artifacts
 
 Several large artifacts were gitignored while the track was live, and they stay
-gitignored here — the ignore rules in the repo's `.gitignore` now name both the
-old root paths and the corresponding `archive/unqover/...` paths. They are
-regenerable, not lost:
+gitignored in the archive. In the checkout where the track was retired they were
+moved under the paths below; a fresh clone will not contain them. They are
+regenerable from the tracked manifests and code:
 
-* `data/unqover/` — the raw and generated UNQOVER release (~218 MB), rebuilt by
-  `unqover/download_unqover.py` and `unqover/unqover_loader.py`.
-* `results/unqover_native/` and `unqover/cache_native/` — the UNQOVER-native
-  direction, baseline fits and run outputs (~570 MB together), rebuilt from the
-  committed split manifest `unqover/items_manifest_unqover_black.json` by
-  `unqover/build_arrows_unqover.py` and the jobAI batch script.
-* `unqover_hf/arrows_race_black.pt`, `unqover_hf/cache_race/`, and the
-  `*_raw.jsonl` per-item generations under `results/unqover_hf/` — rebuilt by
+* `archive/unqover/data/unqover/` — the raw and generated UNQOVER release
+  (~218 MB), rebuilt by `unqover/download_unqover.py` and
+  `unqover/unqover_loader.py`.
+* `archive/unqover/results/unqover_native/` and
+  `archive/unqover/unqover/cache_native/` — the UNQOVER-native direction,
+  baseline fits and run outputs (~567 MB together), rebuilt from the committed
+  split manifest by `unqover/build_arrows_unqover.py` and the jobAI script.
+* `archive/unqover/unqover_hf/arrows_race_black.pt`,
+  `archive/unqover/unqover_hf/cache_race/` (~914 MB), and the 48
+  `*_raw.jsonl` generations under
+  `archive/unqover/results/unqover_hf/build_sweep/` — rebuilt by
   `unqover_hf/build_arrows_race.py` and `unqover_hf/run_race.py`.
-* `data/unqover_hirundo/*.jsonl` — the canonical and split jsonl, rebuilt by
-  `python -m unqover_hf.loader` then `python -m unqover_hf.splits`.
+* `archive/unqover/data/unqover_hirundo/*.jsonl` — the canonical and split
+  JSONL files, rebuilt by `python -m unqover_hf.loader` then
+  `python -m unqover_hf.splits`.
 
-If you find any of these still sitting at their old root paths in a working
-checkout, move them under `archive/unqover/` to match this tree; git will not
-notice either way.
+The complete local archive is about 1.8 GB; only the compact code, manifests,
+summaries and documentation are committed to Git.
 
 ## Running any of it where it now sits
 

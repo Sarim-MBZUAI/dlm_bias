@@ -1,5 +1,10 @@
 # UNQOVER-race BUILD-split sweep (Phase 2)
 
+> **ARCHIVED INCOMPLETE SNAPSHOT.** This table and `SELECTED.json` cover the 39
+> configurations complete when selection was last generated. The sweep stopped
+> at 48 of 61 configurations; nine later summaries and their raw generations
+> are preserved beside this file but were never folded into a final selection.
+
 Selection rule: `unqover_hf/PREREG.md` section 4, applied mechanically.
 
 * configs run: **39**
