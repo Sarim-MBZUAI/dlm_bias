@@ -179,7 +179,10 @@ CONDITIONS = [
     ("ITI-C (K=48, a=8)",         bal_all("itic", "itic_K48_a8")),
     ("Decode PID",                bal_all("decode_pid", "dpid_PID")),
     ("Open loop (a=3.28)",        bal_all("normal", "normalL14_a3p28")),
-    ("Decode PI (steps=32)",      bal_all("decode_pid_s32", "dpid_PI_s32")),
+    # NOT a separate condition: with gen_length == block_length == 32, steps
+    # 33-64 commit no tokens, so this is a numerical replicate of Decode PI
+    # run on a different GPU/day (see README "steps=32" note).
+    ("Decode PI replicate (\"steps=32\")", bal_all("decode_pid_s32", "dpid_PI_s32")),
 ]
 
 

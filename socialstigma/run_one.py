@@ -15,6 +15,10 @@ CONDITIONS = (
     "clean",
     "decode_pi64",
     "decode_pid64",
+    # NOTE: decode_pi32 is NOT a separate condition. With gen_length ==
+    # block_length == 32, steps 33-64 of the 64-step run commit no tokens, so
+    # a 32-step run is the same procedure; it is kept as a same-GPU numerical
+    # replicate and aggregate.py checks output identity instead of tabulating it.
     "decode_pi32",
     "normal_a4",
     "normal_eff",
@@ -26,6 +30,7 @@ CONDITIONS = (
     "aura_inject_g4",
     "aura_vanilla",
     "itic_k48_a8",
+    "itic_k48_a8_tb",
 )
 
 
@@ -60,6 +65,8 @@ def expected(condition: str, effort_alpha: float | None) -> tuple[str, str]:
         "aura_inject_g4": ("aura_inject", "inject_g4"),
         "aura_vanilla": ("aura_vanilla", "vanilla"),
         "itic_k48_a8": ("itic", "itic_K48_a8"),
+        # Post-audit addition: same probes, val_acc ties broken by head margin.
+        "itic_k48_a8_tb": ("itic_tiebreak", "itic_K48_a8_tb"),
     }
     if condition in fixed:
         return fixed[condition]
@@ -143,6 +150,8 @@ def run(args) -> Path:
         aura.run(mode="vanilla", tag=stem, **common)
     elif args.condition == "itic_k48_a8":
         itic.run(K=48, alpha=8, tag=stem, **common)
+    elif args.condition == "itic_k48_a8_tb":
+        itic.run(K=48, alpha=8, tag=stem, tiebreak="margin", **common)
     else:
         raise AssertionError(args.condition)
 

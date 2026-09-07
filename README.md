@@ -29,18 +29,29 @@ rotations (1200 pooled items per condition). Gap = P(target) − P(comparator);
 |---|---:|:--:|
 | **decode-PI (steps=64) — ours** | **0.167** | [0.131, 0.203] |
 | **decode-PID — ours** | 0.160 | [0.124, 0.195] |
-| **decode-PI (steps=32) — ours** | 0.151 | [0.114, 0.187] |
+| **decode-PI, replicate run (“steps=32”) — ours** | 0.151 | [0.114, 0.187] |
 | open loop α=4 | 0.046 | [−0.001, 0.091] |
 | ActAdd α=16 (best hook baseline) | 0.041 | [0.013, 0.068] |
 | Mean-AcT unit s=2 | 0.035 | [0.000, 0.071] |
 | open loop α=3.28 (energy-matched) | 0.035 | [−0.001, 0.072] |
 | clean (base) | 0.018 | [−0.010, 0.045] |
 
-**Reading:** the three decode-time conditions form a separated top tier with
+**Reading:** the decode-time conditions form a separated top tier with
 CIs that do not overlap any baseline's; the energy-matched open loop
 (α = 3.28, the controller's own mean actuation) stays near zero — the
 advantage comes from *feedback* (when/where actuation is applied), not from
 steering energy. Regenerate: `python balanced_all/strict_pool.py`.
+
+**The “steps=32” row is not a separate condition.** With
+`gen_length = block_length = 32`, `get_num_transfer_tokens` yields
+`[1]*32 + [0]*32`: denoising steps 33–64 commit no tokens, temperature is 0,
+and the controller is deterministic, so a 32-step run is the same procedure
+as the 64-step run. The BBQ 0.151-vs-0.167 difference is run-to-run bf16
+nondeterminism across GPUs/days, not a horizon effect; on SocialStigmaQA,
+where both were run on one GPU, the two runs are byte-identical
+(1665/1665 outputs; see `socialstigma/RESULTS_STRICT.md`). Every
+64-step condition in this repository therefore spends half its forwards on
+no-op steps; `steps=32` is the cheaper equivalent for future runs.
 
 ### Round-2: replication, targets, second model, second benchmark
 

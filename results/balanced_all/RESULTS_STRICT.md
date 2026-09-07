@@ -136,16 +136,20 @@ invalids are degenerate one-word outputs like "The"/"Not"), so constant
 mid-strength injection also damages formatting more than the closed loop
 does at the same mean strength.
 
-**(d) Decode PI steps=32 vs steps=64 (removing dead steps).** The result
-is robust: steps=32 gap 0.151 [0.114, 0.187] vs steps=64 gap 0.167
-[0.131, 0.203] — heavily overlapping CIs, a statistically insignificant
--0.016 shift. Strict invalid rates are essentially identical (0.077 vs
-0.078). Controller telemetry differs as expected once the dead
-(post-block) steps are removed: mean_alpha drops from 3.94 to 3.27 and
-mean saturation fraction from 0.28 to 0.03, i.e. at 32 steps the
-integrator has less time to wind up, and wall-clock halves (~315 s vs
-~630 s per 400-item rotation). Removing dead steps does not change the
-headline conclusion.
+**(d) Decode PI "steps=32" is a numerical replicate, not a separate
+condition (corrected after audit).** With `gen_length = block_length = 32`,
+`get_num_transfer_tokens` yields `[1]*32 + [0]*32`: steps 33–64 commit no
+tokens, temperature is 0, and the controller is deterministic, so the
+32-step run executes exactly the procedure of the 64-step run. The
+observed 0.151 [0.114, 0.187] vs 0.167 [0.131, 0.203] (invalid 0.077 vs
+0.078) is therefore run-to-run bf16 nondeterminism across GPUs/days, not
+a horizon effect; on SocialStigmaQA, where both runs shared one GPU, the
+two are byte-identical (1665/1665 outputs, `socialstigma/RESULTS_STRICT.md`).
+The telemetry differences (mean_alpha 3.94 → 3.27, saturation 0.28 → 0.03)
+come entirely from the dead steps, during which the integrator keeps
+winding on a no-op; the wall-clock halving (~315 s vs ~630 s per rotation)
+is the only real difference. This row should be read as a replicate of
+Decode PI, and `steps=32` is the cheaper equivalent for future runs.
 
 ## 5. Regeneration
 

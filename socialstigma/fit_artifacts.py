@@ -197,12 +197,14 @@ def fit_one(polarity: str, model, tok) -> dict:
     theta = torch.zeros(common.N_LAYERS, common.N_HEADS, common.D_HEAD)
     sigma = torch.zeros(common.N_LAYERS, common.N_HEADS)
     val_acc = torch.zeros(common.N_LAYERS, common.N_HEADS)
+    margin = torch.zeros(common.N_LAYERS, common.N_HEADS)
     for k in range(common.N_LAYERS):
         for head in range(common.N_HEADS):
             va, th, sg = itic._fit_one_head(attn_acts[:, k, head, :], attn_labels)
             val_acc[k, head] = va
             theta[k, head] = th
             sigma[k, head] = sg
+            margin[k, head] = itic.head_margin(attn_acts[:, k, head, :], attn_labels)
         print(f"[fit:{polarity}:itic] layer {k + 1}/{common.N_LAYERS} "
               f"best={float(val_acc[k].max()):.3f}", flush=True)
     assert torch.isfinite(theta).all() and torch.isfinite(sigma).all()
@@ -210,6 +212,7 @@ def fit_one(polarity: str, model, tok) -> dict:
         "theta": theta,
         "sigma": sigma,
         "val_acc": val_acc,
+        "margin": margin,
         "n_layers": common.N_LAYERS,
         "n_heads": common.N_HEADS,
         "d_head": common.D_HEAD,
@@ -254,11 +257,59 @@ def validate_manifest(manifest: dict) -> None:
     assert set(manifest["fits"]) == set(POLARITIES)
 
 
+def add_itic_margin(polarity: str) -> dict:
+    """Offline (CPU) amendment: add the standardized head margin used as the
+    ITI-C val_acc tie-breaker to an existing itic_probes.pt, recomputed from
+    the cached attn_head activations of the same fit.  theta/sigma/val_acc are
+    left untouched, so the legacy (index tie-break) ITI-C run is unchanged."""
+    out_dir = CACHE_ROOT / polarity
+    probes_path = out_dir / "itic_probes.pt"
+    probes = torch.load(probes_path, map_location="cpu")
+    attn = torch.load(out_dir / "calib_attn_head.pt", map_location="cpu")
+    assert attn["source"] == probes["source"], (attn["source"], probes["source"])
+    acts = attn["acts"].to(torch.float32).view(
+        -1, common.N_LAYERS, common.N_HEADS, common.D_HEAD)
+    labels = attn["labels"].long()
+    # Re-derive theta from the same activations and confirm the cached probes
+    # come from these activations before attaching a margin to them.
+    va0, th0, sg0 = itic._fit_one_head(acts[:, 0, 0, :], labels)
+    assert torch.allclose(th0, probes["theta"][0, 0], atol=1e-5), "probes/activations mismatch"
+    assert abs(sg0 - float(probes["sigma"][0, 0])) < 1e-4, "probes/activations mismatch"
+    margin = torch.zeros(common.N_LAYERS, common.N_HEADS)
+    for k in range(common.N_LAYERS):
+        for head in range(common.N_HEADS):
+            margin[k, head] = itic.head_margin(acts[:, k, head, :], labels)
+    assert torch.isfinite(margin).all()
+    probes["margin"] = margin
+    probes["margin_definition"] = "||mean_pos - mean_neg|| / std(proj onto unit theta); tie-breaker only"
+    save_blob(probes, probes_path)
+    n_tied = int((probes["val_acc"] >= float(probes["val_acc"].max()) - 1e-6).sum())
+    info = {"polarity": polarity, "n_heads_tied_at_top_val_acc": n_tied,
+            "margin_min": float(margin.min()), "margin_max": float(margin.max())}
+    if MANIFEST_PATH.exists():
+        manifest = json.loads(MANIFEST_PATH.read_text())
+        manifest["fits"][polarity]["artifacts"]["itic_probes.pt"] = {
+            "bytes": probes_path.stat().st_size, "sha256": sha256(probes_path)}
+        manifest.setdefault("amendments", []).append(
+            {"artifact": f"{polarity}/itic_probes.pt", "added": "margin",
+             "reason": "val_acc tie-break for top-K head selection", **info})
+        MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    print(f"[fit:{polarity}:itic] added margin -> {probes_path} {info}", flush=True)
+    return info
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--polarity", choices=("all",) + POLARITIES, default="all")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--itic-margin", action="store_true",
+                    help="CPU-only: add the ITI-C tie-break margin to existing "
+                         "itic_probes.pt files from the cached activations")
     args = ap.parse_args()
+    if args.itic_margin:
+        for polarity in (POLARITIES if args.polarity == "all" else (args.polarity,)):
+            add_itic_margin(polarity)
+        return
     if args.polarity == "all" and MANIFEST_PATH.exists() and not args.force:
         try:
             existing = json.loads(MANIFEST_PATH.read_text())

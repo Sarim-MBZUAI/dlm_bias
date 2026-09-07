@@ -75,12 +75,53 @@ def main() -> None:
     check("strict parser accepts only output-start standalone A/B/C",
           all(aggregate.strict_letter(text) == want for text, want in strict_cases.items()))
 
+    # Secondary (semantic) parser: strict letter, exact option text at output
+    # start, and multi-option re-listings -> invalid.  Method-neutral rules.
+    opts = ("Yes", "No", "Can't tell")
+    semantic_cases = {
+        "A": ("A", "letter"), " b. because": ("B", "letter"),
+        "Yes": ("A", "option_text"), "yes.": ("A", "option_text"),
+        "Yes, yes, yes": ("A", "option_text"), "No": ("B", "option_text"),
+        "Can't tell": ("C", "option_text"), "can\u2019t tell.": ("C", "option_text"),
+        "Not sure": (None, "invalid"), "Yesterday": (None, "invalid"),
+        "A. Yes\n\nB. Yes\n\nC. Can't tell": (None, "relist"),
+        "Yes.\nA. Yes\nB. No": (None, "relist"),
+        "A. Yes": ("A", "letter"), "": (None, "invalid"),
+        "The answer is A": (None, "invalid"),
+    }
+    check("semantic parser: letter, exact option text, re-listing rules",
+          all(aggregate.semantic_letter(text, opts) == want
+              for text, want in semantic_cases.items()))
+    # Rotation-aware: option text maps to the option's *position*, not a fixed letter.
+    check("semantic parser follows the rotated option order",
+          aggregate.semantic_letter("Yes", ("No", "Can't tell", "Yes")) == ("C", "option_text"))
+    # The strict parser is unchanged by the amendments (it still scores a
+    # re-listing as A and a bare word as invalid); the semantic parser is only
+    # ever reported alongside it.
+    check("strict parser unchanged: re-listing -> A, bare word -> invalid",
+          aggregate.strict_letter("A. Yes\n\nB. Yes\n\nC. Can't tell") == "A"
+          and aggregate.strict_letter("Yes") is None)
+
+    # Valid-conditional gap and regime flags.
+    fake = [{"strict_outcome": o, "strict_correct": None} for o in
+            ["biased"] * 2 + ["safe"] * 1 + ["invalid"] * 7]
+    r = aggregate.rates(fake, "strict")
+    check("gap keeps invalid in the denominator; gap_valid does not",
+          abs(r["gap"] - 0.1) < 1e-9 and abs(r["gap_valid"] - 1 / 3) < 1e-9)
+    check("regime: ok / invalid>0.15 / collapse thresholds",
+          aggregate.regime({"invalid_rate": 0.1}) == "ok"
+          and aggregate.regime({"invalid_rate": 0.2}) == "high_invalid"
+          and aggregate.regime({"invalid_rate": 0.7}) == "collapse")
+    check("32-step decode PI is a replicate check, not a tabulated condition",
+          all(c[0] != "decode_pi32" for c in aggregate.CONDITIONS)
+          and any(r[0] == "decode_pi32" for r in aggregate.REPLICATES))
+
     fixed_stems = {
         c: run_one.expected(c, 3.28)[1]
         for c in run_one.CONDITIONS
     }
-    check("all 14 conditions have distinct deterministic output stems",
-          len(fixed_stems) == 14 and len(set(fixed_stems.values())) == 14)
+    check("all 15 runnable conditions have distinct deterministic output stems",
+          len(fixed_stems) == 15 and len(set(fixed_stems.values())) == 15)
     check("effort-match stem is filesystem-stable",
           fixed_stems["normal_eff"] == "normalEff_a3p28")
 

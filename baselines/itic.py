@@ -165,6 +165,24 @@ def _fit_one_head(Xh, y, seed=0, val_frac=0.25):
     return val_acc, theta_unit, sigma
 
 
+def head_margin(Xh, y):
+    """Standardized class separation of one head along its mass-mean-shift
+    direction: ||mean_pos - mean_neg|| / sigma_h, where sigma_h is the std of
+    all activations projected onto the unit direction (the same sigma that
+    scales the ITI shift).  Used ONLY as a tie-breaker for top-K selection
+    when many heads reach the same probe validation accuracy (e.g. on
+    SocialStigmaQA, where >600 of 1024 heads reach val_acc = 1.0 and the
+    paper's accuracy criterion no longer ranks anything)."""
+    Xh = torch.as_tensor(Xh, dtype=torch.float32)
+    y = torch.as_tensor(y).long()
+    diff = Xh[y == 1].mean(dim=0) - Xh[y == 0].mean(dim=0)
+    norm = float(diff.norm())
+    if norm == 0.0:
+        return 0.0
+    sigma = float((Xh @ (diff / norm)).std(unbiased=False))
+    return norm / sigma if sigma > 0 else float("inf")
+
+
 def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
         target="black"):
     """FIT stage (NEEDS A GPU -- do NOT execute in the offline harness).
@@ -197,17 +215,19 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
     theta = torch.zeros(N_LAYERS, N_HEADS, D_HEAD, dtype=torch.float32)
     sigma = torch.zeros(N_LAYERS, N_HEADS, dtype=torch.float32)
     val_acc = torch.zeros(N_LAYERS, N_HEADS, dtype=torch.float32)
+    margin = torch.zeros(N_LAYERS, N_HEADS, dtype=torch.float32)
     for k in range(N_LAYERS):
         for hh in range(N_HEADS):
             va, th, sg = _fit_one_head(A[:, k, hh, :], labels)
             val_acc[k, hh] = va
             theta[k, hh] = th
             sigma[k, hh] = sg
+            margin[k, hh] = head_margin(A[:, k, hh, :], labels)
         print(f"[itic:fit] layer {k+1}/{N_LAYERS} "
               f"best_head_acc={float(val_acc[k].max()):.3f}", flush=True)
 
     out = {
-        "theta": theta, "sigma": sigma, "val_acc": val_acc,
+        "theta": theta, "sigma": sigma, "val_acc": val_acc, "margin": margin,
         "n_layers": N_LAYERS, "n_heads": N_HEADS, "d_head": D_HEAD,
         "n_items": blob["n_items"], "source": blob["source"],
         "method": "iti_c", "target": target,
@@ -228,35 +248,54 @@ def load_probes(path=None, target="black"):
 # --------------------------------------------------------------------------- #
 # Selection + additive vectors (pure; offline-testable).                       #
 # --------------------------------------------------------------------------- #
-def select_topk(val_acc, K):
+def select_topk(val_acc, K, margin=None):
     """Indices of the TOP-K heads by validation accuracy (paper Sec. 3).
 
     val_acc: (N_LAYERS, N_HEADS).  Returns a bool mask (N_LAYERS, N_HEADS) with
-    exactly min(K, N_LAYERS*N_HEADS) True entries (the highest-accuracy heads;
-    ties broken by flattened index for determinism)."""
+    exactly min(K, N_LAYERS*N_HEADS) True entries (the highest-accuracy heads).
+
+    Ties in val_acc are broken
+      * by flattened index (torch.topk order) when margin is None -- the
+        legacy behaviour every BBQ run used; or
+      * by descending `margin` (N_LAYERS, N_HEADS; see head_margin) when it is
+        given, i.e. lexicographic (val_acc desc, margin desc, index asc).
+    """
     va = torch.as_tensor(val_acc, dtype=torch.float32)
     flat = va.reshape(-1)
     K = int(min(max(K, 0), flat.numel()))
     mask = torch.zeros_like(flat, dtype=torch.bool)
     if K > 0:
-        top = torch.topk(flat, K).indices
+        if margin is None:
+            top = torch.topk(flat, K).indices
+        else:
+            mg = torch.as_tensor(margin, dtype=torch.float32).reshape(-1)
+            assert mg.numel() == flat.numel(), (mg.shape, flat.shape)
+            idx = np.arange(flat.numel())
+            # np.lexsort sorts by the LAST key first: primary = -val_acc,
+            # secondary = -margin, tertiary = index (all ascending).
+            order = np.lexsort((idx, -mg.numpy().astype(np.float64),
+                                -flat.numpy().astype(np.float64)))
+            top = torch.as_tensor(order[:K].copy())
         mask[top] = True
     return mask.reshape(va.shape)
 
 
 def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None,
-                    target="black"):
+                    target="black", tiebreak="index"):
     """Build the constant per-head shift vectors for ITI-C (paper Eq. 2).
 
     For each SELECTED head (top-K by val_acc) the shift is
         alpha * sigma_h * theta_unit_h     (d_head vector)
     placed in that head's slice; non-selected heads get zero.
 
+    tiebreak: "index" (legacy; torch.topk order) or "margin" (requires
+    probes["margin"]; see select_topk / head_margin).
+
     Returns a dict:
         delta_heads : (N_LAYERS, N_HEADS, D_HEAD)  the constant shifts
         mask        : (N_LAYERS, N_HEADS)          selected-head bool mask
         layers      : sorted list of layers with >=1 selected head
-        K, alpha
+        K, alpha, tiebreak, n_tied_at_top
     """
     if probes is None:
         probes = load_probes(target=target)
@@ -264,13 +303,28 @@ def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None,
     sigma = probes["sigma"].to(torch.float32)     # (L,H)
     val_acc = probes["val_acc"].to(torch.float32) # (L,H)
 
-    mask = select_topk(val_acc, K)                # (L,H) bool
+    if tiebreak == "index":
+        margin = None
+    elif tiebreak == "margin":
+        if "margin" not in probes:
+            raise KeyError("tiebreak='margin' needs probes['margin'] "
+                           "(refit, or add it with head_margin on the cached "
+                           "attn_head activations)")
+        margin = probes["margin"].to(torch.float32)
+    else:
+        raise ValueError(f"unknown tiebreak {tiebreak!r}")
+
+    mask = select_topk(val_acc, K, margin=margin)  # (L,H) bool
     # alpha * sigma_h * theta_unit_h, zeroed on non-selected heads.
     delta_heads = (alpha * sigma.unsqueeze(-1) * theta)      # (L,H,d)
     delta_heads = delta_heads * mask.unsqueeze(-1).to(delta_heads.dtype)
     layers = [k for k in range(N_LAYERS) if bool(mask[k].any())]
+    # How many heads share the top accuracy: if > K, selection among them is
+    # decided entirely by the tie-break rule.
+    n_tied = int((val_acc >= float(val_acc.max()) - 1e-6).sum())
     return {"delta_heads": delta_heads, "mask": mask, "layers": layers,
-            "K": int(mask.sum()), "alpha": float(alpha)}
+            "K": int(mask.sum()), "alpha": float(alpha),
+            "tiebreak": tiebreak, "n_tied_at_top": n_tied}
 
 
 # --------------------------------------------------------------------------- #
@@ -306,14 +360,16 @@ def attach_fn(model, injection):
 
 def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         limit=0, model=None, tok=None, baseline_black_rate=None, probes=None,
-        items_path=None, target="black"):
+        items_path=None, target="black", tiebreak="index"):
     """RUN stage (NEEDS A GPU).  Build the top-K injection and evaluate on the
     400-item BBQ sweep via the shared run_baseline loop.  target selects the
     per-head probe fit (cache/itic_probes[_<target>].pt) AND the eval
-    classification (black default = round-1 behavior)."""
-    inj = build_injection(K=K, alpha=alpha, probes=probes, target=target)
+    classification (black default = round-1 behavior).  tiebreak="margin"
+    breaks val_acc ties by standardized head margin (see select_topk)."""
+    inj = build_injection(K=K, alpha=alpha, probes=probes, target=target,
+                          tiebreak=tiebreak)
     if tag is None:
-        tag = f"itic_K{inj['K']}_a{alpha:g}"
+        tag = f"itic_K{inj['K']}_a{alpha:g}" + ("_tb" if tiebreak == "margin" else "")
     return run_baseline(
         attach_fn=lambda m: attach_fn(m, inj),
         items_path=items_path,
@@ -322,6 +378,9 @@ def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         target=target,
         config_extra={"method": "iti_c", "K": inj["K"], "alpha": float(alpha),
                       "n_layers_hooked": len(inj["layers"]),
+                      "layers_hooked": inj["layers"],
+                      "tiebreak": inj["tiebreak"],
+                      "n_heads_tied_at_top_val_acc": inj["n_tied_at_top"],
                       "probes_path": probes_path_for(target), "target": target,
                       "hook_target": "blocks[k].attn_out (input, per-head)"},
     )
@@ -423,8 +482,49 @@ def _selftest():
     check("_fit_one_head theta is unit", abs(float(th.norm()) - 1.0) < 1e-5)
     check("_fit_one_head sigma > 0", sg > 0)
 
+    # (f) tie-breaking.  With all val_acc tied, legacy selection is the first
+    # K flattened indices; margin selection is the K largest margins.
+    va_tied = torch.ones(N_LAYERS, N_HEADS)
+    mg = torch.rand(N_LAYERS, N_HEADS)
+    m_legacy = select_topk(va_tied, 48)
+    m_margin = select_topk(va_tied, 48, margin=mg)
+    check("legacy tie-break is deterministic and picks K heads",
+          int(m_legacy.sum()) == 48
+          and torch.equal(m_legacy, select_topk(va_tied, 48)))
+    check("margin tie-break selects the 48 largest margins",
+          set(m_margin.reshape(-1).nonzero().squeeze(1).tolist())
+          == set(torch.topk(mg.reshape(-1), 48).indices.tolist()))
+    check("margin tie-break selects exactly K heads", int(m_margin.sum()) == 48)
+    # val_acc still dominates margin: a head with lower accuracy but huge
+    # margin must not be selected ahead of a full-accuracy head.
+    va_mix = torch.ones(N_LAYERS, N_HEADS); va_mix[5, 5] = 0.5
+    mg_mix = torch.zeros(N_LAYERS, N_HEADS); mg_mix[5, 5] = 1e6
+    check("val_acc dominates margin (lexicographic)",
+          not bool(select_topk(va_mix, 1023, margin=mg_mix)[5, 5]))
+    va_r = torch.rand(N_LAYERS, N_HEADS)
+    check("margin tie-break with distinct val_acc == legacy",
+          torch.equal(select_topk(va_r, 48), select_topk(va_r, 48, margin=mg)))
+    check("head_margin: separable data has margin > 1",
+          head_margin(Xh, y) > 1.0)
+    check("build_injection(tiebreak='margin') needs probes['margin']",
+          _raises(KeyError, lambda: build_injection(
+              K=4, alpha=1.0, tiebreak="margin",
+              probes={"theta": torch.zeros(N_LAYERS, N_HEADS, D_HEAD),
+                      "sigma": torch.ones(N_LAYERS, N_HEADS),
+                      "val_acc": torch.ones(N_LAYERS, N_HEADS)})))
+
     print(f"[selftest-itic] OVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
+
+
+def _raises(exc, fn):
+    try:
+        fn()
+    except exc:
+        return True
+    except Exception:
+        return False
+    return False
 
 
 def main():
@@ -449,6 +549,10 @@ def main():
                          "file); default = the target's own _sweep400 file")
     ap.add_argument("--out_dir", default=RESULTS_DIR)
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--tiebreak", choices=("index", "margin"), default="index",
+                    help="val_acc tie-break for top-K selection: 'index' "
+                         "(legacy torch.topk order) or 'margin' (standardized "
+                         "head margin; needs probes['margin'])")
     args = ap.parse_args()
 
     if args.selftest:
@@ -458,7 +562,8 @@ def main():
         return
     if args.run:
         run(K=args.topk, alpha=args.alpha, out_dir=args.out_dir, tag=args.tag,
-            limit=args.limit, items_path=args.items, target=args.target)
+            limit=args.limit, items_path=args.items, target=args.target,
+            tiebreak=args.tiebreak)
         return
     ap.error("nothing to do: pass --selftest (offline), --fit or --run (GPU)")
 
