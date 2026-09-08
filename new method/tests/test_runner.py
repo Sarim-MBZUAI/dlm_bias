@@ -1,14 +1,19 @@
 """Portable plan/preflight tests using only tiny local files and the stdlib."""
 import json
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SOURCE = Path(os.environ.get("DLM_NEW_METHOD_ROOT", Path(__file__).resolve().parents[1]))
+spec = importlib.util.spec_from_file_location("new_method_test_runner", SOURCE / "run.py")
+R = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(R)
 
 
 class RunnerTests(unittest.TestCase):
@@ -68,6 +73,35 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(json.loads((output / "status.json").read_text())["status"], "failed")
             self.assertFalse((output / "generations.jsonl").exists())
 
+
+class ExecutionPolicyTests(unittest.TestCase):
+    def test_titan_requires_allocation_in_every_mode_including_fqdn_and_case(self):
+        for hostname in ("mbz-titan-3", "MBZ-TITAN-3.cluster.example"):
+            for mode in ("auto", "slurm", "direct"):
+                with self.assertRaisesRegex(RuntimeError, "cannot bypass Titan"):
+                    R.execution_preflight(mode, hostname=hostname, environ={})
+                allocation = R.execution_preflight(mode, hostname=hostname,
+                                                   environ={"SLURM_JOB_ID": "123"})
+                self.assertEqual(allocation["effective_mode"], "slurm")
+                self.assertTrue(allocation["known_titan"])
+
+    def test_lab_gpu_supports_direct_and_auto_without_fake_slurm_environment(self):
+        for mode in ("auto", "direct"):
+            result = R.execution_preflight(mode, hostname="lo-01", environ={})
+            self.assertEqual(result["effective_mode"], "direct")
+            self.assertIsNone(result["slurm_job_id"])
+        with self.assertRaisesRegex(RuntimeError, "Slurm GPU allocation"):
+            R.execution_preflight("slurm", hostname="lo-01", environ={})
+        result = R.execution_preflight("auto", hostname="lo-01", environ={"SLURM_JOB_ID": "123"})
+        self.assertEqual(result["effective_mode"], "slurm")
+
+    def test_host_environment_cannot_bypass_actual_titan_hostname_and_plan_stays_cpu(self):
+        with patch.object(R.socket, "gethostname", return_value="mbz-titan-3"):
+            with self.assertRaisesRegex(RuntimeError, "cannot bypass Titan"):
+                R.execution_preflight("direct", environ={"HOSTNAME": "lo-01"})
+            plan = R.execution_preflight("auto", environ={}, enforce=False)
+        self.assertTrue(plan["allocation_required"])
+        self.assertFalse(plan["allocation_present"])
 
 if __name__ == "__main__":
     unittest.main()
