@@ -13,7 +13,7 @@ that the default operation removes bias.
 
 ## Start here
 
-Use an existing SLURM GPU allocation and the project's installed `dlm` environment. The
+Use the project's installed `dlm` environment and a GPU you are authorized to use. The
 launcher works from any directory, including paths containing spaces. It does
 not select a GPU, submit a job, download weights, or install dependencies.
 
@@ -51,9 +51,17 @@ loading. Model configuration, custom model code, tokenizer files, and all weight
 shards are needed. The existing local `steering/arrows.pt` and benchmark data are
 also required; a source-only Git checkout does not contain these ignored files.
 Set `PYTHON` to the interpreter itself, not a shell command with extra arguments.
-Live inference checks the allocation and the free memory on its assigned logical
-CUDA device before loading the model. Preserve the allocation's
-`CUDA_VISIBLE_DEVICES` setting.
+`--execution-mode auto` uses an existing SLURM allocation when present and
+supports directly managed GPUs on other machines. On `mbz-titan-*`, an allocation
+is always required, including when `--execution-mode direct` is requested.
+Use `--execution-mode slurm` to explicitly require an allocation elsewhere, or
+`--execution-mode direct` for a directly managed lab GPU. Preserve the
+allocation's `CUDA_VISIBLE_DEVICES` setting; on a direct machine, select only
+the GPU assigned to you. The launcher does not override device visibility.
+
+Before loading, the runner checks free memory on its logical CUDA device 0.
+The conservative default is 24,000 MiB. `--min-free-memory-mib` changes this
+preflight threshold; it does not reduce the model's memory requirement.
 
 For custom prompts, supply `--items /path/to/items.jsonl`. Each row needs only
 `context`, `question`, `ans0`, `ans1`, and `ans2`; annotations are optional and
