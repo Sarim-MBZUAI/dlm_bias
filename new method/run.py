@@ -3,13 +3,16 @@
 
 Default: auto_pi. --compare adds paired controls; --plan-only prepares and checks
 local inputs without importing torch or loading a model. Custom --items may omit
-all annotations. Live inference requires an existing Slurm GPU allocation.
+all annotations. Titan hosts require a Slurm allocation; other GPU hosts support
+direct execution. CUDA_VISIBLE_DEVICES is honored in both modes.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
+import socket
 from pathlib import Path
 import sys
 import time
@@ -25,6 +28,26 @@ DEFAULT_EXCLUSIONS = ["data/bbq_items/_sweep400.jsonl"] + [
     f"results/balanced_seeds/seed{seed}/decode_pid/rot0/cond_dpid_PI_samples.jsonl"
     for seed in (1, 2, 3)]
 VISIBLE_KEYS = ("context", "question", "ans0", "ans1", "ans2", "prompt_override")
+
+
+def execution_preflight(requested="auto", hostname=None, environ=None, enforce=True):
+    """Keep Titan scheduling mandatory while supporting a directly managed lab GPU."""
+    if requested not in ("auto", "slurm", "direct"):
+        raise ValueError("unknown execution mode")
+    hostname = (socket.gethostname() if hostname is None else hostname).lower()
+    environment = os.environ if environ is None else environ
+    job_id = environment.get("SLURM_JOB_ID") or None
+    # Inspect the OS hostname, never the user-overridable HOSTNAME environment.
+    known_titan = bool(re.fullmatch(r"mbz-titan-[0-9]+", hostname.split(".")[0]))
+    requires_allocation = known_titan or requested == "slurm"
+    if enforce and requires_allocation and job_id is None:
+        raise RuntimeError("this execution requires a Slurm GPU allocation; direct mode cannot bypass Titan scheduling")
+    effective = ("slurm" if known_titan or requested == "slurm" or
+                 (requested == "auto" and job_id is not None) else "direct")
+    return {"requested_mode": requested, "effective_mode": effective,
+            "hostname": hostname, "known_titan": known_titan,
+            "allocation_required": requires_allocation,
+            "allocation_present": job_id is not None, "slurm_job_id": job_id}
 
 
 def model_preflight(path):
@@ -87,6 +110,10 @@ def parser():
     ap.add_argument("--compare", action="store_true", help="run paired clean/readout/fixed/static/PI arms")
     ap.add_argument("--oracle-diagnostic", action="store_true", help="add separately labeled annotation-assisted PI")
     ap.add_argument("--plan-only", action="store_true", help="validate/prepare CPU plan only; missing weights reported")
+    ap.add_argument("--execution-mode", choices=("auto", "slurm", "direct"), default="auto",
+                    help="auto supports direct lab GPUs; known Titan hosts always require a Slurm allocation")
+    ap.add_argument("--min-free-memory-mib", type=int, default=24000,
+                    help="conservative free-VRAM preflight, adjustable for the local workload; not a universal model minimum")
     ap.add_argument("--steps", type=int, default=64)
     ap.add_argument("--kp", type=float, default=3.0)
     ap.add_argument("--ki", type=float, default=0.1)
@@ -120,6 +147,8 @@ def make_plan(args):
             or min(args.kp, args.ki, args.alpha_max, args.fixed_alpha) < 0
             or not 0 <= args.setpoint <= 1 or args.fixed_alpha > args.alpha_max):
         raise ValueError("invalid PI/sampler settings")
+    if args.min_free_memory_mib < 1:
+        raise ValueError("min-free-memory-mib must be positive")
     if args.seconds_per_forward is not None and (not math.isfinite(args.seconds_per_forward) or args.seconds_per_forward <= 0):
         raise ValueError("seconds-per-forward must be positive and finite")
     fit_rows = read_rows(fit)
@@ -141,6 +170,10 @@ def make_plan(args):
         "experimental_status": "implementation ready; mapping quality and comparative efficacy unvalidated",
         "data_root": str(data_root), "code_root": str(CODE_ROOT), "model": model_preflight(model),
         "arms": arms, "settings": settings, "cohort": cohort, "forward_budget": budget,
+        "execution": {"requested_mode": args.execution_mode,
+                      "planning_host": execution_preflight(args.execution_mode, enforce=False),
+                      "min_free_memory_mib": args.min_free_memory_mib,
+                      "memory_note": "conservative configurable preflight, not a universal VRAM minimum"},
         "artifacts": [{"path": str(path), "sha256": sha256(path)} for path in [source, arrows, fit] + exclusions],
         "code_files": [{"path": str(path), "sha256": sha256(path)} for path in code_files],
         "arrows_path": str(arrows), "fit_examples_path": str(fit),
@@ -167,8 +200,7 @@ def execute(plan, cohort, out_root):
     """Load once, share selection across arms, and score only after output exists."""
     if not plan["model"]["available"]:
         raise ValueError("model weights are unavailable; supply --model pointing to a complete local LLaDA model")
-    if not os.environ.get("SLURM_JOB_ID"):
-        raise RuntimeError("live inference requires an existing Slurm GPU allocation (SLURM_JOB_ID)")
+    execution = execution_preflight(plan["execution"]["requested_mode"])
     # These flags and local_files_only prevent accidental downloads or API use.
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -177,10 +209,11 @@ def execute(plan, cohort, out_root):
     from transformers import AutoModel, AutoTokenizer
     from pipeline import Engine, Settings, load_direction, visible_fields
     if not torch.cuda.is_available():
-        raise RuntimeError("allocated CUDA device is unavailable")
+        raise RuntimeError("visible CUDA device is unavailable")
     free_bytes, _ = torch.cuda.mem_get_info(0)
-    if free_bytes < 24000 * 1024 * 1024:
-        raise RuntimeError("allocated logical CUDA device 0 needs at least 24,000 MiB free before model loading")
+    minimum_mib = plan["execution"]["min_free_memory_mib"]
+    if free_bytes < minimum_mib * 1024 * 1024:
+        raise RuntimeError(f"visible logical CUDA device 0 fails the configured {minimum_mib:,} MiB free-memory preflight")
     for artifact in plan["artifacts"] + plan["code_files"]:
         if sha256(artifact["path"]) != artifact["sha256"]:
             raise ValueError("planned input or implementation changed before execution")
@@ -241,7 +274,8 @@ def execute(plan, cohort, out_root):
         "model_loading_elapsed_s": loading_s, "inference_elapsed_s": time.perf_counter() - inference_started,
         "mean_visible_item_elapsed_s": sum(item_timings) / len(item_timings),
         "timing_note": "paired run pays selector once per displayed prompt; standalone arm times include that shared measurement",
-        "gpu_name": torch.cuda.get_device_name(), "slurm_job_id": os.environ["SLURM_JOB_ID"],
+        "gpu_name": torch.cuda.get_device_name(), "slurm_job_id": execution["slurm_job_id"],
+        "execution": execution, "minimum_free_memory_preflight_mib": minimum_mib,
         "limitations": ["raw-projection identity is experimental", "fixed gains are not evaluation-tuned",
                         "paired bootstrap resamples semantic items; rotations are not independent samples"],
     }
