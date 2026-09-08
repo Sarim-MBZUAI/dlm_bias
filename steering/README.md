@@ -17,6 +17,45 @@ position-balanced result: [`../results/balanced/RESULTS.md`](../results/balanced
 
 ---
 
+## Experimental automatic target mapping
+
+The primary LLaDA decode controller now accepts `--target-mapping direction`.
+It scores all three displayed answer texts using three unsteered forwards. Each
+score is the raw dot product of the mean answer-token residual at layer 14 with
+the existing unit steering direction. The highest-scoring option becomes the
+fixed letter monitored by PI/PID; the semantic intervention remains
+`alpha(t) * vhat` at all 32 blocks.
+
+```bash
+python steering/denoise_pid.py --cond PI --target-mapping direction \
+    --items data/bbq_items/_sweep400.jsonl \
+    --out-dir results/auto_target_mapping
+```
+
+This mode uses only visible prompt/answer text and the fixed direction for
+selection and generation. It scores the uncertainty option too, and never uses
+`answer_info`, the correct-answer label, or an annotation-based fallback. Those
+annotations are read afterward for evaluation. The benchmark runner fails explicitly
+if the target/unknown evaluation tags are absent; `generate_item` supports generation
+without annotations. Exact score ties select the first
+option in A/B/C order and are logged. Invalid text, changed tokenization prefixes,
+empty answer spans, or nonfinite scores fail the run without dropping items.
+
+Results record the mode, three scores, top-two score margin, selected option,
+mapping accuracy, and forward counts. The margin is not a calibrated confidence.
+The legacy `pblack_traj` field measures the **selected letter** in this mode, which
+may be incorrectly mapped. Three selector calls bring the default per-item cost
+to 68 model forwards (3 selector + 1 initial probe + 64 denoising calls); elapsed
+time also includes their completed-answer sequence lengths. Auto mode's default
+output stem ends in `_direction` to distinguish it from historical outputs.
+
+`--target-mapping oracle` remains the explicit default for reproducing historical
+runs. Automatic identification is an unvalidated experimental alternative: raw
+projections can depend on answer wording and length, and failures to identify the
+semantic target must count in the end-to-end evaluation. Historical results below
+do not establish performance of this new mode. See the root README for the current
+benchmark results and strict evaluation protocol.
+
 ## Methods compared
 
 All three methods share one direction — a diff-in-means `mean(h_Black) − mean(h_other)`

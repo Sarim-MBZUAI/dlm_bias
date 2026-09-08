@@ -8,7 +8,7 @@ from bbq_eval.generate). At every denoising step t we close a loop on the
 decode-space observable p_black(t) and set ONE scalar actuator alpha(t):
 
     p_black(t) = P(target letter token) at the answer position (gen pos 0)
-                 (plain + space variant summed; target letter = chr(65+black_idx))
+                 (plain + space variant summed; selected target letter)
     e(t)       = s* - p_black(t)                       (s* = setpoint, default 0.9)
     Iacc      += e(t)                                  (integral, w/ anti-windup)
     d(t)       = e(t) - e(t-1)                          (derivative, e(-1):=0)
@@ -51,6 +51,13 @@ step -- the loop observes the actual steered plant output. Forwards = 1 probe + 
 No post-commit gating in the primary run (pure PID over all steps); gating is a
 future variant.
 
+TARGET MAPPING: --target-mapping oracle preserves the historical annotation
+lookup. Experimental 'direction' identifies the target option from visible text
+using three unsteered completed-answer projections onto vhat at layer 14, then
+freezes that letter for generation. All three options are scored. This adds three
+forwards and does not use answer_info, correct-answer labels, or unknown masks.
+Its identification accuracy must be evaluated; it is not assumed to be reliable.
+
 Reuses bbq_eval: build_prompt / parse_letter / add_gumbel_noise /
 get_num_transfer_tokens / resolve_module / hidden_from_output / output_with_hidden.
 
@@ -61,6 +68,7 @@ MODES
 GPU RULE: run ONLY with CUDA_VISIBLE_DEVICES=0 or 2.
 """
 import argparse
+import importlib.util
 import json
 import os
 import sys
@@ -69,8 +77,9 @@ import time
 import numpy as np
 import torch
 
-ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "eval"))
+CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.environ.get("DLM_BIAS_ROOT") or CODE_ROOT
+sys.path.insert(0, os.path.join(CODE_ROOT, "eval"))
 import bbq_eval as B  # noqa: E402
 
 MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
@@ -79,6 +88,12 @@ SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 DEFAULT_ARROWS = (os.environ.get("DLM_ARROWS_PATH")
                   or os.path.join(ROOT, "steering", "arrows.pt"))
 HERE = os.path.dirname(os.path.abspath(__file__))
+_selector_spec = importlib.util.spec_from_file_location(
+    "_dlm_target_selector", os.path.join(HERE, "target_selector.py"))
+_selector_module = importlib.util.module_from_spec(_selector_spec)
+_selector_spec.loader.exec_module(_selector_module)
+score_candidates = _selector_module.score_candidates
+
 RESULTS = os.path.join(ROOT, "results", "decode_pid")
 
 N_LAYERS = 32
@@ -87,6 +102,7 @@ GEN_LENGTH, STEPS, BLOCK_LENGTH = 32, 64, 32
 TEMPERATURE, REMASKING = 0.0, "low_confidence"
 SETPOINT, ALPHA_MAX = 0.9, 6.0
 LETTERS = ["A", "B", "C"]
+TARGET_MAPPINGS = ("oracle", "direction")
 BLACK_TAGS = {"black", "african american", "f-black", "m-black", "african"}
 
 COND_MASK = {  # (use_ki, use_kd)
@@ -488,11 +504,51 @@ def attach_all_layers(model, vhat):
     return steerer
 
 
+def generate_item(model, tok, steerer, controller, row, steer_on,
+                  target_mapping="oracle", steps=STEPS, sensor_case="upper"):
+    """Map an option and generate; scoring annotations are read by the caller.
+
+    In direction mode, only the visible prompt fields cross into generation or
+    selection. The learned vector stays fixed; mapping changes only the letter
+    probability measured by the existing controller.
+    """
+    if target_mapping not in TARGET_MAPPINGS:
+        raise ValueError(f"unknown target mapping: {target_mapping!r}")
+    if target_mapping == "direction":
+        visible = {key: row[key] for key in
+                   ("context", "question", "ans0", "ans1", "ans2", "prompt_override")
+                   if key in row}
+        prompt = B.build_prompt(visible)
+        chat = tok.apply_chat_template([{"role": "user", "content": prompt}],
+                                       add_generation_prompt=True, tokenize=False)
+        steerer.alpha = 0.0  # previous item's final command must not affect mapping
+        mapping = score_candidates(
+            model, tok, chat, [visible[f"ans{k}"] for k in range(3)],
+            steerer.vhat, source_layer=LAYER)
+        ids = torch.tensor(tok(chat)["input_ids"], device=model.device).unsqueeze(0)
+    else:
+        # Preserve historical oracle behavior, including its missing-tag A fallback.
+        bidx = black_idx_of(row)
+        mapping = {"selected_index": bidx if bidx is not None else 0,
+                   "candidate_scores": None, "margin": None, "tied_indices": [],
+                   "selector_forward_calls": 0}
+        ids = build_input(tok, row, model.device)
+    target = LETTERS[mapping["selected_index"]]
+    plain, space = letter_token_ids(tok, sensor_case)
+    x, a, pb, sat = controlled_generate(
+        model, steerer, controller, ids, plain[target], space[target],
+        steer_on=steer_on, steps=steps)
+    mapping.update({"target_mapping": target_mapping,
+                    "selected_letter": target,
+                    "total_forward_calls": mapping["selector_forward_calls"] + 1 + steps})
+    return x, a, pb, sat, ids, mapping
+
+
 # --------------------------------------------------------------------------- #
 # GPU smoke.
 # --------------------------------------------------------------------------- #
 def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0,
-          sensor_case="upper"):
+          sensor_case="upper", target_mapping="oracle"):
     assert torch.cuda.is_available(), "CUDA not available"
     print(f"[smoke] CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} "
           f"dev={torch.cuda.get_device_name(0)} sensor_case={sensor_case}", flush=True)
@@ -502,23 +558,26 @@ def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0,
     print(f"[smoke] letter tokens plain={plain} space={space}", flush=True)
     steerer = attach_all_layers(model, vhat)
     ctrl = PID(kp, ki, kd, setpoint, amax, antiwindup=True, amin=amin)
-    rows = [r for r in load_items(0) if black_idx_of(r) is not None][:n_items]
+    rows = load_items(0)
+    if target_mapping == "oracle":
+        rows = [r for r in rows if black_idx_of(r) is not None]
+    rows = rows[:n_items]
     try:
         for n, row in enumerate(rows):
-            bidx = black_idx_of(row)
-            tgt = chr(65 + bidx)
-            ids = build_input(tok, row, model.device)
             steerer.fires = 0
-            x, a, pb, sat = controlled_generate(
-                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=True,
-                steps=steps)
+            x, a, pb, sat, ids, mapping = generate_item(
+                model, tok, steerer, ctrl, row, steer_on=True,
+                target_mapping=target_mapping, steps=steps, sensor_case=sensor_case)
+            tgt = mapping["selected_letter"]
             gen = tok.batch_decode(x[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
             letter = B.parse_letter(gen, row)
             print(f"\n[smoke] item {n} ex={row.get('example_id')} target={tgt}", flush=True)
             print(f"[smoke]   forwards this item = {steerer.fires // N_LAYERS} "
-                  f"(x{N_LAYERS} hooks; expect 1 probe + {steps} = {steps + 1})", flush=True)
-            assert steerer.fires // N_LAYERS == 1 + steps, (
-                f"forward count {steerer.fires // N_LAYERS} != 1 + steps ({1 + steps})")
+                  f"(expected {mapping['total_forward_calls']}, including "
+                  f"{mapping['selector_forward_calls']} selector forwards)", flush=True)
+            assert steerer.fires // N_LAYERS == mapping["total_forward_calls"], (
+                f"forward count {steerer.fires // N_LAYERS} != {mapping['total_forward_calls']}")
+            print(f"[smoke] mapping={mapping}", flush=True)
             print(f"[smoke]   steps={len(a)} parsed='{letter}' gen={gen!r}", flush=True)
             if n == 0:
                 print(f"[smoke]   alpha(t) : {[round(v,2) for v in a.tolist()]}", flush=True)
@@ -536,7 +595,10 @@ def smoke(n_items, kp, ki, kd, amax, steps=STEPS, setpoint=SETPOINT, amin=0.0,
 # Full / limited eval over the sweep400.
 # --------------------------------------------------------------------------- #
 def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
-        steps=STEPS, setpoint=SETPOINT, amin=0.0, sensor_case="upper"):
+        steps=STEPS, setpoint=SETPOINT, amin=0.0, sensor_case="upper",
+        target_mapping="oracle"):
+    if target_mapping not in TARGET_MAPPINGS:
+        raise ValueError(f"unknown target mapping: {target_mapping!r}")
     os.makedirs(out_dir, exist_ok=True)
     use_ki, use_kd = COND_MASK[cond]
     eff_ki = ki if use_ki else 0.0
@@ -553,20 +615,32 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
     print(f"[{cond}] dev={torch.cuda.get_device_name(0)} "
           f"CVD={os.environ.get('CUDA_VISIBLE_DEVICES')} n={len(rows)} actuator=all{N_LAYERS} "
           f"Kp={kp} Ki={eff_ki} Kd={eff_kd} s*={setpoint} amin={amin} amax={amax} "
-          f"steps={steps} steer_on={steer_on} AW=on sensor_case={sensor_case}", flush=True)
+          f"steps={steps} steer_on={steer_on} AW=on sensor_case={sensor_case} "
+          f"target_mapping={target_mapping}", flush=True)
 
     per_item, counts = [], {"black": 0, "nonblack": 0, "abstain": 0, "unparseable": 0}
     alpha_sums, alpha_means, alpha_finals, sat_fracs = [], [], [], []
+    mapping_n = mapping_correct = mapping_ties = selector_calls = total_calls = 0
     t0 = time.time()
     try:
         for idx, row in enumerate(rows):
-            bidx, uidx = black_idx_of(row), unk_idx_of(row)
-            tgt = chr(65 + bidx) if bidx is not None else "A"
-            ids = build_input(tok, row, model.device)
-            x, a, pb, sat = controlled_generate(
-                model, steerer, ctrl, ids, plain[tgt], space[tgt], steer_on=steer_on,
-                steps=steps)
+            x, a, pb, sat, ids, mapping = generate_item(
+                model, tok, steerer, ctrl, row, steer_on=steer_on,
+                target_mapping=target_mapping, steps=steps, sensor_case=sensor_case)
+            tgt = mapping["selected_letter"]
             gen = tok.batch_decode(x[:, ids.shape[1]:], skip_special_tokens=True)[0].strip()
+            # Annotation access below is evaluation only, after generation completes.
+            bidx, uidx = black_idx_of(row), unk_idx_of(row)
+            if target_mapping == "direction" and (bidx is None or uidx is None):
+                raise ValueError(
+                    "direction-mode benchmark scoring requires target and unknown tags "
+                    "after generation; use generate_item for annotation-free generation")
+            mapping_match = mapping["selected_index"] == bidx if bidx is not None else None
+            mapping_n += int(bidx is not None)
+            mapping_correct += int(mapping_match is True)
+            mapping_ties += int(len(mapping["tied_indices"]) > 1)
+            selector_calls += mapping["selector_forward_calls"]
+            total_calls += mapping["total_forward_calls"]
             letter = B.parse_letter(gen, row)
             pred = LETTERS.index(letter) if letter else None
             if pred is None:
@@ -596,6 +670,15 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
                                       if isinstance(row.get("label"), int) and 0 <= row["label"] < 3 else None),
                 "prompt": B.build_prompt(row),
                 "black_idx": bidx, "unk_idx": uidx, "target_letter": tgt,
+                "target_mapping": target_mapping,
+                "selected_target_idx": mapping["selected_index"],
+                "selected_target_letter": tgt,
+                "target_mapping_scores": mapping["candidate_scores"],
+                "target_mapping_margin": mapping["margin"],
+                "target_mapping_ties": mapping["tied_indices"],
+                "target_mapping_correct": mapping_match,
+                "selector_forward_calls": mapping["selector_forward_calls"],
+                "total_forward_calls": mapping["total_forward_calls"],
                 "pred_index": pred, "pred_letter": letter, "pred_class": cls,
                 "setpoint": setpoint, "alpha_min": amin, "sensor_case": sensor_case,
                 "model_output": gen, "alpha_sum": float(a.sum()),
@@ -618,6 +701,20 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
         "actuator": f"all_{N_LAYERS}_layers", "anti_windup": True,
         "setpoint": setpoint, "alpha_min": amin, "alpha_max": amax,
         "sensor_case": sensor_case,
+        "target_mapping": target_mapping,
+        "sensor_quantity": "probability_of_selected_letter",
+        "target_mapping_method": ("answer_span_raw_projection" if target_mapping == "direction"
+                                  else "answer_info_lookup"),
+        "target_mapping_source_layer": LAYER,
+        "arrows_path": DEFAULT_ARROWS,
+        "target_mapping_tie_rule": "first_in_ABC_order",
+        "target_mapping_score_units": "raw_projection_margin_not_probability",
+        "target_mapping_evaluated": mapping_n,
+        "target_mapping_correct": mapping_correct,
+        "target_mapping_accuracy": mapping_correct / mapping_n if mapping_n else None,
+        "target_mapping_tied_items": mapping_ties,
+        "selector_forward_calls": selector_calls,
+        "total_forward_calls": total_calls,
         "sensor_letter_ids": {"plain": plain, "space": space},
         "vhat_layer": LAYER, "n": n,
         "counts": counts, "rates": rates,
@@ -630,7 +727,7 @@ def run(cond, kp, ki, kd, amax, limit, out_dir, tag, items_path=SWEEP400,
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "elapsed_s": time.time() - t0,
     }
-    stem = tag if tag else f"dpid_{cond}"
+    stem = tag if tag else f"dpid_{cond}" + ("_direction" if target_mapping == "direction" else "")
     with open(os.path.join(out_dir, f"cond_{stem}.json"), "w") as f:
         json.dump(result, f, indent=2)
     with open(os.path.join(out_dir, f"cond_{stem}_samples.jsonl"), "w") as f:
@@ -648,6 +745,10 @@ def main():
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--smoke-items", type=int, default=2)
     ap.add_argument("--cond", choices=list(COND_MASK.keys()))
+    ap.add_argument("--target-mapping", choices=TARGET_MAPPINGS, default="oracle",
+                    help="oracle: historical answer_info target lookup; direction: "
+                         "experimental label-free option mapping from three unsteered "
+                         "answer-text projections onto the fixed steering direction")
     ap.add_argument("--kp", type=float, default=3.0)
     ap.add_argument("--ki", type=float, default=0.1)
     ap.add_argument("--kd", type=float, default=1.0)
@@ -682,13 +783,14 @@ def main():
     if args.smoke:
         smoke(args.smoke_items, args.kp, args.ki, args.kd, args.amax,
               steps=args.steps, setpoint=args.setpoint, amin=args.amin,
-              sensor_case=args.sensor_case)
+              sensor_case=args.sensor_case, target_mapping=args.target_mapping)
         return
     if not args.cond:
         ap.error("--cond required (or use --selftest / --smoke)")
     run(args.cond, args.kp, args.ki, args.kd, args.amax, args.limit,
         args.out_dir, args.tag, args.items, steps=args.steps,
-        setpoint=args.setpoint, amin=args.amin, sensor_case=args.sensor_case)
+        setpoint=args.setpoint, amin=args.amin, sensor_case=args.sensor_case,
+        target_mapping=args.target_mapping)
 
 
 if __name__ == "__main__":
