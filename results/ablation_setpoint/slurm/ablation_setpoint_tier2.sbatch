@@ -2,7 +2,10 @@
 #SBATCH --job-name=ablsp2
 #SBATCH --account=nils
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=shard:3
+# Titan rejects --gres=gpu:1; shards are ~9.6 GB each. LLaDA-8B in bf16 needs
+# ~16 GB weights + small batch-1 activations, so 3 shards (~28.8 GB) leave margin
+# under the enforced budget (N*9.6 GB + 5% + 0.5 GB). Run `titan-shards` for the guide.
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=05:00:00

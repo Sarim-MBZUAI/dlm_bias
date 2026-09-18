@@ -28,6 +28,7 @@ whatever the numbers show.
 - **Do not edit any tracked source file**, and do not overwrite anything under
   existing `results/` subfolders. Write all outputs to
   `results/ablation_setpoint/` only. The scripts here already do this.
+- **GPU request.** Titan rejects `--gres=gpu:1`; both sbatch files request `--gres=shard:3` (~28.8 GB) for the bf16 8B model. See `titan-shards`.
 - **Run every condition on the same GPU model.** Output differs slightly across
   GPU types; an earlier repeat of this attack on a different GPU gave a
   target-comparator gap of 15.1 pp against 16.7 pp. `preflight.sh` records the
