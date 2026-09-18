@@ -14,3 +14,12 @@ tier1	2	dpid_base	2026-09-17T09:16:19Z	287	0	NVIDIA RTX PRO 6000 Blackwell Serve
 tier1	2	dpid_PI_s0p5	2026-09-17T09:21:06Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
 tier1	2	dpid_PI_s0p7	2026-09-17T09:25:56Z	289	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
 tier1	2	dpid_PI_s1p0	2026-09-17T09:30:45Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	0	dpid_PI_s0p5	2026-09-17T10:18:31Z	697	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	0	dpid_PI_s0p9	2026-09-17T10:30:09Z	1185	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	0	dpid_PI_s1p0	2026-09-17T10:49:54Z	678	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	1	dpid_PI_s0p5	2026-09-17T11:01:12Z	674	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	1	dpid_PI_s0p9	2026-09-17T11:12:26Z	681	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	1	dpid_PI_s1p0	2026-09-17T11:23:47Z	658	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	2	dpid_PI_s0p5	2026-09-17T11:34:45Z	639	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	2	dpid_PI_s0p9	2026-09-17T11:45:24Z	641	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier2	2	dpid_PI_s1p0	2026-09-17T11:56:05Z	720	0	NVIDIA RTX PRO 6000 Blackwell Server Edition

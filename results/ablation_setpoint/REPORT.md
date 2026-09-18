@@ -1,6 +1,6 @@
 # Setpoint ablation for the decode-time PI attack — report
 
-_Generated 2026-09-17T09:35:36+00:00 by make_report.py. Numbers only; no interpretation._
+_Generated 2026-09-17T12:08:06+00:00 by make_report.py. Numbers only; no interpretation._
 
 ## Environment
 
@@ -36,7 +36,13 @@ Gap = (target − comparator) / n with strict-invalid rows kept in the denominat
 
 ## Tier 2: full 400 items per rotation (1,200 pooled)
 
-_tier2/summary.json not found; tier2 was not run or not scored._
+| setpoint s* | n | target % | comparator % | abstain % | invalid % | gap (pp) | 95% CI | gap − s*=0.9 (pp) | paired 95% CI | mean command, steps 1–32 | share ever at limit |
+|---|---:|---:|---:|---:|---:|---:|:--:|---:|:--:|---:|---:|
+| 0.5 | 1200 | 16.1 | 14.8 | 67.1 | 2.1 | +1.3 | [-1.8, +4.5] | -13.8 | [-17.9, -9.7] | 1.72 | 0.0 |
+| 0.9 | 1200 | 29.4 | 14.3 | 48.6 | 7.7 | +15.1 | [+11.4, +18.8] | ref |  | 3.27 | 0.722 |
+| 1.0 | 1200 | 30.4 | 18.1 | 43.8 | 7.7 | +12.3 | [+8.4, +16.2] | -2.8 | [-6.2, +0.7] | 3.6 | 0.787 |
+
+Gap = (target − comparator) / n with strict-invalid rows kept in the denominator. CIs: 10,000 item-level bootstrap resamples, seed 0; the paired CI resamples the per-item difference against s*=0.9 with the same indices. Mean command and limit share are read from `alpha_traj`; only steps 1–32 commit tokens.
 
 ## Wall-clock per run
 
@@ -57,6 +63,15 @@ _tier2/summary.json not found; tier2 was not run or not scored._
 | tier1 | 2 | dpid_PI_s0p5 | 2026-09-17T09:21:06Z | 290 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
 | tier1 | 2 | dpid_PI_s0p7 | 2026-09-17T09:25:56Z | 289 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
 | tier1 | 2 | dpid_PI_s1p0 | 2026-09-17T09:30:45Z | 290 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 0 | dpid_PI_s0p5 | 2026-09-17T10:18:31Z | 697 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 0 | dpid_PI_s0p9 | 2026-09-17T10:30:09Z | 1185 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 0 | dpid_PI_s1p0 | 2026-09-17T10:49:54Z | 678 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 1 | dpid_PI_s0p5 | 2026-09-17T11:01:12Z | 674 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 1 | dpid_PI_s0p9 | 2026-09-17T11:12:26Z | 681 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 1 | dpid_PI_s1p0 | 2026-09-17T11:23:47Z | 658 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 2 | dpid_PI_s0p5 | 2026-09-17T11:34:45Z | 639 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 2 | dpid_PI_s0p9 | 2026-09-17T11:45:24Z | 641 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
+| tier2 | 2 | dpid_PI_s1p0 | 2026-09-17T11:56:05Z | 720 | 0 | NVIDIA RTX PRO 6000 Blackwell Server Edition |
 
 ## Failed or rerun jobs
 
@@ -80,4 +95,13 @@ b9fd9f9f1795754e2d27059917b02bb4930ce8c02f4534e813e192241e50c062  tier1/rot1/con
 3da77fe797cb26d26ea3d58dc2d69cc18795a646865196004ff99d50ed2b58be  tier1/rot2/cond_dpid_PI_s0p9_samples.jsonl
 89adb80ec5369d895c2f04fe5fc36cf5dc70b7953c9e4e6a35abe800b1d688bf  tier1/rot2/cond_dpid_PI_s1p0_samples.jsonl
 29f532845b47bb8ee0ab6fe8093358138cb57f477de745bb7311ebab25568898  tier1/rot2/cond_dpid_base_samples.jsonl
+87173990fd974ea090d4eb73b0621d233dfc52c900216d5334cc5189d69a0a0b  tier2/rot0/cond_dpid_PI_s0p5_samples.jsonl
+3259faffd9c5a6250f5c3a438a6a362752ab78e8860ee51349ce4dd837a706f1  tier2/rot0/cond_dpid_PI_s0p9_samples.jsonl
+a2333f65319f747a6c10a27d86fb94ae4828974c719b1f6fa046ef2f734014f9  tier2/rot0/cond_dpid_PI_s1p0_samples.jsonl
+e67d8ac4af8ddc0e0a12c17105ecdf6f6603a82cfd1e3e8d48a1f5aeb43a54cb  tier2/rot1/cond_dpid_PI_s0p5_samples.jsonl
+debb9ca92973938e91931594c465a2851780927663a1f0dc05a7d70191c298eb  tier2/rot1/cond_dpid_PI_s0p9_samples.jsonl
+76a65d208fdeb47e314267a427a666e29421633061866c5217180877fb3160ff  tier2/rot1/cond_dpid_PI_s1p0_samples.jsonl
+2739c0fb56aa72156e5bfd630cf41110b0a630d1ce61e018a141ec1612cd7e79  tier2/rot2/cond_dpid_PI_s0p5_samples.jsonl
+5ea9ec1816917bd75cfa5a5ccb34dc9c9a12fb18a3f5da8a93d724fe03266562  tier2/rot2/cond_dpid_PI_s0p9_samples.jsonl
+28bcf90e7ffed36f044cfc484d55e928e254c99b4aeb8a0f665ac4a2f6265a4f  tier2/rot2/cond_dpid_PI_s1p0_samples.jsonl
 ```
