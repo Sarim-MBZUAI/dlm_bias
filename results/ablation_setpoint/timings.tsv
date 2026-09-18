@@ -1,0 +1,16 @@
+tier	rot	tag	start_utc	elapsed_s	exit_code	gpu
+tier1	0	dpid_PI_s0p9	2026-09-17T08:23:16Z	294	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	1	dpid_PI_s0p9	2026-09-17T08:28:10Z	291	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	2	dpid_PI_s0p9	2026-09-17T08:33:01Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	0	dpid_base	2026-09-17T08:37:51Z	286	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	0	dpid_PI_s0p5	2026-09-17T08:42:37Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	0	dpid_PI_s0p7	2026-09-17T08:47:27Z	288	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	0	dpid_PI_s1p0	2026-09-17T08:52:16Z	288	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	1	dpid_base	2026-09-17T08:57:04Z	288	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	1	dpid_PI_s0p5	2026-09-17T09:01:52Z	289	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	1	dpid_PI_s0p7	2026-09-17T09:06:41Z	289	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	1	dpid_PI_s1p0	2026-09-17T09:11:30Z	289	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	2	dpid_base	2026-09-17T09:16:19Z	287	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	2	dpid_PI_s0p5	2026-09-17T09:21:06Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	2	dpid_PI_s0p7	2026-09-17T09:25:56Z	289	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
+tier1	2	dpid_PI_s1p0	2026-09-17T09:30:45Z	290	0	NVIDIA RTX PRO 6000 Blackwell Server Edition
