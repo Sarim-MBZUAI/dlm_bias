@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Strict reparse + pooling + bootstrap CIs for the position-balanced runs.
 
-Replicates the STRICT parsing rule of
-DLM_Bias_overleaf/tools/strict_reparse.py exactly:
+Strict parsing rule:
 
   A response is *valid* only when the answer letter (A, B, or C, either
   case) appears at the very start of ``model_output`` (leading whitespace
@@ -21,7 +20,7 @@ are pooled to 1200 items.  Reported per condition:
              letter position of the Black option;
   permissive the same rates under the old generation-time parser (first
              standalone A/B/C token, else any A/B/C character);
-  bootstrap  95%% percentile CI of the strict gap from a 10,000-resample
+  bootstrap  95% percentile CI of the strict gap from a 10,000-resample
              item-level bootstrap (resample the 1200 pooled items with
              replacement; numpy default_rng(seed=0), fresh per condition).
 
@@ -78,7 +77,7 @@ def permissive_letter(text):
 def target_index(row):
     """Letter index of the steered-target option.
 
-    Round-1 (Black-target) samples store it as ``black_idx``; the round-2
+    Black-target samples store it as ``black_idx``; the
     multi-target samples store it as ``target_idx``. Same semantics.
     """
     return row["target_idx"] if "target_idx" in row else row["black_idx"]
@@ -164,12 +163,12 @@ def bal_old(stem):
 
 
 CONDITIONS = [
-    # --- 4 existing headline conditions (results/balanced) ---
+    # --- headline conditions (results/balanced) ---
     ("Clean (base)",              bal_old("base")),
     ("Layer PI (a=2)",            bal_old("PI_a2")),
     ("Open loop (a=4)",           bal_old("normalL14_a4")),
     ("Decode PI",                 bal_old("dpid_PI")),
-    # --- 10 new conditions (results/balanced_all/black) ---
+    # --- baseline and ablation conditions (results/balanced_all/black) ---
     ("CAA L14 (a=16)",            bal_all("caa", "caa_L14_a16")),
     ("ActAdd (a=16)",             bal_all("actadd", "actadd_a16")),
     ("Mean-AcT unit (s=2)",       bal_all("meanact", "meanact_unit_s2")),
@@ -179,9 +178,9 @@ CONDITIONS = [
     ("ITI-C (K=48, a=8)",         bal_all("itic", "itic_K48_a8")),
     ("Decode PID",                bal_all("decode_pid", "dpid_PID")),
     ("Open loop (a=3.28)",        bal_all("normal", "normalL14_a3p28")),
-    # NOT a separate condition: with gen_length == block_length == 32, steps
+    # Not a separate condition: with gen_length == block_length == 32, steps
     # 33-64 commit no tokens, so this is a numerical replicate of Decode PI
-    # run on a different GPU/day (see README "steps=32" note).
+    # (independent run).
     ("Decode PI replicate (\"steps=32\")", bal_all("decode_pid_s32", "dpid_PI_s32")),
 ]
 

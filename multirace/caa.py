@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """multirace/caa.py -- target-parameterized faithful single-layer CAA baseline (LLaDA).
 
-Faithful CAA (verified single-layer per the paper): alpha*unit(r[layer]) injected
+Single-layer CAA (as in the original method): alpha*unit(r[layer]) injected
 at ONE transformer block only (default layer 14, alpha 2), every denoising step.
 Arrows from multirace/arrows_<target>.pt. Eval loop + result schema shared with
 normal.py via common_eval.run_openloop.

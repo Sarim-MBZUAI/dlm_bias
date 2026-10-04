@@ -1,20 +1,16 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/directions.py -- shared FIT PRIMITIVES for the LLaDA-MoE port.
+"""Shared fit primitives for the LLaDA-MoE baselines.
 
-The per-neuron OT / AURA math is MODEL-AGNOSTIC (pure numpy/torch), so we do NOT
-reimplement it: gaussian_ot, empirical_ot_fit, auroc_per_neuron (+ _auroc_numpy)
-are IMPORTED verbatim from the LLaDA baselines/directions.py (loaded by absolute
-path to dodge the basename clash with THIS module) -- the exact importlib-reuse
-pattern of dream/baselines/directions.py.  The ONLY MoE-specific override is
-load_arrows(): it points at llada_moe/arrows.pt and expects the 16-layer,
-2048-wide arrow set instead of LLaDA's (32,4096) / Dream's (28,3584).
+The per-neuron OT / AURA math (gaussian_ot, empirical_ot_fit, auroc_per_neuron)
+is model-agnostic and imported from baselines/directions.py. The only
+model-specific part is load_arrows(), which reads llada_moe/arrows.pt with the
+16-layer, 2048-wide arrow set.
 
-INJECTION convention (unchanged): "Black" is the OT DESTINATION.
-llada_moe/arrows.pt stores r = mean(h_black - h_other)
-(llada_moe/build_arrows.py), i.e. it already points toward Black; positive
-strength injects toward Black.
+"Black" is the OT destination: arrows.pt stores r = mean(h_black - h_other), so
+positive strength injects toward Black.
 
-CLI:  python llada_moe/baselines/directions.py --selftest   (offline, no GPU)
+Usage:
+    python llada_moe/baselines/directions.py --selftest   # offline, no GPU
 """
 import argparse
 import importlib.util
@@ -29,7 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "steering"))
 import pid_steer  # noqa: E402  (unit_rows)
 
 
-# Import the pure primitives from the LLaDA baselines/directions.py VERBATIM.
+# Import the pure primitives from the LLaDA baselines/directions.py.
 def _load_llada_directions():
     path = os.path.join(ROOT, "baselines", "directions.py")
     spec = importlib.util.spec_from_file_location("llada_directions", path)
@@ -45,8 +41,7 @@ auroc_per_neuron = _LD.auroc_per_neuron  # per-neuron AUROC + AURA gate
 _auroc_numpy = _LD._auroc_numpy
 
 # LLaDA-MoE arrow set: 16 layers x 2048 (vs LLaDA 32x4096 / Dream 28x3584).
-# Point at THIS tree's llada_moe/arrows.pt (llada_moe/baselines/ -> llada_moe/),
-# so a worktree reads the arrows llada_moe/build_arrows.py wrote in the same tree.
+# Point at llada_moe/arrows.pt (written by llada_moe/build_arrows.py).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ARROWS_PATH = os.path.join(os.path.dirname(_HERE), "arrows.pt")
 N_LAYERS = 16

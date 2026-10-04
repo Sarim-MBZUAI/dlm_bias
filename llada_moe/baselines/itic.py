@@ -1,33 +1,20 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/itic.py -- ITI-C (Inference-Time Intervention, constant
-variant) on LLaDA-MoE-7B-A1B-Instruct.  Port of dream/baselines/itic.py.
-Li et al. 2023 (arXiv:2306.03341) -- NOT an AcT method; built directly from the
-paper.
+"""ITI-C (Inference-Time Intervention, constant variant; Li et al. 2023,
+arXiv:2306.03341) on LLaDA-MoE-7B-A1B-Instruct.
 
-ITI (paper Sec. 3):
-  * attention is head-wise: x_{l+1} = x_l + sum_h P_h^l Att_h^l(...)  (Eq. 1), so
-    each head contributes a d_head activation into the residual via its slice of
-    the output projection.
-  * per head, fit a linear probe (val-accuracy) to predict the label (Black vs
-    non-Black); select the TOP-K heads by validation accuracy.
-  * at inference shift each selected head along a concept direction theta_h by a
-    CONSTANT: x_h <- x_h + alpha * sigma_h * theta_h  (Eq. 2), theta_h a UNIT
-    mass-mean-shift (mean_Black - mean_other), sigma_h the std of activations
-    projected onto theta_h, alpha a single global strength.  Positive alpha injects
-    toward Black.
+Per attention head, fit a linear probe for Black vs non-Black and select the
+top-K heads by validation accuracy. At inference shift each selected head by a
+constant x_h <- x_h + alpha * sigma_h * theta_h, where theta_h is the unit
+mass-mean shift (mean_Black - mean_other) and sigma_h the std of activations
+projected onto theta_h. Positive alpha injects toward Black.
 
-LLaDA-MoE specifics (verified in common_lladamoe.py):
-  * n_heads=16, d_model=2048 => d_head=128 (16*128=2048).  num_key_value_heads
-    == 16 (no GQA), so the o_proj INPUT is the plain 2048-d concat of the 16
-    head outputs; the per-head reshape is (...,16,128).
-  * the per-head activation is the INPUT to model.layers[k].self_attn.o_proj
-    (o_proj is the output projection P^l), the same submodule
-    calib.collect_activations('attn_head') pools.  We steer it via a forward_pre_hook.
-  * hook fires once per diffusion step over ALL positions, bidirectional.
+The per-head activation is the input of model.layers[k].self_attn.o_proj
+(16 heads x 128 = 2048, no GQA), edited with a forward pre-hook at all
+positions and every diffusion step.
 
-CLI:
-    python llada_moe/baselines/itic.py --selftest              # offline math, NO GPU
-    python llada_moe/baselines/itic.py --fit                   # NEEDS GPU
+Usage:
+    python llada_moe/baselines/itic.py --selftest
+    python llada_moe/baselines/itic.py --fit                    # GPU
     python llada_moe/baselines/itic.py --run --topk 48 --alpha 8
 """
 import argparse

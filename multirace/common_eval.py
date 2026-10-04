@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 """multirace/common_eval.py -- shared plumbing for target-parameterized LLaDA runners.
 
-TARGETS registry: this module imports Lane A's multirace/targets.py (TARGET_TAGS
-dict of frozensets; target_idx_of(row, target); unk_idx_of(row)). If targets.py is
-not in the tree yet, a clearly-labelled FALLBACK registry with the same interface
-is used (tag sets guessed from BBQ Race_ethnicity answer_info conventions,
-mirroring steering/denoise_pid.py's BLACK_TAGS). Reconcile at merge.
+Target registry: imports multirace/targets.py (TARGET_TAGS dict of frozensets;
+target_idx_of(row, target); unk_idx_of(row)). If targets.py cannot be found, a
+fallback registry with the same interface and tag sets is used.
 
 Also provides the shared OPEN-LOOP eval runner used by multirace/normal.py and
 multirace/caa.py: fixed alpha*vhat injection via steering/pid_steer.py's AddVec
@@ -13,6 +11,8 @@ hook + bbq_eval.generate, with per-item classification target / nontarget /
 abstain / unparseable and the multirace result-JSON schema
 (target_pick_rate / nontarget_pick_rate, gap_within = target - nontarget,
 d_gap = target_pick_rate - baseline_rate if a baseline rate is passed, else null).
+
+Offline check: python multirace/common_eval.py
 """
 import importlib.util
 import json
@@ -43,28 +43,28 @@ def load_by_path(modname, relpath):
 
 
 # --------------------------------------------------------------------------- #
-# Target registry: Lane A's targets.py if present, else labelled fallback.
+# Target registry: multirace/targets.py if present, else fallback.
 # --------------------------------------------------------------------------- #
-_FALLBACK_TAGS = {  # FALLBACK ONLY -- Lane A's TARGET_TAGS is authoritative.
+_FALLBACK_TAGS = {  # FALLBACK ONLY -- targets.py's TARGET_TAGS is authoritative.
     "white":  frozenset({"white", "f-white", "m-white", "european", "caucasian"}),
     "asian":  frozenset({"asian", "f-asian", "m-asian"}),
     "latino": frozenset({"latino", "f-latino", "m-latino", "latina", "f-latina",
                          "m-latina", "hispanic"}),
     "arab":   frozenset({"arab", "f-arab", "m-arab", "middle eastern"}),
     "black":  frozenset({"black", "f-black", "m-black", "african american", "african"}),
-    # E3 gender (Gender_identity) -- STRICT sets, keep in sync with targets.py
+    # gender (Gender_identity) -- STRICT sets, keep in sync with targets.py
     # (trans_/nontrans_ compounds deliberately excluded, see targets.py doc).
     "woman":  frozenset({"f", "woman", "girl"}),
     "man":    frozenset({"m", "man", "boy"}),
-    # E6 fblack (Race_ethnicity): Black women only; subset of black -- an
+    # fblack (Race_ethnicity): Black women only; subset of black -- an
     # f-black option matches BOTH fblack and black. The direction built on it
     # is gender-conditioned race (f-black vs other-race women), see
     # build_arrows.py. Keep in sync with targets.py (selftest asserts equality).
     "fblack": frozenset({"f-black"}),
-    # E9 SES poles (BBQ SES; raw tags lowSES/highSES, matched lowercase whole).
+    # SES poles (BBQ SES; raw tags lowSES/highSES, matched lowercase whole).
     "lowses":  frozenset({"lowses"}),
     "highses": frozenset({"highses"}),
-    # E9 Age poles (BBQ Age): 'young' is a readability name for BBQ's 'nonOld'
+    # Age poles (BBQ Age): 'young' is a readability name for BBQ's 'nonOld'
     # tag -- tag set is {nonold}, whole-tag matched (never matches 'old').
     # Keep in sync with targets.py (selftest asserts equality).
     "old":   frozenset({"old"}),
@@ -111,7 +111,7 @@ else:
 def warn_if_fallback():
     if USING_FALLBACK_TARGETS:
         print("[multirace] WARNING: targets.py not found -- using FALLBACK tag "
-              "registry in common_eval.py (reconcile with Lane A at merge)", flush=True)
+              "registry in common_eval.py", flush=True)
 
 
 # --------------------------------------------------------------------------- #

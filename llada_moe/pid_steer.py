@@ -1,43 +1,27 @@
 #!/usr/bin/env python
-"""llada_moe/pid_steer.py -- layer-space PID (arXiv:2510.04309) + normal-vector
-baseline, ported to LLaDA-MoE-7B-A1B-Instruct.  OPEN-LOOP, no feedback
-(prior-work comparison).  Port of dream/pid_steer.py.
+"""Layer-space PID steering (arXiv:2510.04309) and normal-vector baseline for
+LLaDA-MoE-7B-A1B-Instruct. Open-loop (no feedback); prior-work comparison.
 
-CONTROL AXIS = LAYER DEPTH.  Reuses steering/pid_steer.py's pure math VERBATIM
-(imported, NOT reimplemented): build_u (Eq.18), unit_rows, GAINS, black_idx_of,
-unk_idx_of.  The only MoE-specific work is: 16 blocks (not 32/28), 2048-d arrows,
-and driving generation through common_lladamoe (the external LLaDA sampler with
-this model's mask id).
+The control axis is layer depth. The PID math (build_u, unit_rows, GAINS) is
+imported from steering/pid_steer.py; generation goes through common_lladamoe.
 
     --mode pid --cond {base,P,PI,PID} --alpha A
-        u(k) = Kp*rhat(k) + Ki*sum_{j<k}rhat(j) + Kd*(rhat(k)-rhat(k-1))   (all 16 blocks)
+        u(k) = Kp*rhat(k) + Ki*sum_{j<k} rhat(j) + Kd*(rhat(k)-rhat(k-1))
         fixed additive injection alpha*u(k) at every block, every denoising step.
     --mode normal --source-layer 8 --alpha A
-        single diff-in-means vhat = unit(r[L]) broadcast to ALL 16 blocks (alpha*vhat).
+        single direction vhat = unit(r[L]) added at every actuated block (alpha*vhat).
     --layers "8" | "4-11" | "0,2,8"
-        restrict the ACTUATED block subset (default "all" = the original all-16
-        broadcast; parser reused from llada_moe/denoise_pid.py).  --mode normal
-        --source-layer 8 --layers 8 --alpha 2 is the GEOMETRY-MATCHED open-loop
-        control for decode-PI --layers 8 --amax 2: same site (block 8 output),
-        same direction, constant integer alpha instead of feedback alpha(t).
-        The same identity holds for MULTI-BLOCK subsets: decode-PI's default
-        unit mode injects the ONE source vector unit(r[8]) at every actuated
-        block (denoise_pid.build_injection_matrix, layer_scale="unit" -- NOT
-        per-layer r[k]; that is layer_scale="raw"), so --mode normal
-        --source-layer 8 --layers 9-12 --alpha 1 is already the exact
-        geometry-matched control for decode-PI --layers 9-12 --amax 1
-        (round4_jobAD2 disclosed secondary condition): alpha*unit(r[8]) at
-        blocks 9,10,11,12, no extra flag needed.
+        restrict the actuated blocks (default "all").
 
-Open-loop => we PREFER common_lladamoe.run_items(attach_fn=...) directly: it does
-the generation, BBQ classification, fire-count assertion, and writes the shared
-cond_<tag>.json + _samples.jsonl schema.  attach_fn builds one add_vec_hook per
-block (common_lladamoe factory -> shared fire counter increments).
+Geometry-matched open-loop controls for decode-space PI (denoise_pid.py, unit
+mode injects unit(r[8]) at every actuated block):
+    --mode normal --source-layer 8 --layers 8 --alpha 2      vs  PI --layers 8 --amax 2
+    --mode normal --source-layer 8 --layers 9-12 --alpha 1   vs  PI --layers 9-12 --amax 1
+Same site and direction, constant alpha instead of feedback alpha(t).
 
-MODES
-    --selftest                     offline math check (build_u boundary + unit rows).
-    --mode {pid,normal} ...        eval.
-GPU RULE: SLURM assigns the GPU; never set CUDA_VISIBLE_DEVICES yourself.
+Usage:
+    python llada_moe/pid_steer.py --selftest
+    python llada_moe/pid_steer.py --mode normal --source-layer 8 --layers 8 --alpha 2
 """
 import argparse
 import importlib.util
@@ -160,8 +144,8 @@ def selftest():
     check("parse_layers '8' -> [8]", parse_layers("8") == [8])
     check("parse_layers '4-6,8' -> [4,5,6,8]", parse_layers("4-6,8") == [4, 5, 6, 8])
 
-    # Geometry match for the round4_jobAD2 secondary condition: normal
-    # --source-layer 8 restricted to layers 9-12 injects EXACTLY the rows
+    # Geometry match for the secondary operating point (blocks 9-12): normal
+    # --source-layer 8 restricted to layers 9-12 injects exactly the rows
     # decode-PI's default unit mode injects there (alpha * unit(r[8])).
     Vd = _DP.build_injection_matrix(True, layer_scale="unit")   # seeded randn r
     torch.manual_seed(1234)

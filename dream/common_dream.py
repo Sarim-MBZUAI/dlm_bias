@@ -6,13 +6,13 @@ a BBQ generation wrapper, and the per-item eval loop -- so every Dream steering 
 baseline script imports IDENTICAL infra and writes result files in the SAME schema
 as the LLaDA stack (steering/pid_steer.py, baselines/common.py).
 
-Harness-import convention (SAME as steering/denoise_pid.py:58-60): ROOT points at
-the MAIN tree; we sys.path.insert eval/ + steering/ and reuse the pure-python BBQ
+Harness-import convention (same as steering/denoise_pid.py): ROOT points at the
+repo root; we sys.path.insert eval/ + steering/ and reuse the pure-python BBQ
 helpers (build_prompt / parse_letter / get_answer_info / unknown_index / LETTERS /
 resolve_module / hidden_from_output / output_with_hidden) plus pid_steer's
 black_idx_of / unk_idx_of / BLACK_TAGS verbatim.
 
-DEVIATIONS from the LLaDA common.py (see README):
+DEVIATIONS from the LLaDA baselines/common.py:
   * Model load is AutoModel(trust_remote_code) as before, but the sampler is
     Dream's OWN model.diffusion_generate (generation_utils.py) -- NOT the copied
     LLaDA block-diffusion generate(). Full bidirectional attention, alg="entropy".
@@ -22,7 +22,7 @@ DEVIATIONS from the LLaDA common.py (see README):
     Linear INPUTS o_proj (28x128 concat heads) and down_proj (18944-d gated MLP);
     steer them with the *_pre_hook factories.
   * Any custom per-position LOGITS read must apply Dream's next-token shift
-    (generation_utils.py:412); this module only reads hidden states + uses
+    (Dream's generation_utils.py); this module only reads hidden states + uses
     diffusion_generate, so no shift is needed here.
 
 CLI:
@@ -38,7 +38,7 @@ import time
 import torch
 
 # --------------------------------------------------------------------------- #
-# Harness import (ROOT = MAIN tree on purpose -- model/data/arrows live there). #
+# Harness import (ROOT = repo root -- model/data/arrows live there).           #
 # --------------------------------------------------------------------------- #
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
@@ -119,7 +119,7 @@ def _bump():
 
 
 # --------------------------------------------------------------------------- #
-# Tuple-contract hook factories (mirror baselines/common.py:116-215).          #
+# Tuple-contract hook factories (mirror baselines/common.py).                  #
 #                                                                              #
 # A DreamDecoderLayer.forward returns (hidden,)+...; the Linear submodules      #
 # (o_proj / down_proj) return a bare tensor. hidden_from_output /              #
@@ -212,7 +212,7 @@ def generate(model, input_ids, attention_mask=None, **overrides):
     """Run model.diffusion_generate with GEN_DEFAULTS and return ONLY generated ids.
 
     The returned sequence from diffusion_generate INCLUDES the prompt (see
-    chat.py:107-110); we slice it off so callers get the completion only."""
+    Dream's chat.py example); we slice it off so callers get the completion only."""
     cfg = {**GEN_DEFAULTS, **overrides}
     out = model.diffusion_generate(
         input_ids, attention_mask=attention_mask,
@@ -232,7 +232,7 @@ def _chat_ids(tok, prompt, device):
 
 # --------------------------------------------------------------------------- #
 # The item loop.  NEEDS A GPU.  Mirrors baselines/common.py run_baseline +      #
-# pid_steer.py:294-307 classification, writing the IDENTICAL result schema.     #
+# pid_steer.py classification, writing the IDENTICAL result schema.             #
 # --------------------------------------------------------------------------- #
 def run_items(
     attach_fn=None,

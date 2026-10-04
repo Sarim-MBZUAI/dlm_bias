@@ -1,56 +1,38 @@
 #!/usr/bin/env python
-"""llada_moe/denoise_pid.py -- FAITHFUL decode-space PID controller for
-LLaDA-MoE-7B-A1B-Instruct.
+"""Closed-loop decode-space PID steering for LLaDA-MoE-7B-A1B-Instruct.
 
-Port of steering/denoise_pid.py (LLaDA) / dream/denoise_pid.py to the MoE model.
-CONTROL AXIS = the DIFFUSION DENOISING STEP t = 0 .. STEPS-1 (NOT layer depth).
-LLaDA-MoE samples with the EXTERNAL LLaDA block-diffusion loop (no native
-per-step hooks like Dream's diffusion_generate), so the closed loop is the
-LLaDA-style controlled_generate: verbatim commit logic (bbq_eval helpers, this
-model's mask id) with the PID update inline per step:
+The control axis is the diffusion denoising step t = 0 .. STEPS-1. LLaDA-MoE
+uses the external LLaDA block-diffusion loop, so controlled_generate re-implements
+that loop (bbq_eval commit logic, this model's mask id) with the PID update
+inline at each step:
 
     p_black(t) = P(target letter token) at the answer slot logits[0, plen, :]
-    e(t)       = s* - p_black(t)                       (s* = SETPOINT = 0.9)
-    alpha(t)   = clamp( Kp*e + Ki*Iacc + Kd*d , 0, amax )   (imported PID law)
+    e(t)       = s* - p_black(t)                         (s* = SETPOINT = 0.9)
+    alpha(t)   = clamp( Kp*e + Ki*Iacc + Kd*d , 0, amax )
 
-ACTUATOR (default) = ALL 16 LLaDAMoEDecoderLayers. The SAME alpha(t)*vhat is added
-to every block residual each step (vhat = unit(arrows["r"][8])). Direction from ONE
-layer, actuated at all 16 -- mirrors the LLaDA/Dream design so decode-PID is
-comparable to the `normal` open-loop baseline (constant alpha vs feedback alpha(t)).
+The PID law and helpers (PID, COND_MASK, SETPOINT, pid_alphas_closedform,
+p_black_from_logits, letter_token_ids) are imported from steering/denoise_pid.py.
 
-ACTUATOR VARIANTS (round-4 collapse forensics; defaults keep the behavior above):
-    --layers "8" | "4-11" | "0,2,8"   restrict injection to a block subset
-                                      (e.g. L8-only = closed-loop CAA parity).
-    --layer-scale raw                 inject alpha(t)*r[k] with the RAW per-layer
-                                      diff-in-means norms ([0.12..10.8]) instead of
-                                      the flat unit broadcast.  Rationale: pooled
-                                      hidden norms grow 0.37 -> 150 across the 16
-                                      blocks, so a constant unit vector is ~135%
-                                      of ||h|| at block 0 but 0.3% at block 15;
-                                      raw arrows are a flat 7-32% of the local
-                                      ||h|| at EVERY block (alpha=1 == exactly the
-                                      natural Black-vs-other mean shift).
+Actuator: alpha(t)*vhat is added to the residual of each actuated block, with
+vhat = unit(arrows["r"][8]). The default actuates all 16 blocks; the reported
+operating point uses a single mid-stack site (--layers 8), because injecting
+at all blocks collapses the model due to residual-norm growth across depth.
+A secondary operating point (--layers 9-12 --amax 1) was selected after the
+preregistered grid.
+    --layers "8" | "4-11" | "0,2,8"   restrict injection to a block subset.
+    --layer-scale raw                 inject alpha(t)*r[k] with the raw per-layer
+                                      diff-in-means norms instead of the unit
+                                      broadcast (pooled hidden norms grow from
+                                      ~0.37 to ~150 across the 16 blocks).
 
-ALPHA_MAX: default 1.0 -- the CONSERVATIVE Dream-parity starting point (LLaDA's
-amax 6 was 97% garbage on Dream; the MoE residual is 2048-d and its activation
-scale is unknown a priori).  The round-4 dose job (round4_jobAB) sweeps
---amax {0.5,1,2,4} and the balanced job picks the calibrated value via
-$MOE_AMAX; do NOT hardcode a different default without re-running the sweep.
+Timing: one unsteered probe forward on the all-masked sequence seeds p_black;
+each step then computes alpha(t) and runs one steered forward that both commits
+tokens and yields the next measurement (1 probe + STEPS forwards).
 
-REUSE (imported verbatim from steering/denoise_pid.py -- the PID math is NOT
-reimplemented): PID, COND_MASK, SETPOINT, pid_alphas_closedform,
-p_black_from_logits, letter_token_ids.  Steering plumbing uses common_lladamoe.
-
-TIMING (identical to steering/denoise_pid.py): one unsteered probe forward on
-the initial all-masked sequence seeds p_black, then each step computes
-alpha(t) from the latest measurement, runs ONE steered forward that both
-commits tokens and yields the next measurement.  Forwards = 1 probe + STEPS.
-
-MODES
-    --selftest                     offline PID-math + anti-windup check (no GPU).
-    --smoke [--limit N]            GPU smoke; prints alpha(t)/p_black(t) trajectory.
-    --cond {base,P,PI,PID} ...     limited/full eval.
-GPU RULE: SLURM assigns the GPU; never set CUDA_VISIBLE_DEVICES yourself.
+Usage:
+    python llada_moe/denoise_pid.py --selftest
+    python llada_moe/denoise_pid.py --smoke --limit 2
+    python llada_moe/denoise_pid.py --cond PI --layers 8 --amax 2
 """
 import argparse
 import importlib.util
@@ -70,7 +52,7 @@ import common_lladamoe as C  # noqa: E402
 
 
 # steering/denoise_pid.py shares this file's basename -> load it by absolute path to
-# avoid the name clash (sys.path[0] is llada_moe/), exactly like dream/ does.
+# avoid the name clash (sys.path[0] is llada_moe/).
 def _load(modname, relpath):
     spec = importlib.util.spec_from_file_location(modname, os.path.join(ROOT, relpath))
     mod = importlib.util.module_from_spec(spec)
@@ -87,7 +69,7 @@ p_black_from_logits = _LD.p_black_from_logits
 letter_token_ids = _LD.letter_token_ids
 
 LAYER = 8                           # vhat SOURCE layer (direction only; actuator = all 16)
-ALPHA_MAX = 1.0                     # conservative Dream-parity default (see docstring)
+ALPHA_MAX = 1.0                     # conservative default; override with --amax
 GEN_LENGTH = C.GEN_DEFAULTS["gen_length"]     # 32
 STEPS = C.GEN_DEFAULTS["steps"]               # 64
 BLOCK_LENGTH = C.GEN_DEFAULTS["block_length"]  # 32
@@ -136,7 +118,7 @@ class AllLayerSteerer:
 # --------------------------------------------------------------------------- #
 # Controlled generation: external LLaDA sampler + per-step decode-space PID.   #
 # Commit logic is verbatim bbq_eval.generate (low_confidence remasking), with  #
-# THIS model's mask id.  Same structure as steering/denoise_pid.py:251-304.    #
+# THIS model's mask id.  Same structure as steering/denoise_pid.py.            #
 # --------------------------------------------------------------------------- #
 @torch.no_grad()
 def controlled_generate(model, steerer, controller, prompt, tgt_plain, tgt_space,

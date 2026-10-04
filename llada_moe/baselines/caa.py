@@ -1,32 +1,19 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/caa.py -- CAA (Contrastive Activation Addition) on
-LLaDA-MoE-7B-A1B-Instruct.  Port of dream/baselines/caa.py.
+"""CAA (Contrastive Activation Addition, Rimsky et al.) on LLaDA-MoE-7B-A1B-Instruct.
 
-CAA builds ONE steering vector as the diff-in-means between residual activations
-on contrastive (Black vs other) pairs, then ADDS it to the residual stream at a
-SINGLE layer, every token position.  No fit.
+One steering vector, the Black-vs-other diff-in-means of residual activations,
+added at a single layer and every token position:
 
-  steer(h) = h + alpha * unit(mu_black - mu_other)      [applied at one layer]
+    steer(h) = h + alpha * unit(r[layer])
 
-MoE MAPPING
-  * The contrastive vector IS llada_moe/arrows.pt: r[k] = mean(h_black - h_other)
-    at block k (llada_moe/build_arrows.py).  directions.load_arrows()
-    unit-normalizes each layer row, so load_arrows()[layer] == unit(r[layer]);
-    positive alpha -> Black.
-  * NATIVE granularity = residual at ONE block (2048-d).  We add at
-    model.layers[layer] OUTPUT[0] via common_lladamoe.add_vec_hook (block TUPLE
-    contract preserved, all positions, every diffusion step).
+r is llada_moe/arrows.pt (llada_moe/build_arrows.py); positive alpha pushes
+toward Black. Default layer 8 (mid-stack of 16). CAA needs no per-method fit;
+--fit only checks that arrows.pt exists.
 
-Single-layer, unit-vector, scalar-alpha CAA (Rimsky et al.); layer + alpha are CLI
-knobs (default layer 8 = the 16-layer midpoint, matching LLaDA/Dream's mid-stack
-L14 convention).  CAA needs no per-method fit: its only artifact is
-llada_moe/arrows.pt (llada_moe/build_arrows.py; NEEDS GPU).  --fit here only
-verifies that prerequisite.
-
-CLI:
-    python llada_moe/baselines/caa.py --selftest              # offline math, no GPU
-    python llada_moe/baselines/caa.py --fit                   # verify arrows.pt exists
-    python llada_moe/baselines/caa.py --run --alpha 2 --layer 8    # GPU (SLURM sets it)
+Usage:
+    python llada_moe/baselines/caa.py --selftest
+    python llada_moe/baselines/caa.py --fit
+    python llada_moe/baselines/caa.py --run --alpha 2 --layer 8    # GPU
 """
 import argparse
 import os

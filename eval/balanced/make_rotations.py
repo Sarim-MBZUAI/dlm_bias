@@ -18,6 +18,8 @@ rot0 (r=0) is byte-identical to the original for the rotated fields. ALL other
 fields are preserved verbatim. Only ans0/ans1/ans2, answer_info and label change.
 
 Writes _sweep400_rot0.jsonl / _rot1.jsonl / _rot2.jsonl into results/balanced/.
+
+Usage: python eval/balanced/make_rotations.py
 """
 import json
 import os

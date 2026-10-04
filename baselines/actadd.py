@@ -1,46 +1,27 @@
 #!/usr/bin/env python
-"""baselines/actadd.py -- ActAdd (Turner et al. 2023) at NATIVE granularity.
+"""ActAdd baseline (Turner et al., 2023, "Activation Addition: Steering
+Language Models Without Optimization") at its native granularity.
 
-ActAdd = "Activation Addition": a steering vector is built from a SINGLE
-contrast prompt-PAIR (one "positive" prompt minus one "negative" prompt) at ONE
-layer, then that vector is scaled by a coefficient and ADDED to the residual
-stream during generation.  This is the n=1, single-layer, purely-additive
-special case of the diff-in-means / CAA family.
+A steering vector is built from a single contrast prompt pair (positive minus
+negative) at one layer, scaled by a coefficient and added to the residual
+stream during generation:
+    r_actadd[k] = h_target[k] - h_other[k],   h <- h + alpha * unit(r[layer])
+This is the n=1, single-layer, purely additive special case of the
+diff-in-means / CAA family (CAA uses the n=400 mean over all layers).  The
+additive edit is the AcT InterventionHook output edit
+(act/hooks/intervention_hook.py).
 
-Reference (AcT tree cites ActAdd directly):
-    act/scripts/generate_with_hooks.py:28   -- "Taken from ActAdd (Turner et al.
-        colab)"; the ActAdd sampling recipe.  AcT itself re-uses ActAdd's
-        additive-steering idea; the per-module additive edit is the
-        InterventionHook OUTPUT edit (act/hooks/intervention_hook.py:91-140,
-        the h <- h + coeff*direction special case).
-    Turner et al., "Activation Addition: Steering Language Models Without
-        Optimization" (2023): vec = act(prompt_+) - act(prompt_-) at layer L,
-        applied as h <- h + coeff * vec at all positions.
+Native granularity: the residual stream at one block (blocks[L] OUTPUT[0],
+H=4096).  The target answer is the positive prompt and the non-target answer
+the negative prompt, so positive alpha injects toward the target (same sign
+convention as steering/arrows.pt).  Position: all tokens, bidirectional.
 
-NATIVE granularity for ActAdd is the RESIDUAL STREAM at a single block layer
-(blocks[L] OUTPUT[0], H=4096) -- ActAdd adds to the residual, not to a submodule.
+Defaults: layer 14, alpha 8.0, pair index 0.
 
-INJECTION convention (this harness): "Black" is the positive/destination prompt,
-the non-Black option is the negative/source prompt, so the single-pair direction
-    r_actadd[k] = h_black[k] - h_other[k]
-already points toward Black and positive alpha injects toward Black.  This is the
-SAME sign convention as steering/arrows.pt (build_arrows.py:182,190).
-
-How ActAdd differs from the other diff-in-means baselines in this suite:
-    * n = 1 contrast pair (ONE held-out item), NOT the n=400 dataset mean that
-      steering/arrows.pt / CAA use.  This is the defining property of ActAdd.
-    * applied at a SINGLE layer (default 14), NOT all 32 layers.
-    * purely additive, unit-normalized direction scaled by alpha.
-Keeping n=1 (this file) distinct from n=400 (arrows.pt / CAA) is the whole point;
-see the fallback note in build_injection().
-
-Position: ALL tokens, bidirectional (LLaDA masked-diffusion; the residual hook
-fires once per denoising step over every position).  No "last"-token mode.
-
-CLI:
-    python -m baselines.actadd --selftest                 # offline math, no GPU
-    python -m baselines.actadd --fit  [--pair-index N]    # NEEDS GPU (do NOT run)
-    python -m baselines.actadd --run  [--alpha A --layer L]  # NEEDS GPU
+Usage:
+    python baselines/actadd.py --selftest                    # offline, no GPU
+    python baselines/actadd.py --fit [--pair-index N]        # GPU
+    python baselines/actadd.py --run [--alpha A --layer L]   # GPU
 """
 import argparse
 import os
@@ -48,7 +29,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -73,8 +54,7 @@ RESULTS_DIR = os.path.join(ROOT, "results", "actadd")
 
 
 def dir_path_for(target):
-    """cache/actadd_dir.pt for black (round-1 path, unchanged);
-    cache/actadd_dir_<target>.pt otherwise."""
+    """cache/actadd_dir.pt for black; cache/actadd_dir_<target>.pt otherwise."""
     return os.path.join(CACHE_DIR, f"actadd_dir{common.target_suffix(target)}.pt")
 
 
@@ -86,8 +66,7 @@ def fit(pair_index=0, model=None, tok=None, save=True, out_path=None,
     """Build the ActAdd single-pair direction and cache it.  NEEDS A GPU.
 
     Picks ONE target-vs-other contrast pair (the held-out item at `pair_index`
-    from calib.heldout_items(target=...): the round-1 Black heldout for the
-    default, the E3 gender-manifest heldout for woman/man), runs a clean
+    from calib.heldout_items(target=...)), runs a clean
     forward on the fully-materialized prompt+target-answer and
     prompt+other-answer (reusing the SAME masked-mean answer-span pooling as
     build_arrows.all_layer_hidden, via calib.collect_activations on a single
@@ -95,11 +74,10 @@ def fit(pair_index=0, model=None, tok=None, save=True, out_path=None,
 
         r_actadd[k] = h_target[k] - h_other[k]    for every block k (0..31).
 
-    This is exactly build_arrows' per-item difference (build_arrows.py:182) for
-    ONE item instead of the n=400 mean -- i.e. ActAdd, not CAA.
+    This is build_arrows' per-item difference for ONE item instead of the
+    n=400 mean -- i.e. ActAdd, not CAA.
 
-    Caches {"r": (32,4096), ...} to cache/actadd_dir.pt (black; round-1 path)
-    or cache/actadd_dir_<target>.pt.  Do NOT execute here; it loads the model.
+    Caches {"r": (32,4096), ...} to cache/actadd_dir[_<target>].pt.
     """
     out_path = out_path or dir_path_for(target)
     if model is None or tok is None:
@@ -132,7 +110,7 @@ def fit(pair_index=0, model=None, tok=None, save=True, out_path=None,
         "source": calib.SOURCE_BY_TARGET[target],
         "per_layer_raw_norm": [float(r[k].norm()) for k in range(N_LAYERS)],
     }
-    if target == "black":   # round-1 metadata key names, unchanged
+    if target == "black":   # black metadata key names
         out["black_idx"] = item["target_idx"]
         out["black_answer_text"] = item["target_answer_text"]
     else:
@@ -169,14 +147,14 @@ def build_injection(alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER, r=None,
     NOT auto-substitute: the whole point of this baseline is n=1 vs n=400.  If
     the cache is missing, --fit must be run first (GPU).
 
-    Per-layer unit-normalization uses pid_steer.unit_rows (pid_steer.py:91), the
-    SAME normalizer every other method in this suite uses, so ||vec|| == alpha.
+    Per-layer unit-normalization uses pid_steer.unit_rows, the
+    same normalizer every other method in this suite uses, so ||vec|| == alpha.
     """
     if r is None:
         if not os.path.exists(path):
             raise FileNotFoundError(
                 f"ActAdd direction not fitted: {path} missing. Run "
-                f"`python -m baselines.actadd --fit` (GPU) first. Do NOT "
+                f"`python baselines/actadd.py --fit` (GPU) first. Do NOT "
                 f"silently substitute arrows.pt -- that is CAA (n=400), not "
                 f"ActAdd (n=1).")
         r = load_direction(path)
@@ -213,7 +191,7 @@ def run(out_dir=RESULTS_DIR, alpha=DEFAULT_ALPHA, layer=DEFAULT_LAYER,
     other baseline).  Default tag encodes alpha (actadd_a<alpha>) so sweeps at
     different alphas don't overwrite each other.  target selects the fitted
     single-pair direction (cache/actadd_dir[_<target>].pt) AND the eval
-    classification (black default = round-1 behavior)."""
+    classification."""
     tag = tag or f"actadd_a{alpha:g}"
     attach_fn = make_attach_fn(alpha=alpha, layer=layer, path=dir_path_for(target))
     return run_baseline(
@@ -296,8 +274,8 @@ def _selftest():
         raised = True
     check("missing fit artifact raises (no silent CAA fallback)", raised)
 
-    # E8 target-parameterized fit-artifact paths.
-    check("dir_path_for('black') == DIR_PATH (round-1 regression)",
+    # target-parameterized fit-artifact paths.
+    check("dir_path_for('black') == DIR_PATH (regression)",
           dir_path_for("black") == DIR_PATH)
     check("dir_path_for gender -> cache/actadd_dir_<t>.pt",
           dir_path_for("woman").endswith("cache/actadd_dir_woman.pt")
@@ -323,8 +301,8 @@ def main():
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help="block layer to add the vector at (native: residual)")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender heldout fit + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender heldout fit + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

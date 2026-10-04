@@ -20,8 +20,8 @@ per block (common_dream factory -> shared fire counter increments).
 
 MODES
     --selftest                     offline math check (build_u boundary + unit rows).
-    --mode {pid,normal} ...        eval.
-GPU RULE: run ONLY on this lane's GPU (CUDA_VISIBLE_DEVICES=3).
+    --mode {pid,normal} ...        eval, e.g.
+        python dream/pid_steer.py --mode normal --source-layer 14 --alpha 4
 """
 import argparse
 import importlib.util
@@ -37,7 +37,7 @@ sys.path.insert(0, HERE)                    # ensure `import common_dream` resol
 import common_dream as C  # noqa: E402
 
 
-# steering/pid_steer.py shares this file's basename -> load by absolute path (sys.path[0]
+# steering/pid_steer.py shares this file's basename -> load by file path (sys.path[0]
 # is dream/, so a plain `import pid_steer` would re-import THIS file).
 def _load(modname, relpath):
     spec = importlib.util.spec_from_file_location(modname, os.path.join(ROOT, relpath))

@@ -19,15 +19,15 @@ faithful equivalent of AURA's output*alpha for Dream's fused MLP.
 TWO CONDITIONS (a multiplicative gate's sign/strength cannot flip its effect):
   (1) vanilla  (SUPPRESSION, labeled NEGATIVE CONTROL, LOWERS Black rate): the
       faithful AURA gate  alpha_supp = 1 - 2*max(auroc-0.5,0)  in [0,1].
-  (2) inject   (AMPLIFICATION, the headline number): the mirrored gate
+  (2) inject   (AMPLIFICATION, bias injection): the mirrored gate
       alpha_amp  = 1 + gamma*2*max(auroc-0.5,0)  >= 1  (gamma>=0; 0=identity).
 Both leave non-selective neurons (auroc<=0.5) at exactly 1.0.
 
 CLI:
-    python dream/baselines/aura.py --selftest                       # offline
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/aura.py --fit      # NEEDS GPU
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/aura.py --run --mode vanilla
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/aura.py --run --mode inject --gamma 2
+    python dream/baselines/aura.py --selftest  # offline
+    python dream/baselines/aura.py --fit  # NEEDS GPU
+    python dream/baselines/aura.py --run --mode vanilla
+    python dream/baselines/aura.py --run --mode inject --gamma 2
 """
 import argparse
 import os

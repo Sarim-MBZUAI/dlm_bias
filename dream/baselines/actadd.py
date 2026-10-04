@@ -16,9 +16,9 @@ NATIVE granularity = residual at ONE block (3584-d), model.layers[layer]
 OUTPUT[0] via common_dream.add_vec_hook, all positions, every diffusion step.
 
 CLI:
-    python dream/baselines/actadd.py --selftest                       # offline
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/actadd.py --fit      # NEEDS GPU
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/actadd.py --run --alpha 8 --layer 14
+    python dream/baselines/actadd.py --selftest  # offline
+    python dream/baselines/actadd.py --fit  # NEEDS GPU
+    python dream/baselines/actadd.py --run --alpha 8 --layer 14
 """
 import argparse
 import os

@@ -15,17 +15,22 @@ UNKNOWN ("not enough info") and TARGET / NON-TARGET answers are identified via
 the structured `answer_info` group tags and `additional_metadata.stereotyped_
 groups` (NOT by surface-string matching, which varies per example).
 
-STEERING (default OFF): with --alpha != 0 and an existing --direction-path, the
-SAME embedding forward-hook used in bias_steering/bias_llada.py is attached
-(wte_out -> wte_out + alpha * direction) so this eval can also measure the
-attack's effect on BBQ. With --alpha == 0 no hook is attached (clean baseline).
+Steering (default off): with --alpha != 0 and an existing --direction-path, a
+forward hook adds alpha * direction to the chosen layer output (input embedding
+by default, or a transformer block via --layer / --layers). With --alpha == 0 no
+hook is attached (clean baseline).
 
 The LLaDA sampling loop (add_gumbel_noise / get_num_transfer_tokens / generate)
-is COPIED verbatim from bias_steering/bias_llada.py so this file is
-self-contained. Run on a GPU.
+follows the reference LLaDA sampler, so this file is self-contained. It also
+exports the shared helpers (build_prompt, parse_letter, generate, hook utilities)
+imported by the steering and baseline scripts.
 
 BBQ data is loaded from the original nyu-mll/BBQ jsonl files (stdlib-only,
 cached under data/bbq_cache/); the `datasets` library is NOT required.
+
+Usage:
+    python eval/bbq_eval.py [--n 1000] [--seed 42] [--items FILE]
+        [--alpha A --direction-path FILE --layer {emb,L}] [--out FILE]
 """
 import argparse
 import json
@@ -39,13 +44,6 @@ import sys
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import bias_metrics
-# ghostwriter.py (the old input-space baseline) is optional; import lazily so the
-# eval harness has no hard dependency on the baseline/ folder for normal runs.
-try:
-    sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "baseline"))
-    import ghostwriter
-except ImportError:
-    ghostwriter = None
 
 import torch
 from transformers import AutoModel, AutoTokenizer
@@ -84,7 +82,7 @@ LETTERS = ["A", "B", "C"]
 
 
 # --------------------------------------------------------------------------- #
-# LLaDA sampling loop -- copied verbatim from bias_steering/bias_llada.py.
+# LLaDA sampling loop (low-confidence remasking, block-wise).
 # --------------------------------------------------------------------------- #
 def add_gumbel_noise(logits, temperature):
     if temperature == 0:
@@ -172,7 +170,7 @@ def generate(
 
 
 # --------------------------------------------------------------------------- #
-# Bias-steering hook (same as bias_steering/bias_llada.py).
+# Bias-steering hook.
 # --------------------------------------------------------------------------- #
 class BiasSteerer:
     """Adds alpha * direction to the token-embedding output via a forward hook."""
@@ -239,7 +237,7 @@ def resolve_module(model, dotted_path):
 
 
 # --------------------------------------------------------------------------- #
-# Shared layer-spec machinery (mirrors build_direction.py / bias_llada.py).
+# Shared layer-spec machinery.
 # A layer spec is "emb" (wte input embedding) OR an int transformer BLOCK index.
 # The block.forward returns a 2-tuple (hidden, cache); wte returns a bare tensor.
 # --------------------------------------------------------------------------- #
@@ -277,7 +275,7 @@ def output_with_hidden(output, new_hidden):
 
 
 def safe_name(category):
-    """Sanitize a bias_type token into a filesystem-safe stem (matches builder)."""
+    """Sanitize a bias_type token into a filesystem-safe stem."""
     return re.sub(r"[^a-z0-9]+", "_", category.strip().lower()).strip("_") or "unknown"
 
 
@@ -354,9 +352,9 @@ def target_indices(row):
 # Prompt + answer parsing.
 # --------------------------------------------------------------------------- #
 def build_prompt(row):
-    # Benchmark adapters may provide their original question verbatim while
-    # still reusing the rigorously tested three-choice generation harness.
-    # BBQ rows never contain this key, so their prompts remain byte-identical.
+    # Benchmark adapters may supply their own question text via prompt_override
+    # while reusing the same three-choice format. BBQ rows never contain this
+    # key, so BBQ prompts are unaffected.
     if row.get("prompt_override"):
         return (
             f"{str(row['prompt_override']).rstrip()}\n"
@@ -565,7 +563,7 @@ def parse_args():
     p.add_argument("--items", default=None,
                    help="path to a jsonl of BBQ rows to evaluate INSTEAD of the "
                         "random-N sampler (each line a full BBQ row); used by the "
-                        "E1/E2 experiment harness. Default None = existing sampler.")
+                        "experiment harness. Default None = existing sampler.")
     p.add_argument("--normalize-direction", action="store_true",
                    help="unit-normalize the steering direction before applying "
                         "(matched-strength: open-loop push = alpha for any "
@@ -606,11 +604,6 @@ def parse_args():
     p.add_argument("--direction-path", default=DEFAULT_DIRECTION_PATH)
     p.add_argument("--hook-module", default=DEFAULT_HOOK_MODULE,
                    help="(layer 'emb' only) dotted module path")
-    # Ghostwriter input-space attack (default OFF; mutually exclusive with steering).
-    p.add_argument("--attack", default="none", choices=["none", "ghostwriter"],
-                   help="input-space attack; 'ghostwriter' prepends fabricated "
-                        "evidence to each prompt (single injection, no strength "
-                        "dial, no steering direction needed)")
     return p.parse_args()
 
 
@@ -618,15 +611,6 @@ def main():
     args = parse_args()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-
-    # Ghostwriter (input-space) and activation steering are mutually exclusive.
-    ghostwriter_active = args.attack == "ghostwriter"
-    if ghostwriter_active and ghostwriter is None:
-        raise SystemExit("--attack ghostwriter requires the baseline/ folder, which "
-                         "has been removed; this repo keeps only the PID-Steering work.")
-    if args.attack == "ghostwriter" and args.alpha != 0.0:
-        raise SystemExit("--attack ghostwriter is mutually exclusive with --alpha "
-                         "(activation steering); pick one.")
 
     spec = parse_layer_spec(args.layer)
     # Resolve per-category direction file: only when --category is set AND
@@ -642,13 +626,7 @@ def main():
     # layer/category/alpha don't overwrite each other.
     if args.out is None:
         out_dir = os.path.dirname(DEFAULT_OUT)  # results/bbq (steering + clean)
-        if args.attack == "ghostwriter":
-            # input-space attack naming: bbq_ghostwriter.json
-            stem = "bbq_ghostwriter"
-            # DEFAULT_OUT = <root>/results/bbq/bbq.json -> 3x dirname == <root>
-            repo_root = os.path.dirname(os.path.dirname(os.path.dirname(DEFAULT_OUT)))
-            out_dir = os.path.join(repo_root, "results", "bbq")
-        elif args.alpha == 0:
+        if args.alpha == 0:
             stem = "bbq_clean"
         else:
             cat = safe_name(args.category) if args.category else "all"
@@ -668,8 +646,6 @@ def main():
     print(f"  remasking    : {args.remasking}")
     print(f"  alpha        : {args.alpha}  (0 = clean, no hook)")
     print(f"  layer        : {'emb' if spec == 'emb' else f'block L{spec}'}")
-    print(f"  attack       : {args.attack}"
-          + ("  (ghostwriter: single fabricated-evidence injection)" if ghostwriter_active else ""))
     print("=" * 64)
 
     print("Loading BBQ ...")
@@ -747,8 +723,7 @@ def main():
         else:
             print(f"WARNING: --alpha={args.alpha} but direction not found at "
                   f"{args.direction_path}; running CLEAN (no hook).")
-            print("  Build it first, e.g.: python bias_steering/build_direction.py "
-                  f"--source crows{'' if spec == 'emb' else f' --layer {spec}'}")
+            print("  (this legacy direction path is not used by the paper's pipeline)")
     else:
         print("Steering OFF (clean baseline, no hook).")
 
@@ -764,20 +739,6 @@ def main():
             for s in steerers:              # reset closed-loop integrator per item (cmom)
                 s.reset()
             base_prompt = build_prompt(row)
-            # Ghostwriter input-space attack: prepend fabricated evidence to the
-            # prompt before generation (scoring/parsing downstream is unchanged).
-            if ghostwriter_active:
-                base_prompt = ghostwriter.build_injected_prompt(
-                    row["category"], base_prompt
-                )
-            # injected_prompt is the TRUE user-content string sent to the model
-            # (post-injection for GW, the plain prompt otherwise); evidence is the
-            # exact fabricated block spliced in (None when not attacking).
-            injected_prompt = base_prompt
-            injected_evidence = (
-                ghostwriter.evidence_for(row["category"])
-                if ghostwriter_active else None
-            )
             prompt_text = tok.apply_chat_template(
                 [{"role": "user", "content": base_prompt}],
                 add_generation_prompt=True,
@@ -837,9 +798,7 @@ def main():
             answers = [row["ans0"], row["ans1"], row["ans2"]]
             per_item.append({
                 **rec,
-                "attack": args.attack,
-                "injected_evidence": injected_evidence,
-                "injected_prompt": injected_prompt,
+                "prompt": base_prompt,
                 "example_id": int(row.get("example_id", -1)),
                 "question_index": str(row.get("question_index", "")),
                 "context": row["context"],
@@ -926,15 +885,7 @@ def main():
         "direction_path": args.direction_path,
         "hook_module": args.hook_module,
         "steering_active": steering_active,
-        "attack": args.attack,
-        "ghostwriter_active": ghostwriter_active,
     }
-    # Ghostwriter is a pure input-space transform: strip steering-only keys so
-    # the saved config reflects only what actually applied (no alpha/layer/etc.).
-    if ghostwriter_active:
-        for k in ("alpha", "layer", "category", "direction_path",
-                  "hook_module", "steering_active"):
-            config.pop(k, None)
     result = {
         "config": config,
         "n_items": len(records),
@@ -956,16 +907,6 @@ def main():
             f.write(json.dumps(item) + "\n")
     print(f"\nSaved metrics  -> {args.out}")
     print(f"Saved samples  -> {samples_path}  ({len(per_item)} rows, one per line)")
-
-    # Evidence manifest: one record per BBQ category that appeared, capturing the
-    # exact fabricated evidence + injection template used for the Ghostwriter attack.
-    if ghostwriter_active:
-        cats = sorted({r["category"] for r in records})
-        evidence_path = args.out[:-5] + "_evidence.jsonl"
-        with open(evidence_path, "w") as f:
-            for r in ghostwriter.evidence_records(cats):
-                f.write(json.dumps(r) + "\n")
-        print(f"Saved evidence -> {evidence_path}  ({len(cats)} categories)")
 
 
 if __name__ == "__main__":

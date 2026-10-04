@@ -1,38 +1,22 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/linearact.py -- Linear-AcT (Apple "Activation Transport")
-per-neuron 1-D OT steering on LLaDA-MoE-7B-A1B-Instruct.  Port of
-dream/baselines/linearact.py, hooked at the MoE-MLP OUTPUT units (the 2048-d
-pre-residual MLP delta each block's LLaDAMoESparseMoeBlock emits).
+"""Linear-AcT (Activation Transport) per-neuron 1-D OT steering on
+LLaDA-MoE-7B-A1B-Instruct, applied at the MoE block output (model.layers[k].mlp,
+2048-d pre-residual MLP delta) with a forward hook.
 
-Two per-neuron 1-D OT map variants fitted on labelled (Black vs other) MLP
-activations, Black = OT DESTINATION so both push toward Black:
-
-  (i)  gaussian  -- z_ot = (sig_dst/sig_src)*(z - mu_src) + mu_dst
-       (GaussianOTHook.forward, transport.py:261; directions.gaussian_ot).
-  (ii) empirical -- per neuron: sort src/dst (1-D OT pairing) + closed-form LS
-       affine beta*z+bias (LinearProj.optimize / LearnableOTHook.fit;
-       directions.empirical_ot_fit).
-
-Both are affine per neuron: z -> beta*z + bias.  AcT strength folds against the
-identity (transport.py:264/756):
+Two per-neuron affine maps fitted on labelled activations (Black = OT
+destination):
+  gaussian   z_ot = (sig_dst/sig_src)*(z - mu_src) + mu_dst
+  empirical  sorted 1-D OT pairing + closed-form least-squares affine beta*z+bias
+Strength blends against identity:
     beta_eff = strength*beta + (1-strength),  bias_eff = strength*bias
-strength=1 full transport, 0 identity, >1 extrapolates (stronger injection).
+(1 = full transport, 0 = identity, >1 extrapolates). Default: all 16 layers,
+all positions, every diffusion step.
 
-GRANULARITY / HOOK SITE (MoE DEVIATION): LLaDA-MoE routes tokens across 64
-1024-d experts, so there is NO dense gated MLP-hidden bank (Dream's 18944-d /
-LLaDA's 12288-d).  The per-neuron MLP bank every token passes through is the
-MoE block OUTPUT (model.layers[k].mlp, bare tensor, 2048-d) -- and since it IS
-a module OUTPUT, the affine map is applied with common_lladamoe.affine_hook
-(a plain forward hook), which is exactly AcT's InterventionHook contract (edit
-the module OUTPUT), with no pre-hook workaround needed.  It is the SAME
-activation calib.collect_activations('mlp_hidden') captures.  Default: ALL 16
-layers, all positions, every diffusion step.
-
-CLI:
-  python llada_moe/baselines/linearact.py --selftest                          # offline
-  python llada_moe/baselines/linearact.py --fit                               # NEEDS GPU
-  python llada_moe/baselines/linearact.py --run --variant gaussian  --strength 1.0
-  python llada_moe/baselines/linearact.py --run --variant empirical --strength 1.0
+Usage:
+    python llada_moe/baselines/linearact.py --selftest
+    python llada_moe/baselines/linearact.py --fit                          # GPU
+    python llada_moe/baselines/linearact.py --run --variant gaussian  --strength 1.0
+    python llada_moe/baselines/linearact.py --run --variant empirical --strength 1.0
 """
 import argparse
 import os
@@ -110,9 +94,9 @@ def build_injection(variant, strength=1.0, stats=None, layers=None):
 
     if variant == "gaussian":
         g = stats["gaussian"]
-        # FAITHFUL to AcT (transport.py:203-210,270): low-variance neurons in
-        # EITHER class stay at IDENTITY (mask to beta=1,bias=0), not transported --
-        # else near-dead source neurons get beta=sig_dst/1e-4 and over-inject.
+        # As in AcT: low-variance neurons in either class stay at identity
+        # (beta=1, bias=0), otherwise near-dead source neurons get
+        # beta=sig_dst/1e-4 and over-inject.
         ss, sd = g["sig_src"], g["sig_dst"]
         valid = (ss > EPS) & (sd > EPS)
         ratio = torch.where(valid, sd / ss.clamp(min=EPS), torch.ones_like(ss))

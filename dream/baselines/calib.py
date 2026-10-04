@@ -31,8 +31,8 @@ collect_activations() NEEDS A GPU + the model.  --selftest only validates the pu
 pooling/labeling logic on synthetic captured tensors (no forward, no GPU).
 
 CLI:
-    python dream/baselines/calib.py --selftest                # offline logic check
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/calib.py --fit --where block  # GPU
+    python dream/baselines/calib.py --selftest  # offline logic check
+    python dream/baselines/calib.py --fit --where block  # GPU
 """
 import argparse
 import importlib.util
@@ -54,7 +54,7 @@ import common_dream as C  # noqa: E402
 
 
 # Reuse dream/build_arrows.py's contamination-safe selection (same tree as this
-# file), loaded by absolute path to avoid the build_arrows basename clash with
+# file), loaded by file path to avoid the build_arrows basename clash with
 # steering/build_arrows.py.
 def _load_dream_build_arrows():
     path = os.path.join(_DREAM, "build_arrows.py")

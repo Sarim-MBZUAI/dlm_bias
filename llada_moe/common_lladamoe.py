@@ -1,45 +1,27 @@
 #!/usr/bin/env python
-"""llada_moe/common_lladamoe.py -- SHARED INFRA for the LLaDA-MoE-7B-A1B-Instruct port.
+"""Shared infrastructure for the LLaDA-MoE-7B-A1B-Instruct experiments.
 
-LLaDA-MoE analogue of dream/common_dream.py (which is the Dream analogue of
-baselines/common.py): model load, hook tuple-contract factories, a BBQ generation
-wrapper, and the per-item eval loop -- so every LLaDA-MoE steering / baseline
-script imports IDENTICAL infra and writes result files in the SAME schema as the
-LLaDA and Dream stacks (steering/pid_steer.py, baselines/common.py,
-dream/common_dream.py).
+Model loading, hook factories, a BBQ generation wrapper and the per-item eval
+loop, so every LLaDA-MoE steering / baseline script uses the same code and
+writes results in the same schema as the LLaDA and Dream scripts. The
+pure-python BBQ helpers are imported from eval/bbq_eval.py and
+steering/pid_steer.py.
 
-Harness-import convention (SAME as dream/common_dream.py:43-45): ROOT points at
-the MAIN tree; we sys.path.insert eval/ + steering/ and reuse the pure-python BBQ
-helpers (build_prompt / parse_letter / get_answer_info / unknown_index / LETTERS /
-resolve_module / hidden_from_output / output_with_hidden) plus pid_steer's
-black_idx_of / unk_idx_of / BLACK_TAGS verbatim.
+Model-specific notes:
+  * Sampling: LLaDA-MoE has no native diffusion_generate; it uses the external
+    LLaDA block-diffusion loop (bbq_eval.generate) with mask_id=156895.
+  * Blocks: model.layers (16 LLaDAMoEDecoderLayer); each returns a tuple
+    (hidden,)+... handled by hidden_from_output / output_with_hidden.
+  * MLP: each block's mlp is a 64-expert sparse MoE (top-8 routing). There is
+    no dense gated MLP-hidden bank, and per-expert inputs are token-routed, so
+    the per-neuron MLP granularity is the MoE block OUTPUT (2048-d pre-residual
+    delta, model.layers.k.mlp), edited with plain forward hooks.
+  * Attention: the INPUT of self_attn.o_proj (16 heads x 128 = 2048), edited
+    with forward pre-hooks.
+  * The lm-head is position-aligned (no next-token shift).
 
-DEVIATIONS from the Dream common (facts verified against the local snapshot's
-modeling_lladamoe.py + config.json; see llada_moe/README.md):
-  * SAMPLER: LLaDA-MoE has NO model.diffusion_generate.  It uses the LLaDA-style
-    EXTERNAL block-diffusion loop (its README's generate() is line-for-line the
-    LLaDA loop) -- so generation goes through bbq_eval.generate (the repo's
-    verbatim LLaDA sampler) with mask_id=156895 ("<|mask|>"), same
-    gen_length/steps/block_length semantics as the LLaDA-8B stack.
-  * Block list path is model.layers (16 LLaDAMoEDecoderLayer; AutoModel returns
-    LLaDAMoEModelLM whose .model.layers is the ModuleList).  Each layer returns a
-    TUPLE (hidden,)+... -- handled by shared hidden_from_output/output_with_hidden.
-  * MoE MLP: each block's mlp is a 64-expert LLaDAMoESparseMoeBlock (top-8
-    routing, expert_intermediate_size=1024).  There is NO dense gated MLP-hidden
-    bank (the Dream 18944-d / LLaDA 12288-d analogue); per-expert down_proj inputs
-    are token-ROUTED (variable tokens per expert), so per-neuron stats there are
-    ill-posed.  The per-neuron MLP granularity for this port is therefore the MoE
-    block OUTPUT (the 2048-d pre-residual MLP delta, module model.layers.k.mlp,
-    bare-tensor output) -- edited with plain forward hooks.  This is in fact MORE
-    faithful to AcT's contract (InterventionHook edits a module OUTPUT) than the
-    pre-hook workaround Dream/LLaDA needed for their fused dense MLPs.
-  * Attention analogue of LLaDA attn_out is unchanged: the Linear INPUT of
-    self_attn.o_proj (16 heads x 128 = 2048 concat heads) via *_pre_hook.
-  * lm-head is position-ALIGNED (logits[t] scores position t; the external LLaDA
-    loop uses them unshifted) -- no Dream-style next-token shift anywhere.
-
-CLI:
-    python -m llada_moe.common_lladamoe --selftest      # offline hook-math, no GPU
+Usage:
+    python llada_moe/common_lladamoe.py --selftest                  # offline, no GPU
     python llada_moe/common_lladamoe.py --smoke [--smoke-items N]   # GPU smoke
 """
 import argparse
@@ -51,7 +33,7 @@ import time
 import torch
 
 # --------------------------------------------------------------------------- #
-# Harness import (ROOT = MAIN tree on purpose -- model/data/arrows live there). #
+# Harness import (ROOT = repository root: model, data and arrows live there).  #
 # --------------------------------------------------------------------------- #
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
@@ -75,8 +57,8 @@ from pid_steer import (  # noqa: E402,F401
 )
 
 # --------------------------------------------------------------------------- #
-# LLaDA-MoE-7B-A1B-Instruct facts (verified: config.json + modeling_lladamoe.py #
-# + tokenizer of the local snapshot; CPU meta-load under transformers 4.46.2).  #
+# LLaDA-MoE-7B-A1B-Instruct facts (from config.json, modeling_lladamoe.py and  #
+# the tokenizer; checked under transformers 4.46.2).                          #
 # --------------------------------------------------------------------------- #
 MODEL_NAME = "LLaDA-MoE-7B-A1B-Instruct"
 MODEL_DIR = os.path.join(ROOT, MODEL_NAME)
@@ -144,7 +126,7 @@ def _bump():
 
 
 # --------------------------------------------------------------------------- #
-# Tuple-contract hook factories (mirror dream/common_dream.py:129-192).        #
+# Tuple-contract hook factories (mirror dream/common_dream.py).                #
 #                                                                              #
 # A LLaDAMoEDecoderLayer.forward returns (hidden,)+...; the mlp MoE block and   #
 # the Linear submodules (o_proj) return a bare tensor.  hidden_from_output /   #
@@ -232,7 +214,7 @@ def load_model_tok(model_dir=MODEL_DIR, device="cuda"):
 
 
 # --------------------------------------------------------------------------- #
-# BBQ generation wrapper -- the repo's verbatim LLaDA external sampler          #
+# BBQ generation wrapper -- the LLaDA external sampler                          #
 # (bbq_eval.generate) with THIS model's mask id.                                #
 # --------------------------------------------------------------------------- #
 @torch.no_grad()

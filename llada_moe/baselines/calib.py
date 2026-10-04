@@ -1,44 +1,21 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/calib.py -- activation collection for the fit-based
-LLaDA-MoE baselines.  Port of dream/baselines/calib.py to LLaDA-MoE-7B-A1B-Instruct.
+"""Activation collection for the fit-based LLaDA-MoE baselines.
 
-Builds the labelled (Black vs other) calibration responses the OT / AURA / ITI
-method files fit from, using the SAME contamination-safe held-out BBQ
-Race_ethnicity contrast set as llada_moe/build_arrows.py (disjoint from the
-seed-42 n=1000 eval keys AND the 400-item _sweep400.jsonl keys), and the SAME
-answer-text-span masked-mean pooling on a single clean forward of the fully
-materialized chat_prompt+answer.
+Builds labelled (Black=1 vs other=0) activations from the same held-out BBQ
+Race_ethnicity contrast set as llada_moe/build_arrows.py, pooled by masked mean
+over the answer-text span of one clean forward on chat_prompt + answer.
 
-Granularities (`where`) -- MoE analogues verified in common_lladamoe.py:
-  block       block_path(k) OUTPUT[0]     (residual, 2048 = D_MODEL).
-              hidden_from_output(out) -- the SAME tensor llada_moe/build_arrows pools.
-  mlp_hidden  OUTPUT of moe_mlp_path(k)   (2048 = D_MLP; the MoE block's
-              pre-residual MLP delta, a bare tensor).  DEVIATION from the dense
-              ports: LLaDA-MoE routes tokens to 64 experts (1024-d each), so
-              there is NO dense gated-hidden bank; per-expert down_proj inputs
-              see variable token subsets and per-neuron stats there are
-              ill-posed.  The MoE block OUTPUT is the densest per-neuron MLP
-              bank every token passes through -- and it is a module OUTPUT,
-              which is exactly AcT's InterventionHook contract.
-  attn_head   INPUT to o_proj_path(k)     (2048 = N_HEADS*HEAD_DIM = 16*128).
-              o_proj's INPUT is the concat of the 16 head outputs (no GQA:
-              num_key_value_heads == 16), reshapeable to (...,16,128) --
-              LLaDA attn_out analogue.
+Granularities (`where`):
+  block       residual output of block k (2048-d).
+  mlp_hidden  output of the MoE block model.layers.k.mlp (2048-d pre-residual
+              MLP delta). The MoE routes tokens to 64 experts, so there is no
+              dense gated-hidden bank; the block output is the per-neuron MLP
+              bank every token passes through.
+  attn_head   input to self_attn.o_proj (16 heads x 128 = 2048, no GQA).
 
-Pooling matches llada_moe/build_arrows.all_layer_hidden:
-    plen  = len(tok(chat_prompt).input_ids)
-    ids   = tok(chat_prompt + answer_text).input_ids
-    start = plen if seq_len > plen else seq_len - 1
-    pooled_layer_k = captured[k][0][start:, :].float().mean(dim=0)
-Hidden states are read (not logits); LLaDA-MoE logits are position-aligned
-anyway (no Dream-style shift exists on this model).
-
-collect_activations() NEEDS A GPU + the model.  --selftest only validates the pure
-pooling/labeling logic on synthetic captured tensors (no forward, no GPU).
-
-CLI:
-    python llada_moe/baselines/calib.py --selftest              # offline logic check
-    python llada_moe/baselines/calib.py --fit --where block      # GPU (SLURM sets it)
+Usage:
+    python llada_moe/baselines/calib.py --selftest
+    python llada_moe/baselines/calib.py --fit --where block    # GPU
 """
 import argparse
 import importlib.util

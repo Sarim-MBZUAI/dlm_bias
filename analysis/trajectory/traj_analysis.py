@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E1: trajectory-level analysis of the decode-space PI/PID controller.
+"""Trajectory-level analysis of the decode-space PI/PID controller.
 
 Reads the per-item denoising trajectories logged by every decode-PI/PID run
 (`pblack_traj`/`ptarget_traj` = P(target letter at the answer slot) at each
@@ -16,7 +16,7 @@ and answers five questions:
 
 Definitions (all robustness variants are computed and written to CSV):
 
-  STRICT outcome   Replicates balanced_all/strict_pool.py exactly: a response
+  STRICT outcome   Same rule as balanced_all/strict_pool.py: a response
                    is valid only if an A/B/C letter (either case) starts
                    `model_output` (leading whitespace allowed) followed by
                    whitespace/punctuation/end.  Valid letters classify via
@@ -54,9 +54,9 @@ Trajectory conventions:
 
 Base (unsteered) runs from balanced_seeds/*/base, balanced_all/*/base and
 dream_balanced/base log the same trajectories with alpha == 0 and are used as
-the no-steering reference.  The round-1 black base
-(results/balanced/results_balanced/rot*/cond_base_samples.jsonl) predates
-trajectory logging and has none; the seed bases stand in for it.
+the no-steering reference.  The main black base
+(results/balanced/results_balanced/rot*/cond_base_samples.jsonl) does not log
+trajectories; the seed bases stand in for it.
 
 Outputs (all under analysis/trajectory/):
   per_item.csv          one row per item per run: outcome + all derived steps
@@ -68,8 +68,8 @@ Outputs (all under analysis/trajectory/):
 
 Usage:
   python analysis/trajectory/traj_analysis.py [--no-figs]
-Rerunnable from anywhere; paths resolve from DLM_BIAS_ROOT or the repo root
-two levels above this file.  CPU-only, needs numpy (+ matplotlib for figures).
+Paths resolve from DLM_BIAS_ROOT or the repo root two levels above this
+file.  CPU-only, needs numpy (+ matplotlib for figures).
 """
 import argparse
 import csv
@@ -87,7 +87,7 @@ OUT_DIR = os.path.join(ROOT, "analysis", "trajectory")
 FIG_DIR = os.path.join(OUT_DIR, "figs")
 
 # ---------------------------------------------------------------------------
-# STRICT parser (verbatim from balanced_all/strict_pool.py)
+# STRICT parser (same as balanced_all/strict_pool.py)
 # ---------------------------------------------------------------------------
 LETTERS = "ABC"
 STRICT_RE = re.compile(r"^\s*([ABCabc])(?:$|[\s.,:;)\]!?'\"-])")
@@ -405,7 +405,7 @@ def make_figures(data):
     # ---- Figure 2: lock-in step distributions -----------------------------
     fig, axes = plt.subplots(1, 2, figsize=(7.4, 2.7))
     ax = axes[0]
-    pooled = {"decode-PI (round 1)": (data["black_PI"], C_BLUE),
+    pooled = {"decode-PI": (data["black_PI"], C_BLUE),
               "decode-PI (seeds 1-3)": (data["black_PI_seed1"] + data["black_PI_seed2"]
                                         + data["black_PI_seed3"], C_SKY),
               "base (seeds 1-3)": (seeds_base, C_GRAY)}
@@ -650,7 +650,7 @@ def main():
                   fmt(row["med_pin_minus_freeze"], 1), fmt(row["freeze_med"], 0),
                   fmt(row["pin_med"], 0)))
 
-    # ---- extra stats used in FINDINGS.md ------------------------------------
+    # ---- extra stats -------------------------------------------------------
     print("\n" + "=" * 78)
     print("EXTRAS")
     print("=" * 78)

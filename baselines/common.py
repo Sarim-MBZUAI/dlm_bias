@@ -1,30 +1,25 @@
 #!/usr/bin/env python
-"""baselines/common.py -- SHARED DRIVER for the AcT steering-baseline port.
+"""Shared driver for the activation-steering baselines.
 
-Maximum-faithfulness port of the Apple "Activation Transport" (AcT) steering
-baselines onto our LLaDA-8B-Instruct masked-diffusion BBQ bias-INJECTION harness.
+Port of the Activation Transport (AcT; Rodriguez et al., 2025) family of
+steering baselines onto the LLaDA-8B-Instruct masked-diffusion BBQ
+bias-injection harness. All method files import from here, so model loading,
+the per-item generation loop, the hook tuple-contract, scoring and the result
+file format are identical across methods and identical to steering/pid_steer.py.
 
-The 7 method files (mean_ot / gaussian_ot / linear_ot / aura / ... ) all import
-from here so that the model load, the per-item generation loop, the hook
-tuple-contract, the scoring, and the result-file format are IDENTICAL across
-methods and IDENTICAL to the existing repo scripts (steering/pid_steer.py).
+ROOT (env DLM_BIAS_ROOT, default: repo root) holds the model, arrows.pt and
+data; eval/ and steering/ are put on sys.path to import bbq_eval and pid_steer.
 
-Harness-import convention (SAME as every existing script, e.g.
-steering/pid_steer.py:49-51 and steering/build_arrows.py:33-35): ROOT points at
-the MAIN tree (model, arrows.pt, data all live there); we sys.path.insert the
-eval/ and steering/ dirs and import bbq_eval + pid_steer from them.
+Injection semantics: positive strength pushes the model toward the target
+("Black") answer. When a method fits an Optimal-Transport map, the target is
+the OT destination (mu2 / dst) and the non-target option is the source
+(mu1 / src).
 
-Injection semantics: positive strength pushes the model toward the "Black"
-answer.  When a method fits an Optimal-Transport map, "Black" is the OT
-DESTINATION (mu2 / dst); the non-Black option is the source (mu1 / src).
+Intervention position is always all tokens, bidirectional (the hook fires
+once per denoising step over every position). There is no last-token mode.
 
-Intervention position is ALWAYS all tokens, bidirectional (LLaDA is a masked
-diffusion LM; the hook fires once per denoising step, ~steps*num_blocks times
-per item, over every position).  There is NO "last"-token mode.
-
-CLI:
-    python -m baselines.common --selftest   # offline hook-math check, no GPU
-run_baseline()/load_model() need a GPU + the model and are NOT exercised here.
+Usage:
+    python baselines/common.py --selftest   # offline hook-math check, no GPU
 """
 import argparse
 import json
@@ -34,10 +29,7 @@ import time
 
 import torch
 
-# --------------------------------------------------------------------------- #
-# Harness import (ROOT = MAIN tree on purpose -- model/arrows/data live there). #
-# Mirrors steering/pid_steer.py:49-51.                                          #
-# --------------------------------------------------------------------------- #
+# Harness import: ROOT holds model/arrows/data (same convention as pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -75,9 +67,9 @@ MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 SWEEP400 = os.path.join(ROOT, "data", "bbq_items", "_sweep400.jsonl")
 CACHE_DIR = (os.environ.get("DLM_BASELINE_CACHE_DIR")
              or os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache"))
-# CODE tree (this checkout), distinct from ROOT (the data/model tree): sibling
-# code modules like multirace/targets.py must come from the SAME checkout as
-# this file, while data reads honor DLM_BIAS_ROOT.
+# Code tree (this checkout), distinct from ROOT (the data/model tree): sibling
+# code modules like multirace/targets.py come from this checkout, while data
+# reads honor DLM_BIAS_ROOT.
 CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 H_MODEL = 4096       # residual width (config.json d_model)
@@ -86,31 +78,16 @@ N_HEADS = 32         # config.json n_heads
 D_HEAD = 128         # d_model / n_heads
 
 
-# --------------------------------------------------------------------------- #
-# E8: target parameterization (gender baselines).                              #
-#                                                                              #
-# Every fit/run entry point takes target="black" (the round-1 default; with it #
-# every path, selection and output byte matches the pre-E8 behavior -- the     #
-# machinery that produced the paper's round-1 numbers).  target in             #
-# {"woman","man"} switches the heldout/calib selection to the E3 gender        #
-# manifest (multirace/items_manifest_gender.json), the arrows to               #
-# multirace/arrows_<target>.pt, the cache artifacts to *_<target>.pt, and the  #
-# eval classification to multirace/targets.py's target_idx_of.                 #
-# Extending to further manifest targets = add them here (they must have a      #
-# manifest entry + arrows_<target>.pt).                                        #
-# --------------------------------------------------------------------------- #
-# E8/E9: black (round-1 ref) + gender (woman/man) + one pole each of the E9
-# race (arab), SES (lowses) and Age (old) axes -- the targets whose result
-# tables get the full Table-1 baseline suite (slurm/round3_jobAE/jobAF). Each
-# added target has a multirace/arrows_<target>.pt AND a manifest heldout entry
-# (multirace/build_arrows.heldout_from_manifest), so calib.heldout_items and
-# directions.load_arrows resolve them exactly as they do woman/man.
+# Target parameterization. target="black" is the default; other targets use
+# the multirace manifest heldout entries, multirace/arrows_<target>.pt, cache
+# artifacts *_<target>.pt, and multirace/targets.py's target_idx_of for eval
+# classification. A new target needs a manifest entry and an arrows_<target>.pt.
 SUPPORTED_TARGETS = ("black", "woman", "man", "arab", "lowses", "old")
 
 
 def target_suffix(target):
-    """Cache-artifact filename suffix: '' for the round-1 black default (so
-    every existing path is untouched), '_<target>' otherwise."""
+    """Cache-artifact filename suffix: '' for the black default, '_<target>'
+    otherwise."""
     assert target in SUPPORTED_TARGETS, \
         f"target must be one of {SUPPORTED_TARGETS}, got {target!r}"
     return "" if target == "black" else f"_{target}"
@@ -125,10 +102,8 @@ def sweep400_path(target):
 
 
 def result_keys(target):
-    """Result/sample key names per target.  Black keeps the round-1 names
-    (black/nonblack/black_idx -> byte-identical output); other targets use the
-    multirace naming (target/nontarget/target_idx), which is what
-    balanced_all/strict_pool.target_index expects for non-black samples."""
+    """Result/sample key names per target. Black uses black/nonblack/black_idx;
+    other targets use the multirace naming (target/nontarget/target_idx)."""
     if target == "black":
         return {"pick": "black", "non": "nonblack", "idx": "black_idx"}
     target_suffix(target)  # validate
@@ -139,9 +114,8 @@ _MULTIRACE_TARGETS_MOD = None
 
 
 def _multirace_targets():
-    """Load multirace/targets.py from THIS code tree by absolute path (same
-    importlib pattern as multirace/make_items.load_llada_builder; avoids
-    polluting sys.path with a module named 'targets')."""
+    """Load multirace/targets.py from this code tree by absolute path (avoids
+    putting a module named 'targets' on sys.path)."""
     global _MULTIRACE_TARGETS_MOD
     if _MULTIRACE_TARGETS_MOD is None:
         import importlib.util
@@ -154,9 +128,9 @@ def _multirace_targets():
 
 
 def target_index_fn(target):
-    """row -> option index of the steered target.  Black uses the round-1
-    pid_steer.black_idx_of (unchanged); other targets use the shared
-    multirace/targets.py registry (target_idx_of)."""
+    """row -> option index of the steered target. Black uses
+    pid_steer.black_idx_of; other targets use multirace/targets.py
+    (target_idx_of)."""
     if target == "black":
         return black_idx_of
     target_suffix(target)  # validate
@@ -200,8 +174,8 @@ def make_edit_hook(edit):
     """Wrap a per-module edit(hidden)->hidden into a forward hook (output edit).
 
     Faithful to the AcT contract: InterventionHook edits the module OUTPUT
-    (act/hooks/intervention_hook.py:91-140).  We keep the LLaDA block tuple
-    intact via output_with_hidden (bbq_eval.py:271-275)."""
+    (act/hooks/intervention_hook.py).  The LLaDA block tuple is kept intact
+    via bbq_eval.output_with_hidden."""
     def hook(module, inp, out):
         _bump()
         h = hidden_from_output(out)
@@ -220,15 +194,15 @@ def add_vec_hook(vec):
 
 def mul_vec_hook(gate):
     """Multiplicative (per-neuron) edit: h <- h * gate.  Used by AURA dampening
-    (act/hooks/aura_hook.py:104-107 with strength=1)."""
+    (act/hooks/aura_hook.py with strength=1)."""
     return make_edit_hook(lambda h: h * _to(gate, h))
 
 
 def affine_hook(beta, bias):
     """Affine (per-neuron) edit: h <- beta*h + bias.  Used by the OT maps
-    (act/hooks/transport.py:261 std1_2*(x-mu1)+mu2 == beta*x+bias with
+    (act/hooks/transport.py std1_2*(x-mu1)+mu2 == beta*x+bias with
     beta=std2/std1, bias=mu2-beta*mu1; and the empirical LinearProj x*w1+b1,
-    act/optimal_transport/archs.py:23-28)."""
+    act/optimal_transport/archs.py)."""
     return make_edit_hook(lambda h: _to(beta, h) * h + _to(bias, h))
 
 
@@ -299,7 +273,7 @@ def attach(model, module_paths, hook_fn, pre=False):
 
 
 # --------------------------------------------------------------------------- #
-# Model load -- byte-identical to eval/bbq_eval.py main (lines 678-685).       #
+# Model load -- identical to eval/bbq_eval.py main.                            #
 # --------------------------------------------------------------------------- #
 def load_model(model_path=MODEL_PATH, device="cuda"):
     """Load LLaDA-8B-Instruct + tokenizer (AutoModel, trust_remote_code, bf16,
@@ -342,7 +316,7 @@ def run_baseline(
     shared fire-counter is incremented; run_baseline resets it, asserts >0, and
     ALWAYS detaches the handles in a finally block.
 
-    Scoring mirrors steering/pid_steer.py:294-307 exactly:
+    Scoring mirrors steering/pid_steer.py exactly:
         pred = LETTERS.index(parse_letter(gen, row)) or None
         black    : pred == black_idx_of(row)
         abstain  : pred == unk_idx_of(row)
@@ -354,11 +328,10 @@ def run_baseline(
     baseline_black_rate: if given, d_gap = <target>_pick_rate - baseline rate
     is recorded (the injection lift over the clean model).
 
-    target: "black" (default) keeps the round-1 behavior byte-identical
-    (black_idx_of classification, black/nonblack/black_idx key names).  A
-    non-black target classifies against multirace/targets.py's target_idx_of
-    and emits the multirace key names (target/nontarget/target_idx + a
-    "target" field), which balanced_all/strict_pool scores transparently.
+    target: "black" (default) uses black_idx_of classification and
+    black/nonblack/black_idx key names.  A non-black target classifies against
+    multirace/targets.py's target_idx_of and emits the multirace key names
+    (target/nontarget/target_idx + a "target" field).
     items_path=None resolves to the target's own _sweep400 file.
     """
     if items_path is None:
@@ -538,8 +511,8 @@ def _selftest():
         hk(None, None, h.clone())
     check("fire counter counts invocations", get_fire_count() == 5)
 
-    # --- E8 target parameterization (offline, no GPU) ---
-    check("target_suffix: black -> '' (round-1 paths untouched)",
+    # --- target parameterization (offline, no GPU) ---
+    check("target_suffix: black -> '' (default paths)",
           target_suffix("black") == "")
     check("target_suffix: woman/man -> '_<t>'",
           target_suffix("woman") == "_woman" and target_suffix("man") == "_man")
@@ -553,7 +526,7 @@ def _selftest():
           sweep400_path("black") == SWEEP400)
     check("sweep400_path woman -> _sweep400_woman.jsonl",
           sweep400_path("woman").endswith("data/bbq_items/_sweep400_woman.jsonl"))
-    check("result_keys black == round-1 names",
+    check("result_keys black == default names",
           result_keys("black") == {"pick": "black", "non": "nonblack",
                                    "idx": "black_idx"})
     check("result_keys gender == multirace names (strict_pool target_idx)",

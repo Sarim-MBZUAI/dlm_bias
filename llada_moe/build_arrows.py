@@ -1,35 +1,26 @@
 #!/usr/bin/env python
-"""llada_moe/build_arrows.py -- build the 16-layer "prefer Black option" arrows r(k)
-for LLaDA-MoE-7B-A1B-Instruct.  Port of dream/build_arrows.py (itself a port of
-steering/build_arrows.py).
+"""Build the 16-layer "prefer Black option" arrows r(k) for LLaDA-MoE-7B-A1B-Instruct.
 
-For every LLaDAMoEDecoderLayer k = 0..15 we compute the answer-text-anchored
-Black-vs-other diff-in-means:
+For every decoder layer k = 0..15 compute the answer-text-anchored
+Black-vs-other difference in means
 
     r(k) = mean_items( h_black(k) - h_other(k) )
 
-where h_*(k) is the block-k residual (the layer's output hidden state), MEANED
-over the answer-text token span (tokens AFTER the chat prompt) of a single clean
-forward on the fully materialized sequence  chat_prompt + answer_text.  One
-forward per answer-text captures all 16 layers at once via forward hooks on
-model.layers.
+where h_*(k) is the block-k residual output, averaged over the answer-text
+tokens of one clean forward on chat_prompt + answer_text (all 16 layers are
+captured in one forward via forward hooks).
 
-CONTAMINATION SAFETY: the held-out contrast items (BBQ Race_ethnicity AMBIGUOUS,
-exactly-one-Black-option, DISJOINT from both the seed-42 n=1000 eval keys and the
-sweep400 eval keys) are selected by REUSING steering/build_arrows.py's helpers
-(select_heldout / load_full_race / eval_race_keys / sweep400_keys) verbatim --
-identical item set, so the LLaDA-MoE, Dream and LLaDA arrows are built from the
-SAME contrast pairs.  (That module has no import-time side effects.)
+The held-out contrast items (BBQ Race_ethnicity, ambiguous, exactly one Black
+option, disjoint from the seed-42 n=1000 eval items and the sweep400 items) are
+selected with the helpers of steering/build_arrows.py, so the LLaDA-MoE, Dream
+and LLaDA arrows use the same contrast pairs.
 
-LOGITS-SHIFT NOTE: unlike Dream, LLaDA-MoE's lm-head is position-aligned (the
-external LLaDA loop consumes logits unshifted).  Here we pool HIDDEN STATES
-(block residuals) anyway, so the question does not even arise.
+Saves the raw (not unit-normalized) r to llada_moe/arrows.pt with metadata;
+unit-normalization happens in the steering scripts.
 
-Saves RAW (not unit-normed) r to llada_moe/arrows.pt with metadata (gitignored);
-per-layer unit-normalization happens later in the steering scripts.
-
-Run on ONE GPU:  python llada_moe/build_arrows.py     (SLURM sets the GPU)
-Offline check:   python llada_moe/build_arrows.py --selftest
+Usage:
+    python llada_moe/build_arrows.py              # GPU
+    python llada_moe/build_arrows.py --selftest   # offline check
 """
 import argparse
 import json
@@ -38,7 +29,7 @@ import sys
 
 import torch
 
-# ---- heavy inputs live in the MAIN tree (absolute paths) -------------------- #
+# ---- model / data inputs live under the repository root --------------------- #
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -49,7 +40,7 @@ sys.path.insert(0, HERE)  # ensure `import common_lladamoe` works under -m too
 import importlib.util  # noqa: E402
 import bbq_eval  # noqa: E402
 
-# Reuse the LLaDA arrow builder's contamination-safe item selection VERBATIM.
+# Reuse the LLaDA arrow builder's contamination-safe item selection.
 # It shares this file's basename (build_arrows.py), so load it by absolute path
 # to avoid the name clash rather than via a plain `import`.
 def _load_llada_builder():

@@ -24,11 +24,11 @@ LOGITS-SHIFT NOTE: Dream's lm-head predicts the NEXT token and generation_utils.
 shifts logits right by one before use.  That shift applies ONLY to logits.  Here we
 pool HIDDEN STATES (block residuals), which are NOT shifted, so no shift is applied.
 
-Saves RAW (not unit-normed) r to dream/arrows.pt with metadata (gitignored);
+Saves RAW (not unit-normed) r to dream/arrows.pt with metadata;
 per-layer unit-normalization happens later in the steering scripts.
 
-Run on ONE GPU:  CUDA_VISIBLE_DEVICES=3 python dream/build_arrows.py
-Offline check:   python dream/build_arrows.py --selftest
+Run:           python dream/build_arrows.py
+Offline check: python dream/build_arrows.py --selftest
 """
 import argparse
 import json
@@ -37,7 +37,7 @@ import sys
 
 import torch
 
-# ---- heavy inputs live in the MAIN tree (absolute paths) -------------------- #
+# ---- model / data / LLaDA steering modules live under ROOT ------------------ #
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -49,7 +49,7 @@ import importlib.util  # noqa: E402
 import bbq_eval  # noqa: E402
 
 # Reuse the LLaDA arrow builder's contamination-safe item selection VERBATIM.
-# It shares this file's basename (build_arrows.py), so load it by absolute path
+# It shares this file's basename (build_arrows.py), so load it by file path
 # to avoid the name clash rather than via a plain `import`.
 def _load_llada_builder():
     path = os.path.join(ROOT, "steering", "build_arrows.py")

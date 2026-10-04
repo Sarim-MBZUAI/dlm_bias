@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-"""PID-Steering STEP 1 -- build the 32-layer "prefer Black option" arrows r(k).
+"""Build the 32-layer "prefer Black option" steering arrows r(k).
 
-Faithful port of directional_steering/diagnostics/build_perlayer.py. For every
-transformer block k = 0..31 we compute the answer-text-anchored Black-vs-other
-diff-in-means:
+For every transformer block k = 0..31 we compute the answer-text-anchored
+Black-vs-other diff-in-means:
 
     r(k) = mean_items( h_black(k) - h_other(k) )
 
@@ -20,7 +19,7 @@ AND the 400-item _sweep400.jsonl keys -> zero contamination with the PID eval se
 Saves RAW (not unit-normed) r to steering/arrows.pt with metadata. The
 unit-normalization per layer happens later, in pid_steer.py (paper Eq. 18).
 
-Run on ONE GPU:  CUDA_VISIBLE_DEVICES=5 python steering/build_arrows.py
+Usage:  python steering/build_arrows.py
 """
 import json
 import os
@@ -29,7 +28,7 @@ import sys
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-# ---- all heavy inputs live in the MAIN tree (absolute paths) ---------------- #
+# ---- inputs are resolved relative to DLM_BIAS_ROOT (default: repo root) ---- #
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 import bbq_eval  # noqa: E402  (build_prompt/load_bbq/get_answer_info/unknown_index/resolve_module...)
@@ -45,7 +44,7 @@ N_LAYERS = 32
 CAP = 400
 DEVICE = "cuda"
 SEED, N = 42, 1000  # seed-42 eval sample to exclude
-# Black group tags -- SAME set as build_perlayer.py / build_anchored.py.
+# Black group tags (same set used by all steering scripts).
 BLACK_TAGS = {"black", "african american", "f-black", "m-black", "african"}
 
 

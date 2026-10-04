@@ -1,80 +1,35 @@
 #!/usr/bin/env python
-"""baselines/aura.py -- AURA (AurA, Suau et al., arXiv:2407.12824) ported to the
-LLaDA-8B-Instruct masked-diffusion BBQ bias harness, hooked at the MLP-HIDDEN
-units (max faithfulness: AURA operates per-NEURON, and the 12288-d gated MLP
-activation is the finest-grained neuron bank in the block).
+"""AurA baseline (Suau et al., 2024, "Whispering Experts: Neural Interventions
+for Toxicity Mitigation in Language Models", arXiv:2407.12824) on LLaDA,
+hooked at the 12288-d MLP-hidden units.
 
-WHAT AURA IS (reference: act/hooks/aura_hook.py + act/utils/auroc.py)
---------------------------------------------------------------------
-AurA computes, for every neuron, the AUROC of that neuron's activation at
-classifying a concept (here concept = "Black" answer, label 1). It then applies
-a per-neuron MULTIPLICATIVE dampening gate to the module output:
+AurA computes, per neuron, the AUROC of its activation at classifying the
+concept (here the target answer, label 1), then applies a per-neuron
+multiplicative gate (act/hooks/aura_hook.py, act/utils/auroc.py):
+    alpha = 1 - 2*max(auroc - 0.5, 0);   output_aura = output * alpha
+Non-selective neurons (auroc <= 0.5) keep gate 1; strongly selective neurons
+(auroc -> 1) are fully dampened.  AUROC is the per-column sklearn
+roc_auc_score, reproduced in directions.auroc_per_neuron.
 
-    aura_hook.py:65-67   alpha = ones_like(auroc)
-                         mask  = auroc > 0.5
-                         alpha[mask] = 1 - 2*(auroc[mask] - 0.5)
-    aura_hook.py:104     output_aura = output * alpha         # per-neuron gate
-    aura_hook.py:107     output = (1-strength)*output + strength*output_aura
+Hook site: the gated MLP activation x = act(ff_proj(x)) * up_proj(x) is not the
+output of any module (it is consumed inline as the INPUT to ff_out), so the gate
+multiplies ff_out's INPUT via a forward_pre_hook (common.mul_vec_pre_hook) --
+the same neurons and the same multiply as AurA's output * alpha.
 
-Neurons that do not separate the classes (auroc <= 0.5) keep gate = 1 (untouched);
-strongly concept-selective neurons (auroc -> 1) get gate -> 0 (fully dampened).
-AUROC itself is the exact sklearn per-column roc_auc_score of auroc.py:27-31 /
-_compute_auroc_chunk, reproduced faithfully in directions.auroc_per_neuron
-(directions.py:154-182), whose `gate` output IS the suppression alpha above.
+Two conditions.  A multiplicative gate cannot be turned into an injector by a
+sign or strength: (1-s)*out + s*(out*alpha) = out*(1 - s*(1-alpha)) stays in
+[alpha, 1] for s in [0,1].  Hence two gate formulas:
+  vanilla  suppression (negative control, expected to lower the target rate):
+           alpha_supp = 1 - 2*max(auroc - 0.5, 0)            in [0, 1]
+  inject   amplification (the injection number), the multiplicative dual:
+           alpha_amp  = 1 + gamma * 2*max(auroc - 0.5, 0)    >= 1
+Both leave non-selective neurons at exactly 1.0.
 
-WHERE WE HOOK IT ON LLaDA (max faithfulness)
---------------------------------------------
-The AURA paper dampens per-neuron OUTPUTS of a module. On LLaDA the richest
-per-neuron bank is the 12288-wide gated MLP hidden activation
-    x = act(ff_proj(x)) * up_proj(x)                  # modeling_llada.py:924-929
-    x = ff_out(x)                                      # modeling_llada.py:930
-There is NO module whose OUTPUT is that gated activation -- it is computed inline
-and immediately consumed as the INPUT to ff_out. So, exactly as
-calib.collect_activations('mlp_hidden') CAPTURES it (calib.py:177,187 -> inp[0]
-of ff_out), we GATE it by multiplying ff_out's INPUT via a forward_PRE_hook
-(common.mul_vec_pre_hook). This is the faithful equivalent of AURA's
-output * alpha for LLaDA's fused MLP -- same neurons, same multiply -- and is the
-same pre-hook rationale already documented in common.py:152-166. (common.mul_vec_hook,
-the OUTPUT twin, cannot be used here: ff_out's output is the 4096-d residual, not
-the 12288-d neuron bank the 12288-d gate indexes -- the dims would not match.)
-
-TWO CONDITIONS (the sign/strength of a multiplicative gate cannot flip its effect)
-----------------------------------------------------------------------------------
-A multiplicative gate cannot be turned into an injector by a sign or a "strength":
-in the reference, strength only interpolates toward 1
-    (1-s)*out + s*(out*alpha) = out*(1 - s*(1-alpha)),
-so with the suppression alpha (<= 1) any strength in [0,1] keeps the effective
-gate in [alpha, 1] -- it can only dampen. A NEGATIVE gate does not "reverse" the
-concept, it just flips activation signs (meaningless). To AMPLIFY the concept you
-need a DIFFERENT GATE FORMULA (gate > 1). Hence we ship two gate formulas:
-
-  (1) vanilla  (SUPPRESSION, a labeled NEGATIVE CONTROL -- expected to LOWER the
-      Black pick-rate): the faithful AURA gate
-          alpha_supp = 1 - 2*max(auroc - 0.5, 0)        in [0, 1]
-      This suppresses Black-predictive neurons. It is NOT the injection headline;
-      it exists to show AURA's own mechanism runs and moves the metric the
-      OPPOSITE way (down).
-
-  (2) inject   (AMPLIFICATION, the headline injection number): the mirrored gate
-          alpha_amp  = 1 + gamma * 2*max(auroc - 0.5, 0)   >= 1  (gamma >= 0)
-      This AMPLIFIES the same Black-predictive neurons (gamma sweeps the strength;
-      gamma=0 is identity). Amplifying the neurons AURA would dampen is the
-      natural multiplicative dual of AURA-as-injector.
-
-Both gates leave non-selective neurons (auroc <= 0.5) at exactly 1.0.
-
-FIT / RUN split
----------------
-    fit()            -> calib.collect_activations('mlp_hidden')  [GPU]
-                        directions.auroc_per_neuron              -> auroc (32,12288)
-                        caches cache/aura_auroc.pt               [GPU; DO NOT run here]
-    run(mode,gamma)  -> load auroc, build per-layer gate, attach, common.run_baseline [GPU]
-
-CLI:
-    python aura.py --selftest                      # offline math, no GPU
-    python aura.py --fit                           # NEEDS GPU (do NOT run here)
-    python aura.py --run --mode vanilla            # NEEDS GPU
-    python aura.py --run --mode inject --gamma 2   # NEEDS GPU
+Usage:
+    python aura.py --selftest                      # offline, no GPU
+    python aura.py --fit                           # GPU: caches aura_auroc.pt
+    python aura.py --run --mode vanilla            # GPU
+    python aura.py --run --mode inject --gamma 2   # GPU
 """
 import argparse
 import os
@@ -82,7 +37,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -99,8 +54,7 @@ MODES = ("vanilla", "inject")
 
 
 def auroc_path_for(target):
-    """cache/aura_auroc.pt for black (round-1 path, unchanged);
-    cache/aura_auroc_<target>.pt otherwise."""
+    """cache/aura_auroc.pt for black; cache/aura_auroc_<target>.pt otherwise."""
     return os.path.join(CACHE_DIR, f"aura_auroc{common.target_suffix(target)}.pt")
 
 
@@ -110,7 +64,7 @@ def auroc_path_for(target):
 def suppression_gate(auroc):
     """Faithful AURA suppression gate  alpha = 1 - 2*max(auroc-0.5, 0)  in [0,1].
 
-    Reproduces aura_hook.py:65-67 exactly (alpha=1 where auroc<=0.5, else
+    Reproduces aura_hook.py exactly (alpha=1 where auroc<=0.5, else
     1-2*(auroc-0.5)); identical to directions.auroc_per_neuron's `gate`."""
     auroc = torch.as_tensor(auroc, dtype=torch.float32)
     return 1.0 - 2.0 * (auroc - 0.5).clamp(min=0.0)
@@ -144,10 +98,9 @@ def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
     Steps (all reused, none reimplemented):
       1. calib.collect_activations('mlp_hidden', target=...)  -> acts
          (2n,32,12288), labels (2n,) with target=1 / other=0, from the
-         contamination-safe held-out contrast set (calib.py; black default =
-         the round-1 BBQ-Race heldout, woman/man = the E3 gender manifest).
+         contamination-safe held-out contrast set (calib.py).
       2. For each of the 32 layers, directions.auroc_per_neuron(acts[:,k,:],
-         labels) -> auroc (12288,)  (exact sklearn roc_auc_score, auroc.py:27-31).
+         labels) -> auroc (12288,)  (exact sklearn roc_auc_score).
       3. Stack -> auroc (32,12288); cache {'auroc', 'where', 'n_items', ...}
          at cache/aura_auroc[_<target>].pt.
 
@@ -198,7 +151,7 @@ def attach_fn(mode, gamma=1.0, auroc=None, target="black"):
     activation) by that layer's per-neuron gate via common.mul_vec_pre_hook
     (forward_pre_hook, pre=True). The gate is the suppression or amplification
     formula for `mode` (see module docstring). All positions, bidirectional,
-    fires once per denoising step (~steps*num_blocks per item)."""
+    fires once per denoising step."""
     a = (load_auroc(target=target) if auroc is None
          else torch.as_tensor(auroc, dtype=torch.float32))
     gate = gate_for(a, mode, gamma)          # (32,12288)
@@ -223,9 +176,9 @@ def run(mode, gamma=1.0, out_dir=DEFAULT_OUT, tag=None, limit=0,
     """Evaluate one AURA condition on the sweep-400 BBQ items.
 
     mode='vanilla' -> suppression gate (negative control, lowers the target rate).
-    mode='inject'  -> amplification gate (gamma sweeps strength; headline number).
-    target selects the AUROC gate fit (cache/aura_auroc[_<target>].pt) AND the
-    eval classification (black default = round-1 behavior).
+    mode='inject'  -> amplification gate (gamma sweeps strength).
+    target selects the AUROC gate fit (cache/aura_auroc[_<target>].pt) and the
+    eval classification.
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl). NEEDS A GPU."""
     assert mode in MODES, f"mode must be one of {MODES}"
     if tag is None:
@@ -335,8 +288,8 @@ def _selftest():
     check("gate_for on (32,12288) preserves shape",
           tuple(gate_for(fake_auroc, "inject", 1.0).shape) == (N_LAYERS, H_MLP))
 
-    # --- E8 target-parameterized fit-artifact paths --------------------------- #
-    check("auroc_path_for('black') == AUROC_CACHE (round-1 regression)",
+    # --- target-parameterized fit-artifact paths ------------------------------ #
+    check("auroc_path_for('black') == AUROC_CACHE (regression)",
           auroc_path_for("black") == AUROC_CACHE)
     check("auroc_path_for gender -> cache/aura_auroc_<t>.pt",
           auroc_path_for("woman").endswith("cache/aura_auroc_woman.pt")
@@ -360,8 +313,8 @@ def main():
     ap.add_argument("--gamma", type=float, default=1.0,
                     help="amplification strength for --mode inject (>=0; 0=identity)")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender calib fit + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender calib fit + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

@@ -1,21 +1,21 @@
 #!/usr/bin/env python
-"""baselines/directions.py -- shared FIT PRIMITIVES (method-agnostic math).
+"""Shared fit primitives (method-agnostic math) for the steering baselines.
 
-Pure, offline-testable building blocks the 7 AcT baseline method files fit their
+Pure, offline-testable building blocks the baseline method files fit their
 per-neuron transports / gates from.  Each primitive cites the AcT reference file
 it is faithful to.  NONE of these touch the model or a GPU.
 
-Reference tree (read for faithfulness):
+AcT reference code (Rodriguez et al., 2025):
     act/hooks/transport.py          GaussianOTHook / LearnableOTHook
     act/optimal_transport/ot_maps.py  solve_ot_1d (sorted 1-D OT)
     act/optimal_transport/archs.py    LinearProj.optimize (closed-form LS)
     act/hooks/aura_hook.py + act/utils/auroc.py   AURA gate
 
-INJECTION convention: "Black" is the OT DESTINATION.  The diff-in-means arrow in
-steering/arrows.pt is r = mean(h_black - h_other) (build_arrows.py:182,190), i.e.
-it already points toward Black; positive strength injects toward Black.
+Injection convention: "Black" is the OT destination.  The diff-in-means arrow in
+steering/arrows.pt is r = mean(h_black - h_other) (steering/build_arrows.py),
+i.e. it already points toward Black; positive strength injects toward Black.
 
-CLI:  python -m baselines.directions --selftest   (offline, no GPU)
+Usage:  python baselines/directions.py --selftest   (offline, no GPU)
 """
 import argparse
 import os
@@ -24,7 +24,7 @@ import sys
 import numpy as np
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -38,10 +38,9 @@ ARROWS_PATH = (os.environ.get("DLM_ARROWS_PATH")
 # 1) Diff-in-means arrows, per-layer unit-normalized.                          #
 # --------------------------------------------------------------------------- #
 def arrows_path_for(target):
-    """Arrow-set file per steering target: the round-1 steering/arrows.pt for
-    black (unchanged), multirace/arrows_<target>.pt (same {'r': (32,4096)}
-    format, built by multirace/build_arrows.py from the E3 gender manifest)
-    otherwise."""
+    """Arrow-set file per steering target: steering/arrows.pt for black,
+    multirace/arrows_<target>.pt (same {'r': (32,4096)} format, built by
+    multirace/build_arrows.py) otherwise."""
     if target == "black":
         return ARROWS_PATH
     return os.path.join(ROOT, "multirace", f"arrows_{target}.pt")
@@ -50,13 +49,12 @@ def arrows_path_for(target):
 def load_arrows(path=None, raw=False, target="black"):
     """Return the (32,4096) target-minus-other arrow set.
 
-    Default (path=None, target="black"): steering/arrows.pt, IDENTICAL to the
-    round-1 behavior.  target="woman"/"man": multirace/arrows_<target>.pt (the
-    E3 gender diff-in-means; same 'r' key and sign convention -- positive
+    Default (path=None, target="black"): steering/arrows.pt.  Other targets:
+    multirace/arrows_<target>.pt (same 'r' key and sign convention -- positive
     points toward the target).  An explicit `path` overrides the target lookup.
 
-    Default: per-layer unit-normalized via pid_steer.unit_rows (pid_steer.py:91).
-    raw=True: the raw (un-normed) diff-in-means (build_arrows.py:190).
+    Default: per-layer unit-normalized via pid_steer.unit_rows.
+    raw=True: the raw (un-normed) diff-in-means.
     """
     path = path or arrows_path_for(target)
     blob = torch.load(path, map_location="cpu")
@@ -66,7 +64,7 @@ def load_arrows(path=None, raw=False, target="black"):
 
 # --------------------------------------------------------------------------- #
 # 2) Gaussian (per-neuron 1-D) Optimal Transport map.                          #
-#    Faithful to GaussianOTHook.forward (transport.py:261):                    #
+#    Faithful to GaussianOTHook.forward (transport.py):                    #
 #        z_ot = (std2/std1) * (z - mu1) + mu2                                  #
 #    with source = (mu1,std1), destination = (mu2,std2).                       #
 # --------------------------------------------------------------------------- #
@@ -79,7 +77,7 @@ def gaussian_ot(mu1, sig1, mu2, sig2, eps=1e-4):
 
     To INJECT toward Black: source = non-Black stats (mu1,sig1), destination =
     Black stats (mu2,sig2).  std_eps guards against divide-by-zero on dead
-    neurons (transport.py:208-210 uses the same std_eps mask idea)."""
+    neurons (transport.py uses the same std_eps mask idea)."""
     mu1 = torch.as_tensor(mu1, dtype=torch.float32)
     sig1 = torch.as_tensor(sig1, dtype=torch.float32)
     mu2 = torch.as_tensor(mu2, dtype=torch.float32)
@@ -97,10 +95,10 @@ def gaussian_ot(mu1, sig1, mu2, sig2, eps=1e-4):
 
 # --------------------------------------------------------------------------- #
 # 3) Empirical (per-neuron) 1-D OT fit -> affine (beta, bias).                 #
-#    Faithful to LearnableOTHook.fit (transport.py:693-721):                   #
-#      * per neuron, sort src and dst (solve_ot_1d, ot_maps.py:9-21) to get the #
+#    Faithful to LearnableOTHook.fit (transport.py):                   #
+#      * per neuron, sort src and dst (solve_ot_1d, ot_maps.py) to get the #
 #        monotone 1-D OT pairing;                                              #
-#      * closed-form least squares on the sorted pairs (archs.py:30-54):        #
+#      * closed-form least squares on the sorted pairs (archs.py):        #
 #            beta = sum(xc*yc)/sum(xc^2),  bias = mean(y) - beta*mean(x).       #
 # --------------------------------------------------------------------------- #
 def empirical_ot_fit(x_src, x_dst, eps=1e-8):
@@ -108,7 +106,7 @@ def empirical_ot_fit(x_src, x_dst, eps=1e-8):
 
     x_src: (Ns, D) source samples (e.g. non-Black activations).
     x_dst: (Nd, D) destination samples (e.g. Black activations).
-    Requires Ns == Nd (solve_ot_1d matches equal counts; ot_maps.py:15-18).
+    Requires Ns == Nd (solve_ot_1d matches equal counts; ot_maps.py).
 
     Returns (beta, bias), each (D,), so that  beta*x + bias  transports a source
     neuron toward its destination.  Use with common.affine_hook / affine_pre_hook.
@@ -121,7 +119,7 @@ def empirical_ot_fit(x_src, x_dst, eps=1e-8):
     # Per-neuron monotone OT pairing == sort each column independently.
     xs, _ = torch.sort(x_src, dim=0)
     ys, _ = torch.sort(x_dst, dim=0)
-    # add tiny noise to xs to avoid 0/0 on constant neurons (archs.py:37).
+    # add tiny noise to xs to avoid 0/0 on constant neurons (archs.py).
     xs = xs + eps * torch.randn_like(xs)
     mx = xs.mean(dim=0, keepdim=True)
     my = ys.mean(dim=0, keepdim=True)
@@ -135,7 +133,7 @@ def empirical_ot_fit(x_src, x_dst, eps=1e-8):
 # --------------------------------------------------------------------------- #
 # 4) AUROC per neuron + AURA gate.                                             #
 #    Faithful to compute_auroc (utils/auroc.py) and AURAHook._post_load        #
-#    (aura_hook.py:62-67):  gate = 1 for auroc<=0.5, else 1 - 2*(auroc-0.5).   #
+#    (aura_hook.py):  gate = 1 for auroc<=0.5, else 1 - 2*(auroc-0.5).   #
 #    Equivalently  gate = 1 - 2*max(auroc-0.5, 0).                             #
 # --------------------------------------------------------------------------- #
 def _auroc_numpy(acts, labels):
@@ -174,7 +172,7 @@ def auroc_per_neuron(acts, labels, use_sklearn=True):
     acts: (N, D) responses; labels: (N,) in {0,1} (1 == the concept to detect,
     here "Black").  Returns (auroc, gate), each (D,) float32.
 
-        gate = 1 - 2*max(auroc - 0.5, 0)   (aura_hook.py:65-67)
+        gate = 1 - 2*max(auroc - 0.5, 0)   (aura_hook.py)
 
     Neurons that do NOT separate the classes (auroc<=0.5) keep gate=1 (untouched);
     strongly Black-selective neurons (auroc->1) get gate->0 (fully dampened).
@@ -267,8 +265,8 @@ def _selftest():
     else:
         print(f"[selftest-directions] load_arrows: SKIP (no {ARROWS_PATH})")
 
-    # (1b) E8 target-parameterized arrow paths (pure) + gender arrows if present.
-    check("arrows_path_for('black') == ARROWS_PATH (round-1 regression)",
+    # (1b) target-parameterized arrow paths (pure) + gender arrows if present.
+    check("arrows_path_for('black') == ARROWS_PATH (regression)",
           arrows_path_for("black") == ARROWS_PATH)
     check("arrows_path_for gender -> multirace/arrows_<t>.pt",
           arrows_path_for("woman").endswith("multirace/arrows_woman.pt")

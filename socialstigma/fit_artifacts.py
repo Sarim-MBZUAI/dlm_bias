@@ -5,6 +5,10 @@ This reuses the exact activation sites and fitting primitives of the BBQ
 baseline suite.  It only changes the contrast examples: positive is the
 dataset-annotated biased answer and negative is the opposite yes/no answer.
 Race-stigma rows never enter this stage.
+
+Usage:
+    python socialstigma/fit_artifacts.py [--polarity yes|no|all] [--force]
+    python socialstigma/fit_artifacts.py --itic-margin   # CPU-only
 """
 from __future__ import annotations
 
@@ -258,10 +262,10 @@ def validate_manifest(manifest: dict) -> None:
 
 
 def add_itic_margin(polarity: str) -> dict:
-    """Offline (CPU) amendment: add the standardized head margin used as the
-    ITI-C val_acc tie-breaker to an existing itic_probes.pt, recomputed from
-    the cached attn_head activations of the same fit.  theta/sigma/val_acc are
-    left untouched, so the legacy (index tie-break) ITI-C run is unchanged."""
+    """Offline (CPU): add the standardized head margin used as the ITI-C
+    val_acc tie-breaker to an existing itic_probes.pt, recomputed from the
+    cached attn_head activations of the same fit.  theta/sigma/val_acc are
+    left untouched, so the default (index tie-break) ITI-C run is unchanged."""
     out_dir = CACHE_ROOT / polarity
     probes_path = out_dir / "itic_probes.pt"
     probes = torch.load(probes_path, map_location="cpu")

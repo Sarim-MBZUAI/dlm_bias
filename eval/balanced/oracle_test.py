@@ -13,6 +13,8 @@ balanced harness is scientifically sound BEFORE any GPU run:
 
 Reuses black_idx_of / unk_idx_of from denoise_pid (single source of truth).
 Prints PASS/FAIL with actual numbers for every check; exits non-zero on any FAIL.
+
+Usage: python eval/balanced/oracle_test.py
 """
 import json
 import os

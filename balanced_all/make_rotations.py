@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""balanced_all/make_rotations.py -- generalized position-balance rotation builder.
+"""Position-balance rotation builder for any BBQ items file.
 
 Generalization of eval/balanced/make_rotations.py (which is hardwired to the
 Black _sweep400.jsonl): takes ANY BBQ items jsonl and writes the 3 cyclic

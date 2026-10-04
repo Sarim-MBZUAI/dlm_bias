@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""dream/denoise_pid.py -- FAITHFUL decode-space PID controller for Dream-v0-Instruct-7B.
+"""dream/denoise_pid.py -- decode-space PID controller for Dream-v0-Instruct-7B.
 
 Port of steering/denoise_pid.py (LLaDA) to Dream. CONTROL AXIS = the DIFFUSION
 DENOISING STEP t = 0 .. STEPS-1 (NOT layer depth). Per item we run Dream's OWN
@@ -35,8 +35,8 @@ forward t+1). So alpha_traj[t] is the controller's response to pblack_traj[t].
 MODES
     --selftest                     offline PID-math + anti-windup check (no GPU).
     --smoke [--limit N]            GPU smoke; prints alpha(t)/p_black(t) trajectory.
-    --cond {base,P,PI,PID} ...     limited/full eval.
-GPU RULE: run ONLY on the GPU assigned to this lane (CUDA_VISIBLE_DEVICES=3).
+    --cond {base,P,PI,PID} ...     limited/full eval, e.g.
+        python dream/denoise_pid.py --cond PI
 """
 import argparse
 import importlib.util
@@ -55,7 +55,7 @@ sys.path.insert(0, HERE)                    # ensure `import common_dream` resol
 import common_dream as C  # noqa: E402
 
 
-# steering/denoise_pid.py shares this file's basename -> load it by absolute path to
+# steering/denoise_pid.py shares this file's basename -> load it by file path to
 # avoid the name clash (sys.path[0] is dream/), exactly like build_arrows.py does.
 def _load(modname, relpath):
     spec = importlib.util.spec_from_file_location(modname, os.path.join(ROOT, relpath))

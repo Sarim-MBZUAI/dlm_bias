@@ -1,64 +1,49 @@
 #!/usr/bin/env python
-"""baselines/calib.py -- activation collection for the fit-based AcT baselines.
+"""Activation collection for the fit-based steering baselines.
 
-Builds the labelled (Black vs other) calibration responses the OT / AURA method
-files fit their per-neuron transports and gates from.  Uses the SAME
-contamination-safe held-out BBQ Race_ethnicity contrast set that
-steering/build_arrows.py uses (disjoint from the seed-42 n=1000 eval keys AND
-the 400-item _sweep400.jsonl keys), and the SAME answer-text-span masked-mean
-pooling on a single clean forward of the fully materialized prompt+answer (LLaDA
-is a masked-diffusion LM; no MASK tokens are present in this forward).
+Builds the labelled (target vs other) calibration responses the OT / AURA
+method files fit their per-neuron transports and gates from.  Uses the same
+contamination-safe held-out BBQ contrast set as steering/build_arrows.py
+(disjoint from the seed-42 n=1000 eval keys and the 400-item _sweep400.jsonl
+keys), and the same answer-text-span masked-mean pooling on a single clean
+forward of the fully materialized prompt+answer (no MASK tokens present).
 
-Granularities (`where`), with the exact LLaDA submodule verified against
-LLaDA-8B-Instruct/modeling_llada.py (LLaDALlamaBlock, block_type="llama"):
+Granularities (`where`), per LLaDA-8B-Instruct/modeling_llada.py
+(LLaDALlamaBlock, block_type="llama"):
 
-  block       blocks[k] OUTPUT[0]  (residual, H=4096, config d_model).
-              hidden_from_output(out) -- same tensor build_arrows pools.
+  block       blocks[k] OUTPUT[0]  (residual, H=4096, config d_model);
+              the same tensor build_arrows pools.
   mlp_hidden  INPUT to blocks[k].ff_out  (H=12288, config mlp_hidden_size).
-              In forward() this is  x = act(ff_proj(x)) * up_proj(x)  and then
-              x = ff_out(x)  (modeling_llada.py:924-930).  There is NO module
-              whose OUTPUT is this gated activation, so we capture it as the
-              INPUT of ff_out (inp[0]).
+              In forward() x = act(ff_proj(x)) * up_proj(x), then
+              x = ff_out(x).  No module outputs this gated activation, so it
+              is captured as the INPUT of ff_out (inp[0]).
   attn_head   INPUT to blocks[k].attn_out  (H=4096, reshapeable to
-              n_heads=32 x d_head=128).  In attention() the per-head outputs are
-              re-assembled  att = att.transpose(1,2).contiguous().view(B,T,C)
-              and then projected by attn_out (modeling_llada.py:720-724); the
-              per-head activation is exactly that INPUT (inp[0]), which a method
-              file reshapes to (...,32,128).
+              n_heads=32 x d_head=128): the re-assembled per-head outputs
+              att.transpose(1,2).contiguous().view(B,T,C) before projection.
 
-Pooling matches build_arrows.all_layer_hidden (build_arrows.py:159-172):
+Pooling matches build_arrows.all_layer_hidden:
     plen  = len(tok(chat_prompt).input_ids)
     ids   = tok(chat_prompt + answer_text).input_ids
     start = plen if seq_len > plen else seq_len - 1
     pooled_layer_k = captured[k][0][start:, :].float().mean(dim=0)
+build_arrows.all_layer_hidden is a non-importable closure, so its pooling is
+re-implemented here (_pool_captured); the held-out selection helpers are
+imported from build_arrows.
 
-NOTE ON FAITHFULNESS: build_arrows.all_layer_hidden is a CLOSURE nested inside
-build_arrows.main() and is NOT importable; its pooling logic is re-implemented
-here verbatim (see _pool_captured) and cited.  The held-out SELECTION helpers
-(select_heldout, load_full_race, eval_race_keys, sweep400_keys) ARE module-level
-and are imported, not reimplemented.
+Targets: target="black" (default) uses the Race_ethnicity held-out set and
+cache/calib_<where>.pt.  Other targets use the multirace manifest heldout keys
+(multirace/build_arrows.py heldout_from_manifest: 400 keys per target, disjoint
+from the eval files and from each other), positive = the target-tagged option's
+answer text, negative = the other person's option, cached as
+cache/calib_<where>_<target>.pt.  Labels: 1 = target response, 0 = other.
 
-TARGET PARAMETERIZATION (E8): every entry point takes target="black" (default,
-byte-identical to the round-1 behavior above: same selection, same cache paths
-cache/calib_<where>.pt, same source string).  target in {"woman","man"} swaps
-the held-out selection to the E3 gender manifest's heldout keys
-(multirace/items_manifest_gender.json via multirace/build_arrows.py's
-heldout_from_manifest: 400 keys per target, disjoint from the eval files and
-from each other), positive = the target-tagged option's answer text, negative =
-the other person's option (the exact mirror of the black/other pairing), and the
-cache files to cache/calib_<where>_<target>.pt.  Labels stay 1 = target-tagged
-response, 0 = other.
+collect_activations() needs a GPU + the model.  --selftest validates the pure
+pooling/labeling logic on synthetic tensors and, when the data caches are
+present, the offline heldout selection per target.
 
-collect_activations() NEEDS A GPU + the model.  --selftest only validates the
-pure pooling/labeling logic on synthetic captured tensors (no forward, no GPU)
-plus, when the data caches are present, the offline heldout selection per
-target (including the black regression proof against the committed
-steering/direction_examples.jsonl).
-
-CLI:
-    python -m baselines.calib --selftest                 # offline logic check
-    python -m baselines.calib --fit --where block        # NEEDS GPU (do not run here)
-    python -m baselines.calib --fit --where block --target woman   # NEEDS GPU
+Usage:
+    python baselines/calib.py --selftest
+    python baselines/calib.py --fit --where block [--target woman]   # GPU
 """
 import argparse
 import json
@@ -67,7 +52,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -94,12 +79,9 @@ WHERE_CHOICES = ("block", "mlp_hidden", "attn_head")
 FEAT_DIM = {"block": H_MODEL, "mlp_hidden": H_MLP, "attn_head": H_MODEL}
 CAP = 400
 
-# Calib-blob source strings.  BLACK IS VERBATIM the round-1 string (byte-compat
-# of new black fits with the existing caches); gender mirrors the string
-# multirace/build_arrows.py stamps on arrows_{woman,man}.pt (manifest seed 42).
-# The added E9 targets mirror the exact string multirace/build_arrows.py stamps
-# on arrows_<target>.pt (all seed 42): arab is a Race_ethnicity pole (build_arrows
-# 'else' branch), lowses/old are the SES/Age cross_target_disjoint poles.
+# Calib-blob source strings; non-black targets mirror the string
+# multirace/build_arrows.py stamps on arrows_<target>.pt (all seed 42): arab is
+# a Race_ethnicity pole, lowses/old are the SES/Age cross_target_disjoint poles.
 SOURCE_BY_TARGET = {
     "black": "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400",
     "woman": "multirace_gender_manifest_heldout_seed42_cross_target_disjoint",
@@ -113,10 +95,9 @@ _MB = None
 
 
 def _multirace_builder():
-    """Load multirace/build_arrows.py from THIS code tree by absolute path
-    (importlib; the module shares its basename with steering/build_arrows.py,
-    which this file already imports as `build_arrows` -- same loading pattern
-    as multirace/make_items.load_llada_builder)."""
+    """Load multirace/build_arrows.py from this code tree by absolute path
+    (it shares its basename with steering/build_arrows.py, which is already
+    imported as `build_arrows`)."""
     global _MB
     if _MB is None:
         import importlib.util
@@ -129,8 +110,8 @@ def _multirace_builder():
 
 
 def calib_path(where, target="black"):
-    """cache/calib_<where>.pt for black (round-1 path, unchanged);
-    cache/calib_<where>_<target>.pt otherwise."""
+    """cache/calib_<where>.pt for black; cache/calib_<where>_<target>.pt
+    otherwise."""
     return os.path.join(CACHE_DIR, f"calib_{where}{target_suffix(target)}.pt")
 
 
@@ -144,13 +125,12 @@ def heldout_items(tok=None, cap=CAP, target="black"):
     exactly-one-Black-option, Race_ethnicity, disjoint from BOTH the seed-42
     eval keys and _sweep400.jsonl (build_arrows.select_heldout,
     .load_full_race, .eval_race_keys, .sweep400_keys), capped at `cap`
-    (build_arrows CAP=400).  IDENTICAL to the round-1 selection.
+    (build_arrows CAP=400).
 
-    target in {"woman","man"}: the E3 gender manifest's heldout keys
-    (multirace/items_manifest_gender.json, 400 keys per target, disjoint from
-    the _sweep400_{woman,man} eval files and from each other), resolved by
-    multirace/build_arrows.heldout_from_manifest -- the SAME triples the
-    gender arrows were fitted from.  Positive = the target-tagged option's
+    Other targets: the multirace manifest heldout keys (400 keys per target,
+    disjoint from the _sweep400_<target> eval files and from each other),
+    resolved by multirace/build_arrows.heldout_from_manifest -- the same
+    triples the target arrows were fitted from.  Positive = the target-tagged option's
     answer text; negative = the other-gendered person's option (the mirror of
     the black/other pairing).
 
@@ -158,8 +138,8 @@ def heldout_items(tok=None, cap=CAP, target="black"):
         row, target_idx, other_idx,
         target_answer_text, other_answer_text,
         chat_prompt  (None unless a tokenizer is passed -- apply_chat_template)
-    plus, for target="black" only, the legacy aliases black_idx /
-    black_answer_text (same values) so pre-E8 consumers keep working.
+    plus, for target="black" only, the aliases black_idx / black_answer_text
+    (same values).
 
     Reads cached BBQ jsonl + committed manifests only; no GPU/network.  A
     tokenizer is optional and only needed to materialize the chat_prompt
@@ -191,7 +171,7 @@ def heldout_items(tok=None, cap=CAP, target="black"):
             "other_answer_text": str(row[f"ans{oidx}"]).strip(),
             "chat_prompt": chat,
         }
-        if target == "black":  # legacy aliases (round-1 key names)
+        if target == "black":  # aliases (black key names)
             it["black_idx"] = tidx
             it["black_answer_text"] = it["target_answer_text"]
         items.append(it)
@@ -200,17 +180,17 @@ def heldout_items(tok=None, cap=CAP, target="black"):
 
 # --------------------------------------------------------------------------- #
 # Pure pooling helper (masked-mean over the answer-text span).                 #
-# Re-implements build_arrows.all_layer_hidden's pooling (build_arrows.py:167-172)
-# because that function is a non-importable closure.                           #
+# Re-implements build_arrows.all_layer_hidden's pooling because that function #
+# is a non-importable closure.                                                 #
 # --------------------------------------------------------------------------- #
 def span_start(plen, seq_len):
-    """start index of the answer-text span (build_arrows.py:167)."""
+    """start index of the answer-text span (as in build_arrows)."""
     return plen if seq_len > plen else seq_len - 1
 
 
 def _pool_captured(captured, start, n_layers=N_LAYERS):
     """captured: {layer -> (B,T,feat)}.  Return (n_layers, feat) masked-mean over
-    tokens [start:] of batch element 0 (build_arrows.py:169-172)."""
+    tokens [start:] of batch element 0 (as in build_arrows)."""
     feat = captured[0].shape[-1]
     out = torch.empty(n_layers, feat, dtype=torch.float32)
     for li in range(n_layers):
@@ -227,15 +207,14 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
 
     For each held-out contrast item, run TWO clean forwards (materialized
     chat_prompt + target_answer_text, and + other_answer_text), pool each with
-    the build_arrows masked-mean, and label target=1 / other=0 (target="black"
-    -> the round-1 Black=1/other=0 labelling, unchanged).
+    the build_arrows masked-mean, and label target=1 / other=0.
 
     Returns a dict:
         acts   : (2*n_items, N_LAYERS, feat)  float32
         labels : (2*n_items,)                 int64 (1=target, 0=other)
         where, feat, n_items, source, target
-    and (if save) writes it to cache/calib_<where>.pt for black (round-1 path)
-    or cache/calib_<where>_<target>.pt otherwise.
+    and (if save) writes it to cache/calib_<where>.pt for black or
+    cache/calib_<where>_<target>.pt otherwise.
 
     NEEDS A GPU.  See --selftest for the offline logic check.
     """
@@ -252,7 +231,7 @@ def collect_activations(where, model=None, tok=None, items=None, cap=CAP,
     captured = {}
     handles = []
     for li, blk in enumerate(blocks):
-        # NOTE: must not be named `target` — that would shadow the function's
+        # NOTE: must not be named `target` -- that would shadow the function's
         # target parameter, which is still needed at save time (SOURCE_BY_TARGET).
         if where == "block":
             hook_mod = blk
@@ -329,7 +308,7 @@ def _selftest():
         ok &= bool(cond)
         print(f"[selftest-calib] {name:46s} : {'PASS' if cond else 'FAIL'}")
 
-    # span_start logic (build_arrows.py:167).
+    # span_start logic (as in build_arrows).
     check("span_start normal (seq>plen) == plen", span_start(5, 9) == 5)
     check("span_start degenerate (seq<=plen) == seq-1", span_start(9, 9) == 8)
 
@@ -360,18 +339,18 @@ def _selftest():
           (FEAT_DIM["block"], FEAT_DIM["mlp_hidden"], FEAT_DIM["attn_head"])
           == (4096, 12288, 4096))
 
-    # --- E8 target parameterization: cache paths (pure). --------------------- #
-    check("calib_path black == round-1 cache/calib_<where>.pt (regression)",
+    # --- target parameterization: cache paths (pure). ------------------------ #
+    check("calib_path black == cache/calib_<where>.pt",
           all(calib_path(w, "black") == os.path.join(CACHE_DIR, f"calib_{w}.pt")
               for w in WHERE_CHOICES))
     check("calib_path gender == cache/calib_<where>_<target>.pt",
           calib_path("block", "woman").endswith("cache/calib_block_woman.pt")
           and calib_path("attn_head", "man").endswith("cache/calib_attn_head_man.pt"))
-    check("black source string verbatim (round-1)",
+    check("black source string unchanged",
           SOURCE_BY_TARGET["black"]
           == "bbq_race_ethnicity_heldout_disjoint_seed42_and_sweep400")
 
-    # --- E8 heldout selection (offline DATA checks; SKIP when caches absent). #
+    # --- heldout selection (offline data checks; SKIP when caches absent). --- #
     race_cache = os.path.join(ROOT, "data", "bbq_cache", "Race_ethnicity.jsonl")
     gender_cache = os.path.join(ROOT, "data", "bbq_cache", "Gender_identity.jsonl")
     dir_ex = os.path.join(CODE_ROOT, "steering", "direction_examples.jsonl")
@@ -379,7 +358,7 @@ def _selftest():
         items = heldout_items(target="black")
         with open(dir_ex) as f:
             ref = [json.loads(l) for l in f if l.strip()]
-        check("black: 400 heldout items (round-1 cap)",
+        check("black: 400 heldout items (cap)",
               len(items) == len(ref) == 400)
         check("black REGRESSION: selection == committed direction_examples.jsonl "
               "(order, keys, pos/neg answer texts)",
@@ -395,7 +374,8 @@ def _selftest():
     else:
         print("[selftest-calib] black heldout regression: SKIP (data caches or "
               "steering/direction_examples.jsonl not available)")
-    if os.path.exists(gender_cache):
+    if os.path.exists(gender_cache) and os.path.exists(
+            os.path.join(ROOT, "multirace", "items_manifest_gender.json")):
         mb = _multirace_builder()
         gkeys = {}
         for t in ("woman", "man"):
@@ -438,8 +418,8 @@ def main():
     ap.add_argument("--where", choices=WHERE_CHOICES, default="block")
     ap.add_argument("--cap", type=int, default=CAP)
     ap.add_argument("--target", choices=SUPPORTED_TARGETS, default="black",
-                    help="steering target; black (default) = round-1 selection "
-                         "and paths, woman/man = E3 gender manifest heldout")
+                    help="steering target; black (default) = default selection "
+                         "and paths, woman/man = gender manifest heldout")
     args = ap.parse_args()
 
     if args.selftest:

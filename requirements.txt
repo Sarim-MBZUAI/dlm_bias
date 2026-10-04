@@ -1,4 +1,12 @@
-torch
+# Environment used for all reported runs: Python 3.11, CUDA 13.0, one RTX PRO 6000.
+# Install torch for your CUDA version first (https://pytorch.org), then: pip install -r requirements.txt
+torch==2.13.0
 transformers==4.46.2
-accelerate
-safetensors
+tokenizers==0.20.3
+accelerate==1.14.0
+safetensors==0.8.0
+huggingface_hub==0.36.2
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.0
+matplotlib==3.11.1

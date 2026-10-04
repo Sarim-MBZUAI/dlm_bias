@@ -1,65 +1,35 @@
 #!/usr/bin/env python
-"""baselines/meanact.py -- Mean-AcT (Rodriguez et al., Apple "Activation
-Transport"), the mean-only Optimal-Transport steering baseline, ported onto our
-LLaDA-8B-Instruct masked-diffusion BBQ bias-INJECTION harness at NATIVE
-granularity (the full residual stream, per-neuron, at every one of the 32
-transformer blocks).
+"""Mean-AcT baseline (Rodriguez et al., 2025, "Controlling Language and
+Diffusion Models by Transporting Activations"): the mean-only
+Optimal-Transport steering map, applied to the residual stream at all 32
+LLaDA blocks.
 
-WHAT MEAN-AcT IS (the faithful reference)
------------------------------------------
-Mean-AcT is GaussianOT with `onlymean=True` (act/hooks/transport.py OnlyMeanHook,
-which subclasses GaussianOTHook and hardcodes hook_onlymean=True -- see
-transport.py:500-524).  The transport applied inside the forward is
+Mean-AcT is GaussianOT with onlymean=True (act/hooks/transport.py
+OnlyMeanHook).  The forward edit is
+    onlymean branch : z_ot = (z - 1.2*mu1) + 1.2*mu2
+    strength blend  : z_ot = strength*z_ot + (1-strength)*z
+which collapses to a constant per-neuron additive shift
+    z <- z + strength * 1.2 * (mu2 - mu1).
+The 1.2 is a hardcoded gain in the reference onlymean branch (not a derived
+OT quantity); it is kept as GAIN.
 
-    onlymean branch     : z_ot = (z - 1.2*mu1) + 1.2*mu2          (transport.py:259)
-    strength blend      : z_ot = strength*z_ot + (1-strength)*z   (transport.py:264)
+The target answer is the OT destination (mu2) and the non-target option the
+source (mu1), so (mu2 - mu1) is the target-minus-other diff-in-means stored in
+steering/arrows.pt.  The edit h <- h + vec_k is applied at every block, all
+positions, every denoising step.
 
-Algebraically the two lines collapse to a pure additive mean-shift:
+Direction source (--direction):
+  unit    (default) directions.load_arrows(): per-layer unit-normalized, the
+          convention shared by all baselines so one strength is comparable;
+          drops the native per-layer magnitude of (mu2 - mu1).
+  raw     load_arrows(raw=True): the literal diff-in-means (mu2 - mu1).
+  fitted  fit() recomputes per-neuron (mu2 - mu1) at block granularity from a
+          calib.py activation cache (analogue of OnlyMeanHook.fit).
 
-    z  <-  z + strength * 1.2 * (mu2 - mu1)
-
-i.e. a CONSTANT per-neuron vector added to every activation, independent of z.
-(mu1, mu2) are the per-neuron class means fitted in GaussianOTHook.fit
-(transport.py:189-192): mu1 = mean over the `labels` group, mu2 = mean over the
-`~labels` group.  The `1.2` is the Apple fork's hardcoded magic gain baked into
-the onlymean branch (transport.py:259) -- NOT a general OT quantity; we keep it
-verbatim as GAIN below.
-
-INJECTION MAPPING (Black is the OT DESTINATION)
------------------------------------------------
-Our task pushes the model TOWARD the "Black" answer, so Black is the destination
-(mu2) and the non-Black option is the source (mu1).  The per-neuron mean shift
-(mu2 - mu1) is therefore exactly the Black-minus-other diff-in-means arrow that
-steering/arrows.pt already stores (build_arrows.py:182,190: r = mean(h_black -
-h_other)).  So
-
-    vec_k = strength * 1.2 * (mu2 - mu1)_k        with (mu2 - mu1) = arrows r[k]
-
-and the residual edit at block k is  h <- h + vec_k, applied bidirectionally to
-ALL positions (LLaDA is a masked diffusion LM; the hook fires once per denoising
-step, ~steps times per block per item, over every token -- there is NO
-"last"-token mode; matches common.py's intervention_position=="all" contract).
-
-DIRECTION SOURCE (a faithfulness knob, documented)
---------------------------------------------------
-The spec fixes (mu2 - mu1) = directions.load_arrows() r[k].  load_arrows()
-DEFAULT per-layer unit-normalizes (directions.py:39-47, via pid_steer.unit_rows),
-which is the family convention shared by every baseline here (and by the repo's
-own pid_steer) so that a single `strength` is comparable across methods.  This
-DROPS the native per-layer magnitude of the true (mu2 - mu1); the true Mean-AcT
-uses the RAW diff-in-means.  Two escape hatches recover full faithfulness:
-  * direction="raw"    -> load_arrows(raw=True): the raw diff-in-means arrows.pt
-                          stores (build_arrows.py:190), i.e. the literal (mu2-mu1).
-  * direction="fitted" -> fit() recomputes per-neuron (mu2-mu1) at block
-                          granularity from a calib.py activation cache (offline
-                          once the cache exists), the closest analogue to
-                          OnlyMeanHook.fit's own mu1/mu2.
-See FAITHFULNESS notes at the bottom.
-
-CLI:
-    python -m baselines.meanact --selftest                 # offline math, no GPU
-    python -m baselines.meanact --fit                      # NEEDS GPU cache; do NOT run here
-    python -m baselines.meanact --run --strength 2.0       # NEEDS GPU; do NOT run here
+Usage:
+    python baselines/meanact.py --selftest               # offline, no GPU
+    python baselines/meanact.py --fit                    # needs a calib cache
+    python baselines/meanact.py --run --strength 2.0     # GPU
 """
 import argparse
 import os
@@ -67,7 +37,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -76,11 +46,9 @@ import common      # noqa: E402  shared driver (hooks, attach, run_baseline)
 import directions  # noqa: E402  load_arrows (per-layer diff-in-means)
 
 # --------------------------------------------------------------------------- #
-# The fork magic number.                                                       #
-# The onlymean branch multiplies the class means by a HARDCODED 1.2 gain       #
-# (act/hooks/transport.py:259).  It is not a derived OT quantity; it is baked  #
-# into the Apple fork.  We keep it verbatim so the mean-shift magnitude matches #
-# the reference; the `strength` CLI knob scales on top of it.                  #
+# The onlymean branch multiplies the class means by a hardcoded 1.2 gain       #
+# (act/hooks/transport.py).  It is not a derived OT quantity; it is kept so    #
+# the mean-shift magnitude matches the reference; `strength` scales on top.    #
 # --------------------------------------------------------------------------- #
 GAIN = 1.2
 
@@ -90,7 +58,7 @@ FIT_PATH = os.path.join(common.CACHE_DIR, "meanact_meandiff_block.pt")
 
 
 def fit_path_for(target):
-    """cache/meanact_meandiff_block.pt for black (round-1 path, unchanged);
+    """cache/meanact_meandiff_block.pt for black;
     cache/meanact_meandiff_block_<target>.pt otherwise."""
     return os.path.join(common.CACHE_DIR,
                         f"meanact_meandiff_block{common.target_suffix(target)}.pt")
@@ -101,7 +69,7 @@ def fit_path_for(target):
 # --------------------------------------------------------------------------- #
 def load_direction(direction="unit", fit_path=None, target="black"):
     """Return the (32, 4096) per-layer mean-shift (mu2 - mu1), target minus
-    other (Black minus other for the round-1 default target).
+    other (Black minus other for the default target).
 
     direction:
       "unit"   -> directions.load_arrows(target=...)  (per-layer unit-normalized;
@@ -132,7 +100,7 @@ def build_injection(strength, direction="unit", gain=GAIN, arrows=None,
 
         vec_k = strength * gain * (mu2 - mu1)_k
 
-    This is the collapsed OnlyMeanHook edit (transport.py:259+264): adding vec_k
+    This is the collapsed OnlyMeanHook edit (transport.py): adding vec_k
     to every activation is identically  strength*z_ot + (1-strength)*z  with
     z_ot = z + gain*(mu2-mu1).  Positive strength injects TOWARD Black.
 
@@ -181,7 +149,7 @@ def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
 
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl) in the pid_steer format.
     target selects the (mu2 - mu1) source arrows/fit AND the eval
-    classification (black default = round-1 behavior).  NEEDS A GPU.  See
+    classification.  Needs a GPU.  See
     --selftest for the offline math check.
     """
     tag = tag or f"meanact_{direction}_s{strength:g}"
@@ -207,10 +175,9 @@ def run(strength, out_dir=DEFAULT_OUT, tag=None, layers=None, direction="unit",
 
 # --------------------------------------------------------------------------- #
 # fit(): per-neuron (mu2 - mu1) at block granularity from a calib cache.       #
-# Faithful analogue of OnlyMeanHook.fit (transport.py:189-192): mu = per-class #
-# mean; (mu2 - mu1) = mean(Black) - mean(other).  PURE (no GPU) once the calib #
-# activation cache exists -- but building that cache (calib.py --fit) NEEDS a   #
-# GPU, so --fit as a whole is documented as a GPU step; do NOT run it here.     #
+# Analogue of OnlyMeanHook.fit: mu = per-class mean; (mu2 - mu1) =            #
+# mean(Black) - mean(other).  Pure (no GPU) once the calib activation cache    #
+# exists; building that cache (calib.py --fit) needs a GPU.                    #
 # --------------------------------------------------------------------------- #
 def fit(where="block", calib_path=None, save=True, out_path=None, target="black"):
     """Compute per-neuron (mu2 - mu1) = mean(target) - mean(other) per layer.
@@ -218,8 +185,8 @@ def fit(where="block", calib_path=None, save=True, out_path=None, target="black"
     Reads the target's calib.py activation cache (acts (2n,32,feat), labels
     1=target/0=other) and averages within class.  This is the block-granularity
     twin of the target's arrows diff-in-means and the direct analogue of
-    OnlyMeanHook.fit's mu1/mu2.  target="black" (default) reads the round-1
-    cache/calib_block.pt and writes the round-1 out path, unchanged.
+    OnlyMeanHook.fit's mu1/mu2.  target="black" (default) reads
+    cache/calib_block.pt.
     """
     import calib  # local import: only needed for --fit
     out_path = out_path or fit_path_for(target)
@@ -249,9 +216,9 @@ def fit(where="block", calib_path=None, save=True, out_path=None, target="black"
 # Offline self-test: the pure mean-shift math on synthetic tensors (no GPU).   #
 # --------------------------------------------------------------------------- #
 def _onlymean_reference(z, mu1, mu2, strength, gain=GAIN):
-    """Byte-faithful OnlyMeanHook edit (transport.py:259 then :264)."""
-    z_ot = (z - gain * mu1) + gain * mu2        # onlymean branch, transport.py:259
-    return strength * z_ot + (1 - strength) * z  # strength blend, transport.py:264
+    """Reference OnlyMeanHook edit (onlymean branch, then strength blend)."""
+    z_ot = (z - gain * mu1) + gain * mu2        # onlymean branch
+    return strength * z_ot + (1 - strength) * z  # strength blend
 
 
 def _selftest():
@@ -264,7 +231,7 @@ def _selftest():
         ok &= bool(cond)
         print(f"[selftest-meanact] {name:52s} : {'PASS' if cond else 'FAIL'}")
 
-    check("GAIN is the 1.2 fork magic number", abs(GAIN - 1.2) < 1e-12)
+    check("GAIN is the reference-implementation onlymean gain 1.2", abs(GAIN - 1.2) < 1e-12)
 
     # Synthetic arrows (mu2 - mu1), avoid touching arrows.pt.
     arrows = torch.randn(L, H)
@@ -286,7 +253,7 @@ def _selftest():
           torch.allclose(build_injection(-s, arrows=arrows),
                          -build_injection(s, arrows=arrows), atol=1e-6))
 
-    # Equivalence to the byte-faithful OnlyMeanHook edit, per layer, on a
+    # Equivalence to the reference OnlyMeanHook edit, per layer, on a
     # synthetic activation z with arbitrary mu1/mu2 s.t. mu2-mu1 == arrows[k].
     B, S = 2, 4
     for k in [0, 7, 31]:
@@ -361,8 +328,8 @@ def _selftest():
     check("fit recovers the ~4.0 mean gap (Black-other)",
           abs(float(md.mean()) - 4.0) < 0.3)
 
-    # E8 target-parameterized fit-artifact paths.
-    check("fit_path_for('black') == FIT_PATH (round-1 regression)",
+    # target-parameterized fit-artifact paths.
+    check("fit_path_for('black') == FIT_PATH (regression)",
           fit_path_for("black") == FIT_PATH)
     check("fit_path_for gender -> cache/meanact_meandiff_block_<t>.pt",
           fit_path_for("woman").endswith("cache/meanact_meandiff_block_woman.pt")
@@ -391,7 +358,7 @@ def main():
                     help="offline mean-shift math check on synthetic tensors (no GPU)")
     ap.add_argument("--fit", action="store_true",
                     help="compute per-neuron (mu2-mu1) from a calib cache "
-                         "(NEEDS a GPU-built calib cache; do NOT run here)")
+                         "(needs a GPU-built calib cache)")
     ap.add_argument("--run", action="store_true",
                     help="run the BBQ injection eval (NEEDS a GPU + model)")
     ap.add_argument("--strength", type=float, default=2.0,
@@ -402,8 +369,8 @@ def main():
     ap.add_argument("--where", default="block",
                     help="calib granularity for --fit (default block/residual)")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender arrows/calib + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender arrows/calib + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

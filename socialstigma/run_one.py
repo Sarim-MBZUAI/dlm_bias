@@ -1,5 +1,9 @@
 #!/usr/bin/env python
-"""Run one preregistered SocialStigmaQA-MC3 condition/polarity/rotation."""
+"""Run one preregistered SocialStigmaQA-MC3 condition/polarity/rotation.
+
+Usage:
+    python socialstigma/run_one.py --condition decode_pi64 --polarity yes --rotation 0
+"""
 from __future__ import annotations
 
 import argparse
@@ -65,7 +69,7 @@ def expected(condition: str, effort_alpha: float | None) -> tuple[str, str]:
         "aura_inject_g4": ("aura_inject", "inject_g4"),
         "aura_vanilla": ("aura_vanilla", "vanilla"),
         "itic_k48_a8": ("itic", "itic_K48_a8"),
-        # Post-audit addition: same probes, val_acc ties broken by head margin.
+        # Same probes as itic_k48_a8, val_acc ties broken by head margin.
         "itic_k48_a8_tb": ("itic_tiebreak", "itic_K48_a8_tb"),
     }
     if condition in fixed:

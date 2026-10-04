@@ -11,6 +11,9 @@ Every semantic item receives all three cyclic option rotations.  Calibration
 uses 400 original-style prompts from non-race stigmas: 200 whose biased answer
 is yes and 200 whose biased answer is no.  Each polarity is fit separately and
 its target-letter positions are balanced across A/B/C.
+
+Usage:
+    python socialstigma/prepare.py
 """
 from __future__ import annotations
 

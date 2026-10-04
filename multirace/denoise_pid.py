@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """multirace/denoise_pid.py -- target-parameterized decode-space PID for LLaDA-8B-Instruct.
 
-Generalization of steering/denoise_pid.py from the fixed black target to
---target {white,asian,latino,arab,black}. The PID math, the all-32-block actuator,
-the observable, and the LLaDA sampler loop are IMPORTED from the original by
-absolute path (basename clash -> importlib), NOT reimplemented:
+Generalization of steering/denoise_pid.py from the fixed black target to any
+--target in the registry. The PID math, the all-32-block actuator, the
+observable, and the LLaDA sampler loop are IMPORTED from the original by file
+path (basename clash -> importlib), not reimplemented:
 
     PID / COND_MASK / SETPOINT(0.9) / ALPHA_MAX(6.0) / pid_alphas_closedform
     p_black_from_logits   (target-agnostic: takes a letter -> used as p_target)
@@ -15,23 +15,23 @@ Differences from the original:
   * target letter = chr(65 + target_idx_of(row, target))   (targets.py registry)
   * items default  data/bbq_items/_sweep400_<target>.jsonl
   * arrows default multirace/arrows_<target>.pt (RAW (32,4096) key 'r';
-    vhat = unit(r[14]), broadcast to all 32 blocks -- unchanged)
+    vhat = unit(r[14]), broadcast to all 32 blocks)
   * per-item classes: target / nontarget / abstain / unparseable
   * result JSON: target_pick_rate / nontarget_pick_rate, gap_within = target -
     nontarget, d_gap = target_pick_rate - baseline_rate (null unless
     --baseline-rate passed); config records the target and its tag set.
-Gains unchanged: Kp=3 Ki=0.1 Kd=1 amax=6. Rows without the target are skipped
-(counted in n_skipped_no_target) -- per-target item files should contain none.
+Default gains: Kp=3 Ki=0.1 Kd=1 amax=6. Rows without the target are skipped
+(counted in n_skipped_no_target).
 
-E7: --sensor-case {upper,both} is passed through to the imported
-letter_token_ids (default 'upper' = the original case-blind sensor,
-bit-for-bit; 'both' adds the lowercase letter tokens so the loop can see
-lowercase wins -- used by slurm/round3_jobM_arab_sensor.sbatch on arab).
+--sensor-case {upper,both} is passed through to letter_token_ids: 'upper'
+(default) reads only uppercase letter tokens; 'both' also adds the lowercase
+letter tokens so the loop sees lowercase answers.
 
 MODES
     --selftest                          offline: imported PID == closed-form (no GPU).
     --smoke --dummy-arrows --limit 2    GPU smoke; prints alpha(t)/p_target(t).
-    --target T --cond {base,P,PI,PID}   eval.
+    --target T --cond {base,P,PI,PID}   eval, e.g.
+        python multirace/denoise_pid.py --target asian --cond PI
 """
 import argparse
 import json
@@ -63,15 +63,14 @@ STEPS = _LD.STEPS
 N_LAYERS = CE.N_LAYERS
 LETTERS = CE.LETTERS
 
-# E7 sensor-case passthrough. Sourced from the imported module so the option
-# list cannot drift; against an OLDER steering/denoise_pid.py (pre-E7, e.g. a
-# stale DLM_BIAS_ROOT) only 'upper' is offered and defaults stay bit-for-bit.
+# Sensor-case passthrough. Sourced from the imported module so the option list
+# cannot drift; if the steering module lacks SENSOR_CASES only 'upper' is offered.
 SENSOR_CASES = tuple(getattr(_LD, "SENSOR_CASES", ("upper",)))
 
 
 def sensor_ids(tok, sensor_case):
-    """letter_token_ids with the E7 flag; 'upper' uses the original 1-arg call
-    so it works (identically) even against a pre-E7 steering module."""
+    """letter_token_ids with the sensor-case flag; 'upper' uses the 1-arg call
+    so it also works with a steering module that lacks the flag."""
     if sensor_case == "upper":
         return letter_token_ids(tok)
     return letter_token_ids(tok, sensor_case)
@@ -82,7 +81,7 @@ def default_out(target):
 
 
 # --------------------------------------------------------------------------- #
-# Offline selftest: imported PID stateful == closed-form (dream/denoise_pid pattern).
+# Offline selftest: imported PID stateful == closed-form (no GPU).
 # --------------------------------------------------------------------------- #
 def selftest():
     rng = np.random.default_rng(0)
@@ -258,7 +257,7 @@ def main():
     ap.add_argument("--sensor-case", choices=list(SENSOR_CASES), default="upper",
                     help="passthrough to steering/denoise_pid.letter_token_ids: "
                          "'upper' (default, original case-blind sensor) or "
-                         "'both' (E7: + lowercase letter tokens)")
+                         "'both' (+ lowercase letter tokens)")
     ap.add_argument("--limit", type=int, default=0, help="0 = all")
     ap.add_argument("--items", default=None,
                     help="default data/bbq_items/_sweep400_<target>.jsonl")

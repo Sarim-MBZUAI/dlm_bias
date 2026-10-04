@@ -1,32 +1,20 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/aura.py -- AURA (AurA, Suau et al., arXiv:2407.12824) on
-LLaDA-MoE-7B-A1B-Instruct.  Port of dream/baselines/aura.py, hooked at the
-MoE-MLP OUTPUT units (the 2048-d pre-residual MLP delta).
+"""AURA (Suau et al., arXiv:2407.12824) on LLaDA-MoE-7B-A1B-Instruct.
 
-AurA computes per-neuron the AUROC of that neuron at classifying a concept (here
-"Black", label 1), then applies a per-neuron MULTIPLICATIVE gate:
+Per-neuron AUROC for classifying "Black" (label 1), then a per-neuron
+multiplicative gate on the MoE block output (model.layers[k].mlp, 2048-d),
+applied with a forward hook (common_lladamoe.mul_vec_hook).
 
-    alpha = 1 where auroc<=0.5, else 1 - 2*(auroc-0.5)   (aura_hook.py:65-67)
-    output <- output * alpha                             (per-neuron gate)
+Two conditions:
+  vanilla  suppression (negative control, lowers the Black rate):
+           alpha = 1 - 2*max(auroc-0.5, 0)            in [0, 1]
+  inject   amplification (reported condition):
+           alpha = 1 + gamma*2*max(auroc-0.5, 0)      >= 1 (gamma=0 is identity)
+Neurons with auroc <= 0.5 keep gate 1.
 
-AUROC is directions.auroc_per_neuron (exact sklearn roc_auc_score).  MoE
-DEVIATION: LLaDA-MoE has no dense gated MLP-hidden bank (tokens route across 64
-1024-d experts), so the per-neuron MLP bank is the MoE block OUTPUT
-(model.layers[k].mlp, bare tensor, 2048-d) -- which IS a module OUTPUT, so the
-gate is a plain forward hook (common_lladamoe.mul_vec_hook): literally AURA's
-output*alpha contract, no pre-hook workaround.  Same activation
-calib.collect_activations('mlp_hidden') captures.
-
-TWO CONDITIONS (a multiplicative gate's sign/strength cannot flip its effect):
-  (1) vanilla  (SUPPRESSION, labeled NEGATIVE CONTROL, LOWERS Black rate): the
-      faithful AURA gate  alpha_supp = 1 - 2*max(auroc-0.5,0)  in [0,1].
-  (2) inject   (AMPLIFICATION, the headline number): the mirrored gate
-      alpha_amp  = 1 + gamma*2*max(auroc-0.5,0)  >= 1  (gamma>=0; 0=identity).
-Both leave non-selective neurons (auroc<=0.5) at exactly 1.0.
-
-CLI:
-    python llada_moe/baselines/aura.py --selftest                  # offline
-    python llada_moe/baselines/aura.py --fit                       # NEEDS GPU
+Usage:
+    python llada_moe/baselines/aura.py --selftest
+    python llada_moe/baselines/aura.py --fit                        # GPU
     python llada_moe/baselines/aura.py --run --mode vanilla
     python llada_moe/baselines/aura.py --run --mode inject --gamma 4
 """

@@ -1,82 +1,52 @@
 #!/usr/bin/env python
-"""multirace/make_items.py -- per-target item sets for multi-race steering.
+"""multirace/make_items.py -- per-target BBQ item sets for multi-target steering.
 
-For each target in {white, asian, latino, arab} (black is the existing
-reference, untouched):
-
+RACE (default; targets white, asian, latino, arab; black is the existing
+reference and is not rebuilt):
   1. SELECT from data/bbq_cache/Race_ethnicity.jsonl: AMBIGUOUS rows with
      exactly ONE option carrying a TARGET_TAGS[target] tag and an "unknown"
      option present (same structure as the Black setup).
-  2. EXCLUDE the Black experiment's contaminating keys -- (a) the seed-42
-     n=1000 eval sample's Race_ethnicity keys, (b) _sweep400.jsonl keys --
-     reusing steering/build_arrows.py's eval_race_keys / sweep400_keys
-     verbatim (loaded by absolute path). Rows can qualify for two targets at
-     once (e.g. Black-vs-White), hence the exclusion.
-  3. SPLIT reproducibly (seed 42 shuffle): 400 EVAL items ->
+  2. EXCLUDE the Black experiment's keys -- (a) the seed-42 n=1000 eval
+     sample's Race_ethnicity keys, (b) _sweep400.jsonl keys -- via
+     steering/build_arrows.py's eval_race_keys / sweep400_keys. Rows can
+     qualify for two targets at once (e.g. Black-vs-White), hence the exclusion.
+  3. SPLIT (seed 42 shuffle): 400 EVAL items ->
      data/bbq_items/_sweep400_<target>.jsonl, then up to 400 HELDOUT
-     direction items (disjoint from the eval 400) recorded BY KEY in
-     multirace/items_manifest.json -- build_arrows.py reads keys from the
-     manifest, never recomputes.
+     direction items (disjoint from eval) recorded BY KEY in
+     multirace/items_manifest.json; build_arrows.py reads keys from the
+     manifest.
+  Asserts >=800 usable rows per target (warns when heldout < 400, e.g. white
+  with ~811 usable) and eval INTERSECT heldout == EMPTY.
 
-Asserts per target: >=800 usable rows (warns with the exact count when the
-heldout side is under 400 -- expected for white, ~811 total) and
-eval INTERSECT heldout == EMPTY.
+PAIR-AXIS categories (--category Gender_identity / SES / Age): the two poles
+(woman/man, lowses/highses, old/young) live on the SAME rows, so the shared
+pool gets ONE seed-42 shuffle and is cut into FOUR mutually disjoint sets:
 
-GENDER (E3, --category Gender_identity): woman and man are OPPOSITE POLES on
-the SAME Gender_identity rows -- their usable pools are (near-)identical, so
-per-target eval/heldout splits drawn independently would overlap almost
-completely. Instead the SHARED pool (rows usable for BOTH targets) gets ONE
-seed-42 shuffle and is cut into FOUR mutually disjoint 400-row sets:
+    [0:400)     eval(pole0)    -> data/bbq_items/_sweep400_<pole0>.jsonl
+    [400:800)   heldout(pole0) -> keys in multirace/items_manifest_<axis>.json
+    [800:1200)  eval(pole1)    -> data/bbq_items/_sweep400_<pole1>.jsonl
+    [1200:1600) heldout(pole1) -> keys in multirace/items_manifest_<axis>.json
 
-    [0:400)     eval(woman)    -> data/bbq_items/_sweep400_woman.jsonl
-    [400:800)   heldout(woman) -> keys in multirace/items_manifest_gender.json
-    [800:1200)  eval(man)      -> data/bbq_items/_sweep400_man.jsonl
-    [1200:1600) heldout(man)   -> keys in multirace/items_manifest_gender.json
+Shared usable rows: gender 2,396, SES 3,432, Age 1,840 (all >= 1,600). The
+race exclusions do not apply (different category). Gender tag sets are STRICT
+(no trans_/nontrans_ compounds); 'young' matches BBQ's 'nonOld' tag (see
+targets.py).
 
-(2,396 shared usable rows >= 1,600.) The race experiment's exclusion keys do
-NOT apply (different BBQ category); manifest schema matches
-items_manifest.json plus "cross_target_disjoint": true. STRICT gender tag
-sets exclude the trans_/nontrans_ compounds (see targets.py).
-
-SES / AGE (E9, --category SES / --category Age): the SAME pair-axis situation
-as gender -- every ambiguous row of the category carries BOTH poles plus an
-unknown option, so the two poles' pools are identical and the split is the
-SAME gender-style 4-way mutually disjoint cut (ONE seed-42 shuffle):
-    SES  (3,432 shared rows >= 1,600):  lowses / highses
-        -> data/bbq_items/_sweep400_{lowses,highses}.jsonl
-           + multirace/items_manifest_ses.json
-    Age  (1,840 shared rows >= 1,600, tight but fits):  old / young
-        -> data/bbq_items/_sweep400_{old,young}.jsonl
-           + multirace/items_manifest_age.json
-No prior experiment touches these caches, so exclusions == {} (like gender).
-The 'young' target tag-matches BBQ's 'nonOld' tag (see targets.py). The
-gender path is UNCHANGED (byte-identical items + manifest): the shared
-pair-axis code below is main_gender generalized by category, same logic.
-
-INTERSECTIONAL TARGET (E6, --target-set intersectional): fblack (Black women,
-the single compound tag f-black) lives on the SAME Race_ethnicity cache as
-the Black experiment, so the SAME exclusions apply (seed-42 eval keys UNION
-_sweep400.jsonl keys). Only 712 usable rows survive them (952 raw - 240
-excluded), so the split is a DOCUMENTED DEVIATION from the 400/400 standard:
-eval 400 + heldout 312 (= ALL remaining rows), recorded as "deviation" in
-multirace/items_manifest_fblack.json. The manifest also records the
-composition of the heldout NEGATIVE (contrast) options: the policy ADMITS
-same-race other-gender negatives (m-black), but empirically BBQ
-Race_ethnicity pairs people of the SAME gender, so ALL 312 realized
-negatives are other-race WOMEN and 0 are m-black -- the built direction is
-therefore a GENDER-CONDITIONED RACE direction (f-black vs other-race women),
-NOT a full intersectional contrast (see multirace/build_arrows.py).
-Gender_identity is a DIFFERENT category/cache:
-(example_id, question_index) keys are only meaningful within a category, so
-no key collision with the gender manifests is possible and no gender
-exclusion is needed (it would be dead code).
+INTERSECTIONAL (--target-set intersectional): fblack (single compound tag
+f-black) lives on the Race_ethnicity cache, so the race exclusions apply.
+712 usable rows remain, so the split is eval 400 + heldout 312 (= ALL
+remaining rows), recorded as "deviation" in multirace/items_manifest_fblack.json.
+The manifest also records the composition of the heldout negative options:
+the policy admits m-black negatives, but BBQ Race_ethnicity pairs people of
+the same gender, so all 312 realized negatives are other-race women (see
+multirace/build_arrows.py).
 
 CPU-only, offline (BBQ cache already on disk).
-Run:            python multirace/make_items.py                  # race, unchanged
+Run:            python multirace/make_items.py                  # race
                 python multirace/make_items.py --category Gender_identity
-                python multirace/make_items.py --target-set intersectional  # E6
-                python multirace/make_items.py --category SES   # E9
-                python multirace/make_items.py --category Age   # E9
+                python multirace/make_items.py --category SES
+                python multirace/make_items.py --category Age
+                python multirace/make_items.py --target-set intersectional
 Offline check:  python multirace/make_items.py --selftest
 """
 import argparse
@@ -95,9 +65,8 @@ from targets import (TARGET_TAGS, NEW_TARGETS, GENDER_TARGETS,  # noqa: E402
                      TARGET_CATEGORY, target_idx_of, unk_idx_of)
 
 
-# Reuse the LLaDA arrow builder's exclusion helpers VERBATIM. Loaded by absolute
-# path (same pattern as dream/build_arrows.py) because multirace/build_arrows.py
-# shares its basename.
+# Reuse the LLaDA arrow builder's exclusion helpers. Loaded by file path
+# because multirace/build_arrows.py shares its basename.
 def load_llada_builder():
     path = os.path.join(ROOT, "steering", "build_arrows.py")
     spec = importlib.util.spec_from_file_location("llada_build_arrows", path)
@@ -120,9 +89,8 @@ MIN_USABLE = 800
 N_GENDER_SET = 400          # each of the 4 disjoint pair-axis sets
 MIN_GENDER_POOL = 4 * N_GENDER_SET
 
-# Pair-axis registry (E3 gender, E9 SES/Age): categories whose two poles live
-# on the SAME rows, requiring the 4-way mutually disjoint split. The log tag
-# keeps gender's original "[items-gender]" prefix byte-identical.
+# Pair-axis registry (gender, SES, Age): categories whose two poles live on
+# the SAME rows, requiring the 4-way mutually disjoint split.
 PAIR_AXES = {
     "Gender_identity": {"targets": GENDER_TARGETS, "manifest": MANIFEST_GENDER,
                         "log": "items-gender"},
@@ -131,8 +99,8 @@ PAIR_AXES = {
     "Age":             {"targets": AGE_TARGETS, "manifest": MANIFEST_AGE,
                         "log": "items-age"},
 }
-# E6 fblack: DOCUMENTED DEVIATION -- 712 usable after exclusions, so heldout
-# is ALL 312 remaining rows, not the standard 400 (asserted exactly below).
+# fblack: 712 usable after exclusions, so heldout is ALL 312 remaining rows,
+# not the standard 400 (asserted exactly below).
 N_FBLACK_HELDOUT = 312
 
 
@@ -198,9 +166,8 @@ def split_gender_pool(shared_rows, seed=SEED, n=N_GENDER_SET):
 
 
 def main_pair_axis(category):
-    """Shared pair-axis item builder (E3 gender = the original main_gender,
-    generalized by category; E9 SES/Age). Same logic, same manifest schema --
-    the gender output stays byte-identical."""
+    """Shared pair-axis item builder (gender, SES, Age): 4-way disjoint split
+    of the shared pool, one manifest per category."""
     ax = PAIR_AXES[category]
     t0, t1 = ax["targets"]
     log, manifest_path = ax["log"], ax["manifest"]
@@ -260,7 +227,7 @@ def main_pair_axis(category):
 
 
 def main_gender():
-    """Back-compat entry point: the E3 gender build, now via main_pair_axis."""
+    """Gender item build (via main_pair_axis)."""
     main_pair_axis("Gender_identity")
 
 
@@ -277,10 +244,8 @@ def negative_tag_of(row, target):
 def negative_composition(rows, target, contrast_tag="m-black"):
     """Tally the negative-option tags over `rows`. Returns
     {"by_tag": {...}, contrast_tag (as key): n, "other": n} -- recorded in the
-    manifest so the paper can state how often the fblack direction contrasts
-    against the same-race other gender (m-black) vs another race
-    (empirically: never vs always -- the direction is gender-conditioned
-    race, f-black vs other-race women)."""
+    manifest: how often the fblack direction contrasts against the same-race
+    other gender (m-black) vs another race (on BBQ: never vs always)."""
     by_tag = {}
     for r in rows:
         tag = negative_tag_of(r, target)
@@ -292,9 +257,8 @@ def negative_composition(rows, target, contrast_tag="m-black"):
 
 
 def main_fblack():
-    """E6: fblack items. Same category/cache as the Black experiment ->
-    the SAME exclusions apply (unlike gender: Gender_identity is a different
-    cache, keys are per-category, no collision possible, no exclusion added)."""
+    """fblack items. Same category/cache as the Black experiment, so the same
+    exclusions apply (keys are per-category; gender needs no exclusion)."""
     lb = load_llada_builder()
     full = lb.load_full_race()
     seed_keys = lb.eval_race_keys()
@@ -310,7 +274,7 @@ def main_fblack():
     ev, held = split_items(usable)
     ev_keys = {row_key(r) for r in ev}
     held_keys = {row_key(r) for r in held}
-    # DOCUMENTED DEVIATION: exactly 400 eval + 312 heldout (= ALL remaining).
+    # Exactly 400 eval + 312 heldout (= ALL remaining).
     assert len(ev) == len(ev_keys) == N_EVAL, f"eval {len(ev)} != {N_EVAL}"
     assert len(held) == len(held_keys) == N_FBLACK_HELDOUT, \
         f"heldout {len(held)} != {N_FBLACK_HELDOUT} -- cache/exclusions drifted"
@@ -363,8 +327,7 @@ def main_fblack():
                 "eval_file": os.path.relpath(out, ROOT),  # ROOT-relative (portable)
                 # Negative = FIRST non-fblack non-unknown option; the policy
                 # ADMITS m-black (Black men), but BBQ pairs same-gender
-                # people, so realized m-black is 0 -- see direction_note and
-                # build_arrows.py module doc.
+                # people, so realized m-black is 0 -- see direction_note.
                 "heldout_negative_composition": neg,
                 "direction_note": direction_note,
                 "heldout_keys": sorted([list(k) for k in held_keys]),
@@ -488,7 +451,7 @@ def _selftest():
           len(ev4) == 400 and len(held4) == 350
           and {row_key(r) for r in ev4}.isdisjoint({row_key(r) for r in held4}))
 
-    # --- E3 gender: strict selection + 4-way disjoint split --------------- #
+    # --- gender: strict selection + 4-way disjoint split --------------- #
     gfull = [
         _mk_row(10, "q1", "ambig",    ["F", "M", "unknown"]),         # keep both
         _mk_row(11, "q2", "ambig",    ["man", "Woman", "unknown"]),   # keep both
@@ -520,7 +483,7 @@ def _selftest():
           [row_key(r) for r in ev_w2] == [row_key(r) for r in ev_w]
           and [row_key(r) for r in held_m2] == [row_key(r) for r in held_m])
 
-    # --- E9 SES/Age: pair-axis selection + 4-way disjoint split ----------- #
+    # --- SES/Age: pair-axis selection + 4-way disjoint split ----------- #
     check("PAIR_AXES registers gender + SES + Age",
           set(PAIR_AXES) == {"Gender_identity", "SES", "Age"}
           and PAIR_AXES["SES"]["targets"] == ("lowses", "highses")
@@ -566,7 +529,7 @@ def _selftest():
           [row_key(r) for r in ev_o2] == [row_key(r) for r in ev_o]
           and [row_key(r) for r in held_y2] == [row_key(r) for r in held_y])
 
-    # --- E6 fblack: selection, negative composition, 400/312 split -------- #
+    # --- fblack: selection, negative composition, 400/312 split -------- #
     ffull = [
         _mk_row(20, "q1", "ambig",    ["F-Black", "M-White", "unknown"]),  # keep
         _mk_row(21, "q2", "ambig",    ["m-black", "f-black", "unknown"]),  # keep (neg = m-black!)
@@ -604,13 +567,13 @@ if __name__ == "__main__":
     ap.add_argument("--category", default="Race_ethnicity",
                     choices=["Race_ethnicity", "Gender_identity", "SES", "Age"],
                     help="Race_ethnicity (default, byte-identical to the "
-                         "original behavior), Gender_identity (E3), or the E9 "
+                         "original behavior), Gender_identity, or the "
                          "pair axes SES / Age")
     ap.add_argument("--target-set", default="race",
                     choices=["race", "intersectional"],
-                    help="Race_ethnicity only: 'race' = the four round-2 "
+                    help="Race_ethnicity only: 'race' = the four "
                          "targets (default, byte-identical) or "
-                         "'intersectional' = E6 fblack (400 eval / 312 heldout)")
+                         "'intersectional' = fblack (400 eval / 312 heldout)")
     args = ap.parse_args()
     if args.selftest:
         sys.exit(0 if _selftest() else 1)

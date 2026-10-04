@@ -1,5 +1,12 @@
 #!/usr/bin/env python
-"""Compute the preregistered label-free SocialStigmaQA effort-match alpha."""
+"""Compute the preregistered label-free SocialStigmaQA effort-match alpha.
+
+The alpha is the pooled mean PI controller output over the first 32 live
+denoising steps of the decode_pi64 runs (no labels used).
+
+Usage:
+    python socialstigma/compute_effort_match.py [--print-alpha]
+"""
 from __future__ import annotations
 
 import argparse

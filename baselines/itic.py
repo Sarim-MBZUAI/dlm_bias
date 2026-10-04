@@ -1,53 +1,31 @@
 #!/usr/bin/env python
-"""baselines/itic.py -- ITI-C: Inference-Time Intervention (constant variant).
+"""ITI-C baseline: Inference-Time Intervention, constant variant (Li et al.,
+2023, "Inference-Time Intervention: Eliciting Truthful Answers from a Language
+Model", NeurIPS 2023, arXiv:2306.03341).  Implemented from the paper.
 
-Faithful port of Inference-Time Intervention (ITI), Li et al. 2023,
-"Inference-Time Intervention: Eliciting Truthful Answers from a Language Model"
-(NeurIPS 2023, arXiv:2306.03341).  THERE IS NO AcT REFERENCE CODE for ITI -- it
-is a separate method from the Apple "Activation Transport" tree the other 7
-baseline files port; this module is built directly from the paper.  Citations
-below are to the paper's sections/equations (arXiv:2306.03341v6).
+  * Attention is written head-wise, x_{l+1} = x_l + sum_h P_h^l Att_h^l(...)
+    (paper Eq. 1), so each head contributes a d_head-dim activation.
+  * For every head fit a linear probe on its activation to predict the label
+    (here target vs. non-target answer) and select the top-K heads by probe
+    validation accuracy.
+  * At inference shift each selected head by a constant amount (paper Eq. 2):
+        x_h <- x_h + alpha * sigma_h * theta_h
+    theta_h is the unit mass-mean-shift direction (mean_pos - mean_neg,
+    oriented toward the target, so positive alpha injects toward it) and
+    sigma_h the std of the head activations projected onto theta_h.
 
-ITI in one paragraph (paper Sec. 3, "Inference-Time Intervention"):
-  * Attention is written head-wise: the layer-l attention output is
-        x_{l+1} = x_l + sum_h  P_h^l  Att_h^l(...)                  (paper Eq. 1)
-    so each head contributes a d_head-dimensional activation (the pre-projection
-    per-head output) into the residual stream via its slice of the output
-    projection.
-  * For every head h, fit a linear probe on that head's d_head activation to
-    predict the target label (truthful vs. not; HERE: Black vs. non-Black), and
-    record its VALIDATION ACCURACY.  Select the TOP-K heads by validation
-    accuracy (paper Sec. 3: "we select the top K heads ... ranked by the linear
-    probing accuracy on the validation set").
-  * At inference, for each selected head shift its activation along a truth-/
-    concept-direction theta_h by a CONSTANT amount:
-        x_h  <-  x_h  +  alpha * sigma_h * theta_h                  (paper Eq. 2)
-    theta_h a UNIT direction; sigma_h the standard deviation of the head's
-    activations projected onto theta_h; alpha a single global strength (the
-    "-C" / constant variant: the same alpha, applied at every token/step, no
-    adaptive/per-head magnitude).  The paper's preferred direction is the
-    "mass mean shift" = (mean of positive) - (mean of negative) activations
-    (paper Sec. 3, "we found the mass mean shift ... works best"); we use that,
-    oriented toward Black (Black-minus-other), so positive alpha INJECTS bias
-    toward the "Black" answer -- the task convention (common.py:16-19).
+LLaDA specifics: n_heads=32, d_model=4096, d_head=128.  The per-head activation
+is the INPUT to blocks[k].attn_out (att.transpose(1,2).contiguous().view(B,T,C)
+in LLaDABlock.attention()), so the shift is applied via a forward_pre_hook on
+attn_out, reshaped to (B,T,32,128).  All positions, every denoising step.
 
-LLaDA specifics (verified against LLaDA-8B-Instruct/modeling_llada.py + config):
-  * n_heads=32, d_model=4096  => d_head = 4096/32 = 128  (config.json:19,39).
-  * The per-head activation ITI shifts is the INPUT to blocks[k].attn_out:
-    in LLaDABlock.attention() the per-head outputs are re-assembled
-        att = att.transpose(1,2).contiguous().view(B, T, C)        (modeling_llada.py:721)
-        return self.attn_out(att), present                          (modeling_llada.py:724)
-    so `att` (B,T,4096) reshaped to (B,T,32,128) is exactly {x_h}, and attn_out
-    is the output projection P^l.  We therefore steer the INPUT of attn_out via
-    a forward_pre_hook -- the faithful place for ITI's per-head shift (the same
-    submodule calib.py:22-27 pools for granularity 'attn_head').
-  * The hook fires once per denoising step over ALL positions, bidirectional
-    (LLaDA masked diffusion; common.py:20-23).  No "last"-token mode.
+Defaults: K=48 heads, alpha=15.  --tiebreak margin breaks val_acc ties by the
+standardized head margin (see head_margin).
 
-CLI:
-    python -m baselines.itic --selftest              # offline math, NO GPU
-    python -m baselines.itic --fit                   # NEEDS GPU (do NOT run here)
-    python -m baselines.itic --run --topk 48 --alpha 15   # NEEDS GPU
+Usage:
+    python baselines/itic.py --selftest                   # offline, no GPU
+    python baselines/itic.py --fit                        # GPU
+    python baselines/itic.py --run --topk 48 --alpha 15   # GPU
 """
 import argparse
 import os
@@ -56,8 +34,8 @@ import sys
 import numpy as np
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51 and
-# every existing baseline file).  ROOT holds model/arrows/data.
+# Harness import (same convention as steering/pid_steer.py).  ROOT holds
+# model/arrows/data.
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -78,8 +56,8 @@ from common import (  # noqa: E402
     N_HEADS,            # 32
     D_HEAD,             # 128
     H_MODEL,            # 4096
-    SUPPORTED_TARGETS,  # E8: ("black","woman","man")
-    target_suffix,      # E8: '' for black (round-1 paths), '_<t>' otherwise
+    SUPPORTED_TARGETS,
+    target_suffix,      # '' for black, '_<t>' otherwise
 )
 import calib  # noqa: E402  (collect_activations('attn_head'))
 
@@ -95,8 +73,7 @@ RESULTS_DIR = os.path.join(ROOT, "results", "itic")
 
 
 def probes_path_for(target):
-    """cache/itic_probes.pt for black (round-1 path, unchanged);
-    cache/itic_probes_<target>.pt otherwise."""
+    """cache/itic_probes.pt for black; cache/itic_probes_<target>.pt otherwise."""
     return os.path.join(CACHE_DIR, f"itic_probes{target_suffix(target)}.pt")
 
 
@@ -185,12 +162,11 @@ def head_margin(Xh, y):
 
 def fit(model=None, tok=None, cap=calib.CAP, save=True, out_path=None,
         target="black"):
-    """FIT stage (NEEDS A GPU -- do NOT execute in the offline harness).
+    """FIT stage (needs a GPU).
 
     1. calib.collect_activations('attn_head', target=...) -> pooled per-(layer)
        activation of width 4096 for 2*n_items labelled target/other calib
-       responses (black default = round-1 heldout; woman/man = the E3 gender
-       manifest heldout).
+       responses.
     2. For every (layer, head), slice out the head's d_head=128 activation and
        run _fit_one_head -> (val_acc, theta_unit, sigma).
     3. Save cache/itic_probes[_<target>].pt with:
@@ -255,8 +231,8 @@ def select_topk(val_acc, K, margin=None):
     exactly min(K, N_LAYERS*N_HEADS) True entries (the highest-accuracy heads).
 
     Ties in val_acc are broken
-      * by flattened index (torch.topk order) when margin is None -- the
-        legacy behaviour every BBQ run used; or
+      * by flattened index (torch.topk order) when margin is None (default,
+        used for BBQ); or
       * by descending `margin` (N_LAYERS, N_HEADS; see head_margin) when it is
         given, i.e. lexicographic (val_acc desc, margin desc, index asc).
     """
@@ -288,7 +264,7 @@ def build_injection(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, probes=None,
         alpha * sigma_h * theta_unit_h     (d_head vector)
     placed in that head's slice; non-selected heads get zero.
 
-    tiebreak: "index" (legacy; torch.topk order) or "margin" (requires
+    tiebreak: "index" (default; torch.topk order) or "margin" (requires
     probes["margin"]; see select_topk / head_margin).
 
     Returns a dict:
@@ -346,9 +322,8 @@ def attach_fn(model, injection):
     selected head.  Built via common.make_pre_edit_hook so the shared fire
     counter increments and run_baseline's >0 assertion holds.
 
-    NOTE: this is the ONLY baseline that hooks a SUB-MODULE (attn_out) rather
-    than the block output -- the per-head activation only exists as attn_out's
-    input (modeling_llada.py:721-724)."""
+    The per-head activation only exists as attn_out's input, hence the
+    sub-module pre-hook rather than a block-output hook."""
     delta_heads = injection["delta_heads"]
     handles = []
     for k in injection["layers"]:
@@ -363,8 +338,8 @@ def run(K=DEFAULT_TOPK, alpha=DEFAULT_ALPHA, out_dir=RESULTS_DIR, tag=None,
         items_path=None, target="black", tiebreak="index"):
     """RUN stage (NEEDS A GPU).  Build the top-K injection and evaluate on the
     400-item BBQ sweep via the shared run_baseline loop.  target selects the
-    per-head probe fit (cache/itic_probes[_<target>].pt) AND the eval
-    classification (black default = round-1 behavior).  tiebreak="margin"
+    per-head probe fit (cache/itic_probes[_<target>].pt) and the eval
+    classification.  tiebreak="margin"
     breaks val_acc ties by standardized head margin (see select_topk)."""
     inj = build_injection(K=K, alpha=alpha, probes=probes, target=target,
                           tiebreak=tiebreak)
@@ -400,8 +375,8 @@ def _selftest():
 
     check("n_heads*d_head == d_model (4096)", N_HEADS * D_HEAD == H_MODEL)
 
-    # E8 target-parameterized fit-artifact paths.
-    check("probes_path_for('black') == PROBES_PATH (round-1 regression)",
+    # target-parameterized fit-artifact paths.
+    check("probes_path_for('black') == PROBES_PATH (regression)",
           probes_path_for("black") == PROBES_PATH)
     check("probes_path_for gender -> cache/itic_probes_<t>.pt",
           probes_path_for("woman").endswith("cache/itic_probes_woman.pt")
@@ -482,7 +457,7 @@ def _selftest():
     check("_fit_one_head theta is unit", abs(float(th.norm()) - 1.0) < 1e-5)
     check("_fit_one_head sigma > 0", sg > 0)
 
-    # (f) tie-breaking.  With all val_acc tied, legacy selection is the first
+    # (f) tie-breaking.  With all val_acc tied, index selection is the first
     # K flattened indices; margin selection is the K largest margins.
     va_tied = torch.ones(N_LAYERS, N_HEADS)
     mg = torch.rand(N_LAYERS, N_HEADS)
@@ -542,8 +517,8 @@ def main():
                     help=f"constant injection strength (default {DEFAULT_ALPHA})")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--target", choices=SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender calib fit + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender calib fit + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

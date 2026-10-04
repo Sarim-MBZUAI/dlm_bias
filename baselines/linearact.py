@@ -1,60 +1,35 @@
 #!/usr/bin/env python
-"""baselines/linearact.py -- Linear-AcT (Rodriguez et al., "Activation Transport")
-per-neuron 1-D Optimal-Transport steering, ported to our LLaDA-8B-Instruct BBQ
-bias-INJECTION harness at NATIVE (per-neuron) granularity, hooked at the
-MLP-HIDDEN units (the 12288-d gated activation, INPUT to each block's ff_out).
+"""Linear-AcT baseline (Rodriguez et al., 2025, "Controlling Language and
+Diffusion Models by Transporting Activations"): per-neuron 1-D
+Optimal-Transport steering at the 12288-d MLP-hidden units of LLaDA.
 
-WHAT THIS IS (faithfulness map to the Apple AcT reference tree under
-.../pid-steering/Mean-AcT/act):
+Two variants of a per-neuron 1-D OT map fitted on labelled (target vs other)
+MLP-hidden activations, with the target as OT destination:
+  gaussian   closed-form map between per-neuron Gaussians
+                 z_ot = (sig_dst/sig_src) * (z - mu_src) + mu_dst
+             (AcT GaussianOTHook; directions.gaussian_ot).
+  empirical  the learnable Linear-AcT map: per neuron, sort source and
+             destination samples (1-D OT pairing, solve_ot_1d) and fit a
+             closed-form least-squares affine beta*z + bias (AcT LinearProj /
+             LearnableOTHook; directions.empirical_ot_fit).
 
-  Two variants of a per-neuron 1-D OT map fitted on labelled (Black vs other)
-  MLP-hidden activations, with "Black" as the OT DESTINATION so the map pushes
-  toward the Black answer (positive strength => stronger injection):
+Both are affine per neuron.  The AcT strength knob interpolates against the
+identity, z_final = s*(beta*z + bias) + (1-s)*z, i.e. beta_eff = s*beta + (1-s),
+bias_eff = s*bias; s=1 is full transport, s>1 extrapolates.  AcT's default
+quantiles_src="q_all" makes the pool mask all-ones, so every unit is
+transported.
 
-    (i)  gaussian  -- assumes each neuron is Gaussian; transports N(mu_src,sig_src)
-         -> N(mu_dst,sig_dst) with the closed-form affine map
-             z_ot = (sig_dst/sig_src) * (z - mu_src) + mu_dst
-         This is GaussianOTHook.forward (transport.py:261) and is produced here
-         via directions.gaussian_ot(mu1=src, sig1=src, mu2=dst, sig2=dst).
+Hook site: the gated MLP activation x = act(ff_proj(x)) * up_proj(x) is the
+INPUT to ff_out (no module outputs it), so the affine map is applied by
+common.affine_pre_hook on blocks[k].ff_out -- the same units that
+calib.collect_activations('mlp_hidden') captures.  Default: all 32 layers,
+all positions, every denoising step.
 
-    (ii) empirical -- the LEARNABLE Linear-AcT map: per neuron, sort the source
-         and destination samples (1-D OT pairing, ot_maps.py:solve_ot_1d:9-21)
-         and fit a closed-form least-squares affine beta*z+bias
-         (LinearProj.optimize, archs.py:30-54; driven by LearnableOTHook.fit,
-         transport.py:693-721).  Produced here via directions.empirical_ot_fit.
-
-  Both variants are affine per neuron:  z -> beta*z + bias.  The AcT strength
-  knob interpolates/extrapolates against the identity (transport.py:264 and 756):
-             z_final = strength * (beta*z + bias) + (1 - strength) * z
-  which is ITSELF affine with
-             beta_eff = strength*beta + (1 - strength),  bias_eff = strength*bias.
-  strength=1 => full transport; strength=0 => identity; strength>1 EXTRAPOLATES
-  beyond the destination (stronger injection).  We fold strength into
-  (beta_eff, bias_eff) and apply once per denoising step at every position.
-
-  Quantile pool-mask: AcT's default quantiles_src="q_all" == [-1e6, 1e6]
-  (transport.py:220-221, 731-732) makes pool_mask all-ones (no filtering); we
-  follow that default, so every unit is transported.
-
-GRANULARITY / HOOK SITE (max faithfulness, user's choice = MLP-hidden):
-  In LLaDA's fused MLP  x = act(ff_proj(x)) * up_proj(x); x = ff_out(x)
-  (modeling_llada.py:924-930) there is NO module whose OUTPUT is the 12288-d
-  gated activation -- it is exactly the INPUT to ff_out.  AcT hooks a module
-  whose OUTPUT is the target activation; the faithful equivalent here is a
-  forward_PRE hook on ff_out (edits input[0]).  So the affine map is applied via
-  common.affine_pre_hook on blocks[k].ff_out (NOT affine_hook, which would edit
-  ff_out's 4096-d output and mismatch the 12288-d per-neuron stats).  This is the
-  exact activation calib.collect_activations('mlp_hidden') captures (calib.py:187),
-  so fit and apply use the same units.  Default: ALL 32 layers.
-
-INTERVENTION POSITION: ALL tokens, bidirectional (LLaDA masked-diffusion; the
-hook fires once per denoising step over every position -- there is no "last").
-
-CLI:
-  python -m baselines.linearact --selftest                      # offline, no GPU
-  python -m baselines.linearact --fit                           # NEEDS GPU (do NOT run here)
-  python -m baselines.linearact --run --variant gaussian  --strength 2.0   # NEEDS GPU
-  python -m baselines.linearact --run --variant empirical --strength 2.0   # NEEDS GPU
+Usage:
+  python baselines/linearact.py --selftest                                  # offline
+  python baselines/linearact.py --fit                                       # GPU
+  python baselines/linearact.py --run --variant gaussian  --strength 2.0    # GPU
+  python baselines/linearact.py --run --variant empirical --strength 2.0    # GPU
 """
 import argparse
 import os
@@ -62,7 +37,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -81,7 +56,7 @@ from common import (  # noqa: E402
     run_baseline,
 )
 
-WHERE = "mlp_hidden"          # user chose max-faithfulness MLP-hidden units
+WHERE = "mlp_hidden"          # per-neuron MLP-hidden units
 VARIANTS = ("gaussian", "empirical")
 STATS_PATH = os.path.join(CACHE_DIR, "linearact_stats.pt")
 RESULTS_DIR = os.path.join(ROOT, "results", "linearact")
@@ -89,8 +64,8 @@ EPS = 1e-4                    # matches directions.gaussian_ot / transport.std_e
 
 
 def stats_path_for(target):
-    """cache/linearact_stats.pt for black (round-1 path, unchanged);
-    cache/linearact_stats_<target>.pt otherwise."""
+    """cache/linearact_stats.pt for black; cache/linearact_stats_<target>.pt
+    otherwise."""
     return os.path.join(CACHE_DIR,
                         f"linearact_stats{common.target_suffix(target)}.pt")
 
@@ -104,10 +79,10 @@ def fit_stats_from_blob(blob):
 
     blob: {'acts': (2n, L, feat) float, 'labels': (2n,) with 1=Black, 0=other, ...}
     Black is the DESTINATION (label==1), other is the SOURCE (label==0), so both
-    maps push toward Black (matches the injection convention; directions.py:14).
+    maps push toward Black (the injection convention in directions.py).
 
     Returns a stats dict (see fit()).  Gaussian stats are the per-neuron
-    (mean,std) of each class (transport.GaussianOTHook.fit:189-192 form, but with
+    (mean,std) of each class (transport.GaussianOTHook.fit form, but with
     src=other/dst=Black to inject).  Empirical stats are the per-neuron
     (beta,bias) from directions.empirical_ot_fit (sorted 1-D OT + closed-form LS).
     """
@@ -149,10 +124,8 @@ def fit(cap=calib.CAP, model=None, tok=None, out_path=None, target="black"):
     """Collect target-vs-other MLP-hidden activations and fit both OT variants.
 
     Calls calib.collect_activations('mlp_hidden', target=...) (target=label 1 =>
-    OT DESTINATION; black default = the round-1 Black heldout, gender = the E3
-    manifest heldout), fits gaussian + empirical per-neuron maps for all 32
-    layers, and caches cache/linearact_stats[_<target>].pt.  NEEDS A GPU + the
-    model -- do NOT run here."""
+    OT destination), fits gaussian + empirical per-neuron maps for all 32
+    layers, and caches cache/linearact_stats[_<target>].pt.  Needs a GPU."""
     out_path = out_path or stats_path_for(target)
     blob = calib.collect_activations(WHERE, model=model, tok=tok, cap=cap,
                                      save=True, target=target)
@@ -172,10 +145,10 @@ def load_stats(path=None, target="black"):
 # --------------------------------------------------------------------------- #
 # Build the per-layer effective affine (beta_eff, bias_eff) for a variant.     #
 # gaussian: beta = sig_dst/sig_src, bias = mu_dst - beta*mu_src  (== the map    #
-#           directions.gaussian_ot returns, transport.py:261).                 #
+#           directions.gaussian_ot returns, transport.py).                 #
 # empirical: (beta,bias) straight from the fitted LS affine.                    #
 # strength folds in via  beta_eff = s*beta + (1-s),  bias_eff = s*bias          #
-# (transport.py:264/756).                                                       #
+# (transport.py).                                                       #
 # --------------------------------------------------------------------------- #
 def build_injection(variant, strength=1.0, stats=None, layers=None):
     """Return (beta_eff, bias_eff, layers): per-selected-layer affine params.
@@ -191,10 +164,9 @@ def build_injection(variant, strength=1.0, stats=None, layers=None):
 
     if variant == "gaussian":
         g = stats["gaussian"]
-        # FAITHFUL to AcT (transport.py:203-210,270): low-variance neurons in
-        # EITHER class are left at IDENTITY, not transported. Clamping sig_src
-        # instead (old bug) let near-dead source neurons get beta=sig_dst/1e-4
-        # ~1e4 and explosively over-inject. Mask them to beta=1, bias=0.
+        # As in AcT (transport.py std_eps mask): low-variance neurons in either
+        # class are left at identity (beta=1, bias=0), not transported; this
+        # avoids beta=sig_dst/eps blow-ups on near-dead source neurons.
         ss, sd = g["sig_src"], g["sig_dst"]
         valid = (ss > EPS) & (sd > EPS)
         ratio = torch.where(valid, sd / ss.clamp(min=EPS), torch.ones_like(ss))
@@ -244,8 +216,8 @@ def run(variant="empirical", strength=1.0, out_dir=RESULTS_DIR, tag=None,
     Writes out_dir/cond_<tag>.json (+ _samples.jsonl); default tag encodes the
     strength (<variant>_s<strength>) so sweeps at different strengths don't
     overwrite each other.  target selects the fitted OT stats
-    (cache/linearact_stats[_<target>].pt) AND the eval classification (black
-    default = round-1 behavior).  NEEDS A GPU."""
+    (cache/linearact_stats[_<target>].pt) and the eval classification.
+    Needs a GPU."""
     assert variant in VARIANTS, f"variant must be one of {VARIANTS}"
     tag = tag or f"{variant}_s{strength:g}"
     stats = load_stats(target=target)
@@ -346,8 +318,8 @@ def _selftest():
           and torch.allclose(r[0], be2[0] * xin + bi2[0], atol=1e-5))
     check("affine_pre_hook bumps fire counter", common.get_fire_count() == 1)
 
-    # E8 target-parameterized fit-artifact paths.
-    check("stats_path_for('black') == STATS_PATH (round-1 regression)",
+    # target-parameterized fit-artifact paths.
+    check("stats_path_for('black') == STATS_PATH (regression)",
           stats_path_for("black") == STATS_PATH)
     check("stats_path_for gender -> cache/linearact_stats_<t>.pt",
           stats_path_for("woman").endswith("cache/linearact_stats_woman.pt")
@@ -378,8 +350,8 @@ def main():
     ap.add_argument("--cap", type=int, default=calib.CAP)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender calib fit + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender calib fit + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

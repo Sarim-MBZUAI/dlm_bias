@@ -1,58 +1,41 @@
 #!/usr/bin/env python
 """multirace/build_arrows.py -- per-target "prefer <target> option" arrows r(k)
-for LLaDA-8B-Instruct.  Port of steering/build_arrows.py parameterized by
---target in {white, asian, latino, arab} + the E3 gender targets {woman, man}
-+ the E9 pair-axis targets {lowses, highses, old, young}
-(black = existing steering/arrows.pt, NOT rebuilt here).
+for LLaDA-8B-Instruct.
+
+Generalizes steering/build_arrows.py to --target in the race targets
+{white, asian, latino, arab}, the intersectional target fblack, and the
+pair-axis targets {woman, man, lowses, highses, old, young}. The black arrows
+are steering/arrows.pt and are not rebuilt here.
 
 For every transformer block k = 0..31, the answer-text-anchored diff-in-means:
 
     r(k) = mean_items( h_target(k) - h_other(k) )
 
 where h_*(k) is the block-k residual, masked-mean over the answer-text token
-span of a single clean forward on  chat_prompt + answer_text  (identical
-pooling to steering/build_arrows.py).
+span of a single clean forward on  chat_prompt + answer_text  (same pooling
+as steering/build_arrows.py).
 
-ITEMS: the target's HELDOUT keys from the category's manifest (written by
-make_items.py, seed 42) -- the manifest is the single source of truth, nothing
-is recomputed here.
+Items are the target's HELDOUT keys from the category manifest written by
+make_items.py (seed 42); nothing is recomputed here.
   * race targets: multirace/items_manifest.json; heldout is disjoint from the
-    target's own _sweep400_<target>.jsonl eval items and the Black
-    experiment's seed-42 / sweep400 keys.
-  * gender targets (E3): multirace/items_manifest_gender.json over
-    data/bbq_cache/Gender_identity.jsonl; the four sets eval/heldout x
-    woman/man are MUTUALLY disjoint (cross_target_disjoint). The negative
-    option of a gender pair is the other-gendered person (non-target,
-    non-unknown), same rule as race.
-  * SES targets (E9): multirace/items_manifest_ses.json over
-    data/bbq_cache/SES.jsonl; same cross_target_disjoint 4-way split as
-    gender (lowses/highses). The negative is the other SES pole.
-  * Age targets (E9): multirace/items_manifest_age.json over
-    data/bbq_cache/Age.jsonl; same 4-way split (old/young). The negative is
-    the other age pole; note the 'young' target tag-matches BBQ's 'nonOld'
-    tag (see targets.py).
-  * fblack (E6, intersectional target group -- but see below: the realized
-    direction is gender-conditioned race): multirace/items_manifest_fblack.json over
-    the Race_ethnicity cache (heldout = 312, a documented deviation -- see
-    make_items.py). NEGATIVE-OPTION POLICY: the negative is ANY non-fblack,
-    non-unknown option, INCLUDING m-black (a Black man) -- for a clean
-    intersectional direction the contrast must isolate the intersection
-    (Black x woman) rather than race alone, so same-race other-gender
-    negatives are deliberately admitted. Empirically BBQ Race_ethnicity
-    pairs people of the SAME gender, so the realized composition is
-    other-race WOMEN (0 m-black in the 312 heldout rows; recorded per tag in
-    the manifest's heldout_negative_composition and in the saved .pt
-    metadata) -- the direction is effectively "Black woman vs other-race
-    woman", which the paper should state when discussing E6.
+    target's own eval items and from the Black experiment's eval keys.
+  * pair-axis targets (gender / SES / Age): items_manifest_{gender,ses,age}.json;
+    the four sets eval/heldout x pole are mutually disjoint. The negative is
+    the other pole. 'young' matches BBQ's 'nonOld' tag (see targets.py).
+  * fblack: items_manifest_fblack.json over the Race_ethnicity cache
+    (heldout = 312, all remaining rows; see make_items.py). The negative is
+    any non-fblack, non-unknown option, which admits m-black. BBQ
+    Race_ethnicity pairs people of the same gender, so the realized negatives
+    are other-race women (0 m-black; recorded in the manifest and the saved
+    .pt), i.e. the direction is "Black woman vs other-race woman".
 
-REUSE: steering/build_arrows.py's load_full_race is imported by absolute path
-(importlib, same pattern as dream/build_arrows.py -- this file shares its
-basename); pooling/hook code mirrors it line-for-line via eval/bbq_eval.py.
+steering/build_arrows.py's load_full_race is imported by file path (this file
+shares its basename); pooling/hook code follows it via eval/bbq_eval.py.
 
-Saves RAW (32,4096) r -> multirace/arrows_<target>.pt (+ metadata; gitignored).
+Saves RAW (32,4096) r -> multirace/arrows_<target>.pt (+ metadata).
 
-Run on ONE GPU:  CUDA_VISIBLE_DEVICES=3 python multirace/build_arrows.py --target asian
-Offline check:   python multirace/build_arrows.py --selftest
+Run:           python multirace/build_arrows.py --target asian
+Offline check: python multirace/build_arrows.py --selftest
 """
 import argparse
 import importlib.util
@@ -81,7 +64,7 @@ MODEL_PATH = os.path.join(ROOT, "LLaDA-8B-Instruct")
 N_LAYERS = 32
 DEVICE = "cuda"
 
-# category -> pair-axis manifest (E3 gender, E9 SES/Age; race handled below).
+# category -> pair-axis manifest (gender, SES, Age; race handled below).
 _CATEGORY_MANIFEST = {"Gender_identity": MANIFEST_GENDER,
                       "SES": MANIFEST_SES, "Age": MANIFEST_AGE}
 
@@ -208,9 +191,8 @@ def main(target):
                   f"_seed{mani['seed']}_cross_target_disjoint")
     else:
         source = f"multirace_manifest_heldout_seed{mani['seed']}_disjoint_black_seed42_and_sweep400"
-    # Composition of the realized negatives (paper-facing for fblack: how many
-    # contrasts are m-black vs other-race -- see module doc), recomputed from
-    # the triples actually used, for every target.
+    # Composition of the realized negatives (for fblack: how many contrasts
+    # are m-black vs other-race), recomputed from the triples actually used.
     neg_comp = negative_composition([row for row, _, _ in heldout], target)
 
     torch.save({
@@ -224,7 +206,7 @@ def main(target):
         "method": "anchored_caa_text_all_layers",
         "source": source,
         "negative_composition": neg_comp,
-        "manifest": manifest_path_for(target),
+        "manifest": os.path.relpath(manifest_path_for(target), ROOT).replace(os.sep, "/"),
     }, out_pt)
     print(f"[build:{target}] negative composition: {neg_comp}", flush=True)
     print(f"[build:{target}] SAVED -> {out_pt}", flush=True)
@@ -233,8 +215,7 @@ def main(target):
 
 
 # --------------------------------------------------------------------------- #
-# Offline self-test: manifest -> triples resolution (no GPU, real manifests:   #
-# race unchanged + gender).                                                    #
+# Offline self-test: manifest -> triples resolution (no GPU, real manifests).  #
 # --------------------------------------------------------------------------- #
 def _selftest():
     ok = True
@@ -252,8 +233,7 @@ def _selftest():
         check(f"{target}: heldout resolves ({len(triples)} triples)",
               len(triples) == tinfo["n_heldout"])
         keys = {row_key(r) for r, _, _ in triples}
-        # eval_file is ROOT-relative in portable manifests; join() is a no-op
-        # for legacy absolute paths.
+        # eval_file is ROOT-relative; join() is a no-op for absolute paths.
         with open(os.path.join(ROOT, tinfo["eval_file"])) as f:
             ev_keys = {row_key(json.loads(l)) for l in f if l.strip()}
         check(f"{target}: heldout disjoint from eval file", keys.isdisjoint(ev_keys))
@@ -265,7 +245,7 @@ def _selftest():
             for r, t, o in triples)
         check(f"{target}: positive=target tag, negative=non-target non-unknown", tag_ok)
 
-    # --- E3 gender manifest: same checks + 4-way cross-target disjointness -- #
+    # --- gender manifest: same checks + 4-way cross-target disjointness ---- #
     gsets = {}
     for target in GENDER_TARGETS:
         triples, mani = heldout_from_manifest(target)
@@ -295,7 +275,7 @@ def _selftest():
           all(gsets[a].isdisjoint(gsets[b])
               for i, a in enumerate(names) for b in names[i + 1:]))
 
-    # --- E9 SES/Age manifests: same 4-way cross-target disjointness -------- #
+    # --- SES/Age manifests: same 4-way cross-target disjointness ----------- #
     for axis_name, axis_targets in (("ses", SES_TARGETS), ("age", AGE_TARGETS)):
         xsets = {}
         for target in axis_targets:
@@ -327,7 +307,7 @@ def _selftest():
               all(xsets[a].isdisjoint(xsets[b])
                   for i, a in enumerate(names) for b in names[i + 1:]))
 
-    # --- E6 fblack manifest: race exclusions DO apply; negatives policy ---- #
+    # --- fblack manifest: race exclusions DO apply; negatives policy ------- #
     triples, mani = heldout_from_manifest("fblack")
     tinfo = mani["targets"]["fblack"]
     check("fblack: heldout resolves (312 triples, documented deviation)",
@@ -350,7 +330,7 @@ def _selftest():
     check("fblack: negatives never f-black, never unknown",
           all(str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()
               not in {"f-black", "unknown"} for r, _, o in triples))
-    # composition recomputed from triples == manifest record (paper-facing).
+    # composition recomputed from triples == manifest record.
     comp = {}
     for r, _, o in triples:
         tag = str(bbq_eval.get_answer_info(r, o)[-1]).strip().lower()

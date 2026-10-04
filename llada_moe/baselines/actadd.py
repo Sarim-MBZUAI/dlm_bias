@@ -1,25 +1,21 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/actadd.py -- ActAdd (Turner et al. 2023) on
-LLaDA-MoE-7B-A1B-Instruct.  Port of dream/baselines/actadd.py.
+"""ActAdd (Turner et al. 2023) on LLaDA-MoE-7B-A1B-Instruct.
 
-ActAdd = a steering vector from a SINGLE contrast prompt-PAIR (one Black minus
-one other) at ONE layer, scaled by a coefficient and ADDED to the residual
-stream.  The n=1, single-layer, purely-additive special case of the
-diff-in-means / CAA family.
+A steering vector from a single contrast pair (one Black minus one other answer)
+at one layer, scaled and added to the residual stream:
 
-    r_actadd[k] = h_black[k] - h_other[k]      (ONE held-out item, not the n mean)
-    steer(h)    = h + alpha * unit(r_actadd[layer])          at a single block
+    r_actadd[k] = h_black[k] - h_other[k]              (one held-out item)
+    steer(h)    = h + alpha * unit(r_actadd[layer])    at a single block
 
-Defining property vs CAA: n=1 contrast pair, NOT the n=400 dataset mean
-(llada_moe/arrows.pt).  We deliberately do NOT auto-substitute arrows.pt: if the
-fit artifact is missing, build_injection RAISES (that would be CAA, not ActAdd).
-NATIVE granularity = residual at ONE block (2048-d), model.layers[layer]
-OUTPUT[0] via common_lladamoe.add_vec_hook, all positions, every diffusion step.
+Unlike CAA it uses n=1 pair, not the dataset mean in llada_moe/arrows.pt;
+build_injection raises if the fitted direction is missing rather than
+substituting arrows.pt. Applied at model.layers[layer] output, all positions,
+every diffusion step.
 
-CLI:
-    python llada_moe/baselines/actadd.py --selftest                  # offline
-    python llada_moe/baselines/actadd.py --fit                       # NEEDS GPU
-    python llada_moe/baselines/actadd.py --run --alpha 8 --layer 8   # NEEDS GPU
+Usage:
+    python llada_moe/baselines/actadd.py --selftest
+    python llada_moe/baselines/actadd.py --fit                       # GPU
+    python llada_moe/baselines/actadd.py --run --alpha 8 --layer 8   # GPU
 """
 import argparse
 import os

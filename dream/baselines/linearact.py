@@ -26,10 +26,10 @@ calib.collect_activations('mlp_hidden') captures.  Default: ALL 28 layers, all
 positions, every diffusion step.
 
 CLI:
-  python dream/baselines/linearact.py --selftest                              # offline
-  CUDA_VISIBLE_DEVICES=4 python dream/baselines/linearact.py --fit             # NEEDS GPU
-  CUDA_VISIBLE_DEVICES=4 python dream/baselines/linearact.py --run --variant gaussian  --strength 2.0
-  CUDA_VISIBLE_DEVICES=4 python dream/baselines/linearact.py --run --variant empirical --strength 2.0
+  python dream/baselines/linearact.py --selftest  # offline
+  python dream/baselines/linearact.py --fit  # NEEDS GPU
+  python dream/baselines/linearact.py --run --variant gaussian  --strength 2.0
+  python dream/baselines/linearact.py --run --variant empirical --strength 2.0
 """
 import argparse
 import os

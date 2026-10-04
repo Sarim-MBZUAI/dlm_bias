@@ -1,52 +1,44 @@
 #!/usr/bin/env python
-"""multirace/targets.py -- shared registry for multi-target steering targets.
+"""multirace/targets.py -- shared registry of steering targets.
 
 Generalizes the Black-referent setup (steering/pid_steer.py) to five race
-targets plus two gender targets (E3). Tags come from BBQ answer_info group
+targets, the intersectional target fblack, and the pair-axis targets
+woman/man, lowses/highses, old/young. Tags come from BBQ answer_info group
 tags, matched WHOLE and lowercase (compound tags like "f-black" or "trans_f"
 are literal tags, NOT split).
 
-GENDER (BBQ Gender_identity, E3): STRICT tag sets --
+GENDER (BBQ Gender_identity): STRICT tag sets --
     woman = {f, woman, girl}    man = {m, man, boy}
 The trans/nontrans compound tags (trans_f, trans_m, nontrans_f, nontrans_m)
 and the bare trans/nontrans tags are DELIBERATELY EXCLUDED from both sets:
 steering toward/away from trans-identified options is a dual-use hazard we do
-not touch, so those rows simply never match a gender target.
+not touch, so those rows never match a gender target.
 
-SES (BBQ SES, E9): lowses = {lowses}, highses = {highses}. The raw
-answer_info tags are 'lowSES'/'highSES'; matching is lowercase whole-tag, so
-the canonical registry forms are lowercase. Every ambiguous SES row carries
-BOTH poles plus unknown (same-rows situation as gender), so eval/heldout of
-the two poles must come from ONE shuffle of the shared pool, cut into four
-mutually disjoint sets (see make_items.py).
+SES (BBQ SES): lowses = {lowses}, highses = {highses} (raw tags
+'lowSES'/'highSES', matched lowercase). Every ambiguous SES row carries BOTH
+poles plus unknown, so the two poles' eval/heldout sets come from ONE shuffle
+of the shared pool, cut into four mutually disjoint sets (see make_items.py).
 
-AGE (BBQ Age, E9): old = {old}, young = {nonold}. The BBQ tag for the
-younger person is literally 'nonOld' -- the target is NAMED 'young' for
-readability but TAG-MATCHES 'nonold' (lowercase whole-tag; note whole-tag
-matching is what keeps 'nonold' from ever matching the 'old' target even
-though 'old' is a substring). Same both-poles-per-row situation as SES.
+AGE (BBQ Age): old = {old}, young = {nonold}. The BBQ tag for the younger
+person is 'nonOld'; the target is named 'young' for readability. Whole-tag
+matching keeps 'nonold' from matching the 'old' target. Same both-poles-per-row
+situation as SES.
 
-INTERSECTIONAL TARGET (BBQ Race_ethnicity, E6): fblack = {f-black} -- Black
-WOMEN specifically, via the single compound tag, matched whole. Note fblack
-is a semantic SUBSET of black (BLACK_TAGS contains "f-black"), so an f-black
-row matches BOTH the fblack and the black target -- expected and relied upon
-for the fblack-vs-coarse-black comparison. CAVEAT: the target GROUP is
-intersectional, but the built steering DIRECTION is not a full
-intersectional contrast -- BBQ Race_ethnicity pairs same-gender people, so
-all realized heldout negatives are other-race women (0 m-black): a
-GENDER-CONDITIONED RACE direction, f-black vs other-race women (see
-build_arrows.py). The mirror target m-black is NOT built: only 378 usable
-rows survive the Black-experiment exclusions, too few for the 400-eval
-protocol.
+INTERSECTIONAL (BBQ Race_ethnicity): fblack = {f-black} -- Black women, via
+the single compound tag. fblack is a SUBSET of black (BLACK_TAGS contains
+"f-black"), so an f-black row matches both targets. BBQ Race_ethnicity pairs
+same-gender people, so all realized heldout negatives are other-race women:
+the built direction is f-black vs other-race women (see build_arrows.py). The
+mirror target m-black is not built (only 378 usable rows after exclusions).
 
 Exports
     TARGET_TAGS            dict target -> frozenset of lowercase group tags
     TARGET_CATEGORY        dict target -> BBQ category (cache file stem)
-    NEW_TARGETS            race targets built in round 2 (black excluded)
+    NEW_TARGETS            race targets built here (black excluded)
     GENDER_TARGETS         ("woman", "man")
-    INTERSECTIONAL_TARGETS ("fblack",)  E6
-    SES_TARGETS            ("lowses", "highses")  E9
-    AGE_TARGETS            ("old", "young")       E9 (young tag-matches 'nonold')
+    INTERSECTIONAL_TARGETS ("fblack",)
+    SES_TARGETS            ("lowses", "highses")
+    AGE_TARGETS            ("old", "young")  (young tag-matches 'nonold')
     target_idx_of(row, t)  index of the FIRST option whose tag is in
                            TARGET_TAGS[t], else None (mirrors
                            pid_steer.black_idx_of, via bbq_eval.get_answer_info)
@@ -69,15 +61,15 @@ TARGET_TAGS = {
     "asian":  frozenset({"asian", "f-asian", "m-asian"}),
     "latino": frozenset({"latino", "hispanic", "f-latino", "m-latino"}),
     "arab":   frozenset({"arab", "middle eastern", "f-arab", "m-arab"}),
-    # E3 gender targets (STRICT: no trans_/nontrans_ compounds -- see module doc).
+    # gender targets (STRICT: no trans_/nontrans_ compounds -- see module doc).
     "woman":  frozenset({"f", "woman", "girl"}),
     "man":    frozenset({"m", "man", "boy"}),
-    # E6 intersectional target: Black women only (subset of black -- see doc).
+    # intersectional target: Black women only (subset of black -- see doc).
     "fblack": frozenset({"f-black"}),
-    # E9 SES poles (BBQ SES; raw tags lowSES/highSES, matched lowercase whole).
+    # SES poles (BBQ SES; raw tags lowSES/highSES, matched lowercase whole).
     "lowses":  frozenset({"lowses"}),
     "highses": frozenset({"highses"}),
-    # E9 Age poles (BBQ Age). 'young' is a READABILITY NAME: the BBQ tag for
+    # Age poles (BBQ Age). 'young' is a READABILITY NAME: the BBQ tag for
     # the younger person is 'nonOld', so the tag set is {nonold} (lowercase
     # whole-tag -- 'nonold' never matches the 'old' target despite the
     # substring, because tags are compared whole, never split).
@@ -85,10 +77,10 @@ TARGET_TAGS = {
     "young": frozenset({"nonold"}),
 }
 NEW_TARGETS = ("white", "asian", "latino", "arab")  # black excluded: already built
-GENDER_TARGETS = ("woman", "man")                   # E3; NOT in NEW_TARGETS (race-only loops)
-INTERSECTIONAL_TARGETS = ("fblack",)                # E6; NOT in NEW_TARGETS
-SES_TARGETS = ("lowses", "highses")                 # E9; NOT in NEW_TARGETS
-AGE_TARGETS = ("old", "young")                      # E9; NOT in NEW_TARGETS
+GENDER_TARGETS = ("woman", "man")                   # NOT in NEW_TARGETS (race-only loops)
+INTERSECTIONAL_TARGETS = ("fblack",)                # NOT in NEW_TARGETS
+SES_TARGETS = ("lowses", "highses")                 # NOT in NEW_TARGETS
+AGE_TARGETS = ("old", "young")                      # NOT in NEW_TARGETS
 
 # BBQ category (= data/bbq_cache/<category>.jsonl stem) each target lives in.
 TARGET_CATEGORY = {
@@ -165,7 +157,7 @@ def _selftest():
     check("count: two white options -> 2",
           target_option_count(_mk_row(["white", "european", "unknown"]), "white") == 2)
 
-    # --- E3 gender targets (STRICT sets) --------------------------------- #
+    # --- gender targets (STRICT sets) ------------------------------------ #
     check("registry has woman/man + categories",
           all(t in TARGET_TAGS and TARGET_CATEGORY[t] == "Gender_identity"
               for t in GENDER_TARGETS)
@@ -194,7 +186,7 @@ def _selftest():
     check("gender tags don't match race targets",
           all(target_idx_of(g2, t) is None for t in NEW_TARGETS + ("black",)))
 
-    # --- E6 intersectional target fblack ---------------------------------- #
+    # --- intersectional target fblack ------------------------------------- #
     check("registry has fblack, category Race_ethnicity",
           "fblack" in TARGET_TAGS and TARGET_CATEGORY["fblack"] == "Race_ethnicity"
           and INTERSECTIONAL_TARGETS == ("fblack",))
@@ -206,7 +198,7 @@ def _selftest():
     check("m-black tag does NOT match fblack",
           target_idx_of(_mk_row(["M-Black", "F-White", "unknown"]), "fblack") is None)
     # fblack SUBSET of black: an f-black row ALSO matches the black target
-    # (expected -- BLACK_TAGS contains "f-black"; the E6 comparison relies on it).
+    # (expected -- BLACK_TAGS contains "f-black").
     check("fblack row ALSO matches black (fblack SUBSET of black)",
           target_idx_of(fb, "black") == 0)
     # f-black vs m-black row: fblack picks the woman, black picks the FIRST
@@ -216,7 +208,7 @@ def _selftest():
           target_idx_of(fb2, "fblack") == 1 and target_idx_of(fb2, "black") == 0
           and target_option_count(fb2, "fblack") == 1)
 
-    # --- E9 SES targets ---------------------------------------------------- #
+    # --- SES targets ------------------------------------------------------- #
     check("registry has lowses/highses, category SES",
           all(t in TARGET_TAGS and TARGET_CATEGORY[t] == "SES" for t in SES_TARGETS)
           and SES_TARGETS == ("lowses", "highses"))
@@ -239,7 +231,7 @@ def _selftest():
           all(target_idx_of(s1, t) is None
               for t in NEW_TARGETS + ("black",) + GENDER_TARGETS))
 
-    # --- E9 Age targets (young tag-matches 'nonold') ------------------------ #
+    # --- Age targets (young tag-matches 'nonold') ------------------------ #
     check("registry has old/young, category Age",
           all(t in TARGET_TAGS and TARGET_CATEGORY[t] == "Age" for t in AGE_TARGETS)
           and AGE_TARGETS == ("old", "young"))

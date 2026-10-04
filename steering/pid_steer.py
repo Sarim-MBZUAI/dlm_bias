@@ -16,8 +16,8 @@ alpha is the single intervention-strength knob. Conditions differ ONLY in gains:
     base = no hook           P = (Ki=0,  Kd=0)
     PI   = (Ki=0.05, Kd=0)   PID = (Ki=0.05, Kd=0.02)     [Kp=1.0 throughout]
 
-This is ALL 32 layers -- no single-layer anchor, no noise term, no +0.1 offset
-(those were the reference repo's steady-state-error demo hacks, NOT the method).
+All 32 layers are steered; there is no single-layer anchor, noise term, or
+constant offset.
 
 Porting decisions for the masked-diffusion LM: (a) inject at all 32 blocks on every
 denoising step (the hook fires once per model forward, and generate() calls the
@@ -31,12 +31,12 @@ NORMAL-STEERING-VECTOR BASELINE (--mode normal)
     directions, no I/D terms -- a plain proportional push of a single global vector.
     Contrast with PID (--mode pid) which uses a DIFFERENT per-layer rhat(k) at each block.
 
-MODES
-    --selftest            offline math check (PID Eq.18 + normal-vector props); prints PASS/FAIL.
-    --mode pid  --cond {base,P,PI,PID} --alpha A       PID layer-depth eval.
-    --mode normal --source-layer 14 --alpha A          normal single-vector all-layer baseline.
+Usage:
+    python steering/pid_steer.py --selftest            # offline math check; prints PASS/FAIL
+    python steering/pid_steer.py --mode pid --cond {base,P,PI,PID} --alpha A
+    python steering/pid_steer.py --mode normal --source-layer 14 --alpha A
       [--limit N] [--dummy-arrows] [--tag-prefix STR] [--out-dir DIR]
-Reuses bbq_eval.generate / build_prompt / parse_letter verbatim.
+Reuses bbq_eval.generate / build_prompt / parse_letter unchanged.
 """
 import argparse
 import json
@@ -100,8 +100,7 @@ def build_injection(r, kp, ki, kd, alpha):
 
 def make_tag(prefix, alpha):
     """Output filename stem cond_<tag>: '.'->'p' and '-'->'m' so a negative dose
-    stays filesystem-friendly (alpha=-4 -> '<prefix>_am4', 3.28 -> '<prefix>_a3p28').
-    Identical to the historical stems for all non-negative alphas."""
+    stays filesystem-friendly (alpha=-4 -> '<prefix>_am4', 3.28 -> '<prefix>_a3p28')."""
     return f"{prefix}_a{alpha:g}".replace(".", "p").replace("-", "m")
 
 

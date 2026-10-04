@@ -25,9 +25,9 @@ DREAM specifics (verified in common_dream.py):
   * hook fires once per diffusion step over ALL positions, bidirectional.
 
 CLI:
-    python dream/baselines/itic.py --selftest              # offline math, NO GPU
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/itic.py --fit
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/itic.py --run --topk 48 --alpha 15
+    python dream/baselines/itic.py --selftest  # offline math, NO GPU
+    python dream/baselines/itic.py --fit
+    python dream/baselines/itic.py --run --topk 48 --alpha 15
 """
 import argparse
 import os

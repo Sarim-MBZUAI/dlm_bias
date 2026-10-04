@@ -2,7 +2,7 @@
 """Reconstruct data/bbq_items/black_referent_ambig_eval.jsonl (the 1600-item
 superset that make_seed_rotations.py samples from) deterministically.
 
-Selection (verified to reproduce the committed seed1/2/3 rot0 sets exactly):
+Selection (reproduces the seed1/2/3 rot0 sets exactly):
   BBQ Race_ethnicity cache rows, IN CACHE FILE ORDER, with
     context_condition == "ambig"
     exactly ONE option carrying a Black group tag (pid_steer.BLACK_TAGS)
@@ -13,7 +13,7 @@ exactly 1600. NOTE: the superset deliberately does NOT exclude _sweep400.jsonl
 keys -- the seed draws are independent replications, not disjoint from the
 primary eval set (they ARE disjoint from the direction-build set).
 
-Run: python eval/balanced/make_superset.py
+Usage: python eval/balanced/make_superset.py
 """
 import json
 import os

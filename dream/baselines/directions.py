@@ -3,7 +3,7 @@
 
 The per-neuron OT / AURA math is MODEL-AGNOSTIC (pure numpy/torch), so we do NOT
 reimplement it: gaussian_ot, empirical_ot_fit, auroc_per_neuron (+ _auroc_numpy)
-are IMPORTED verbatim from the LLaDA baselines/directions.py (loaded by absolute
+are IMPORTED verbatim from the LLaDA baselines/directions.py (loaded by file
 path to dodge the basename clash with THIS module).  The ONLY Dream-specific
 override is load_arrows(): it points at dream/arrows.pt and expects the 28-layer,
 3584-wide Dream arrow set instead of LLaDA's (32,4096).
@@ -43,8 +43,8 @@ auroc_per_neuron = _LD.auroc_per_neuron  # per-neuron AUROC + AURA gate
 _auroc_numpy = _LD._auroc_numpy
 
 # Dream arrow set: 28 layers x 3584 (vs LLaDA's steering/arrows.pt 32x4096).
-# Point at THIS tree's dream/arrows.pt (dream/baselines/ -> dream/), so a worktree
-# reads the arrows dream/build_arrows.py wrote in the same tree.
+# Point at dream/arrows.pt next to this package (dream/baselines/ -> dream/), i.e.
+# the arrows dream/build_arrows.py writes.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ARROWS_PATH = os.path.join(os.path.dirname(_HERE), "arrows.pt")
 N_LAYERS = 28

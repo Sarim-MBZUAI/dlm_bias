@@ -1,60 +1,29 @@
 #!/usr/bin/env python
-"""baselines/caa.py -- CAA (Contrastive Activation Addition), NATIVE granularity.
+"""CAA baseline (Contrastive Activation Addition; Rimsky et al., 2024,
+"Steering Llama 2 via Contrastive Activation Addition") at native granularity.
 
-Faithful port of Contrastive Activation Addition (Rimsky, Gurnee, et al.,
-"Steering Llama 2 via Contrastive Activation Addition", 2023) onto our LLaDA-8B
-masked-diffusion BBQ bias-INJECTION harness.
+CAA builds one steering vector as the difference-in-means of residual
+activations on contrastive (positive vs negative) pairs and adds it to the
+residual stream at a single layer, at every token position:
+    steer(h) = h + alpha * unit(mu_pos - mu_neg)          [one layer]
 
-WHAT CAA IS
------------
-CAA builds ONE steering vector as the difference-in-means between the residual
-activations on contrastive (positive vs negative) prompt pairs, then ADDS that
-vector to the residual stream at a SINGLE layer during generation, at every
-token position.  There is no fit/optimization -- the vector IS the mean
-difference.
+The contrastive vector is the diff-in-means arrow set steering/arrows.pt,
+r[k] = mean_i(h_target(i) - h_other(i)) (steering/build_arrows.py), loaded
+per-layer unit-normalized via directions.load_arrows(); positive alpha injects
+toward the target.  The vector is added at blocks[layer] OUTPUT[0] via
+common.add_vec_hook (all positions, every denoising step, bidirectional).
+This is the single-layer, whole-vector special case of the AcT mean map
+z + c*(mu2 - mu1) (act/hooks/transport.py).
 
-  steer(h) = h + alpha * unit(mu_pos - mu_neg)          [applied at one layer]
+CAA needs no per-method fit: its only artifact is the arrow set built by
+steering/build_arrows.py (GPU); --fit only checks that it exists.
 
-MAPPING ONTO THIS REPO
-----------------------
-  * The contrastive vector is EXACTLY our diff-in-means arrow set
-    steering/arrows.pt: r[k] = mean_i(h_black(i) - h_other(i)) at layer k
-    (steering/build_arrows.py:182,190).  "Black" is the positive class, so the
-    arrow already points toward Black -> POSITIVE alpha injects toward Black.
-    We reuse it contamination-safely via directions.load_arrows() (per-layer
-    unit-normalized; directions.py:39-47), never refitting.
-  * NATIVE granularity for CAA is the residual stream at a single block
-    (block-level, H=4096).  We add at model.transformer.blocks[layer] OUTPUT[0]
-    via the shared common.add_vec_hook factory (block tuple contract preserved,
-    all positions, every denoising step, bidirectional -- common.py:133-135).
+Defaults: layer 14, alpha 1.0.
 
-FAITHFULNESS TO THE AcT REFERENCE
----------------------------------
-The mean-shift edit is the same primitive AcT's mean map applies, cited here for
-the shared reference tree:
-  * OnlyMeanHook / GaussianOTHook.forward mean branch adds the mean difference
-    to the activation: z_ot = (z - c*mu1) + c*mu2 = z + c*(mu2-mu1)
-    (act/hooks/transport.py:258-259; the PID mean variant z + c*diff at
-    transport.py:483-484 with diff = mu2 - mu1, transport.py:412).
-  * AcT applies that edit per-neuron across ALL fitted layers; native CAA is the
-    single-layer, whole-vector special case with a unit-normalized direction and
-    a scalar strength (Rimsky et al.).  We keep CAA's single-layer, unit-vector
-    form and expose the layer + strength as CLI knobs.
-  * intervention_position="all" in the AcT hook (transport.py:87) == our
-    all-token, bidirectional application (LLaDA masked diffusion; the hook fires
-    ~steps times per item over every position). There is NO "last"-token mode.
-
-ARTIFACT
---------
-CAA needs no per-method fit: its only artifact is steering/arrows.pt, produced by
-steering/build_arrows.py (NEEDS GPU).  --fit here documents/verifies that
-prerequisite; it does NOT rebuild the arrows.
-
-CLI
----
-    python -m baselines.caa --selftest                 # offline math, no GPU
-    python -m baselines.caa --fit                      # verify arrows.pt exists
-    python -m baselines.caa --run --alpha 4 --layer 14 # eval (NEEDS GPU)
+Usage:
+    python baselines/caa.py --selftest                   # offline, no GPU
+    python baselines/caa.py --fit                        # check arrows.pt exists
+    python baselines/caa.py --run --alpha 4 --layer 14   # GPU
 """
 import argparse
 import os
@@ -62,7 +31,7 @@ import sys
 
 import torch
 
-# Harness import (ROOT = MAIN tree; mirrors steering/pid_steer.py:49-51).
+# Harness import (same convention as steering/pid_steer.py).
 ROOT = os.environ.get("DLM_BIAS_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "eval"))
 sys.path.insert(0, os.path.join(ROOT, "steering"))
@@ -93,10 +62,9 @@ def build_injection(layer=DEFAULT_LAYER, alpha=1.0, arrows=None, target="black")
     """Return the CAA additive vector for one layer:  alpha * unit(r[layer]).
 
     r is the diff-in-means target-minus-other arrow set (steering/arrows.pt for
-    the default target="black"; multirace/arrows_<target>.pt for the E3 gender
-    targets -- same format and sign convention, see directions.load_arrows).
-    directions.load_arrows() already unit-normalizes each layer row
-    (directions.py:39-47), so load_arrows()[layer] == unit(r[layer]); we scale by
+    the default target="black"; multirace/arrows_<target>.pt otherwise --
+    same format and sign convention, see directions.load_arrows).
+    directions.load_arrows() already unit-normalizes each layer row, so load_arrows()[layer] == unit(r[layer]); we scale by
     alpha.  POSITIVE alpha injects toward the target (the arrow points
     target-minus-other).
 
@@ -131,10 +99,10 @@ def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
         model=None, tok=None, target="black", **run_kwargs):
     """Run one CAA condition end-to-end via common.run_baseline.  NEEDS A GPU.
 
-    target="black" (default) is byte-identical to round 1 (arrows.pt direction,
-    black_idx classification, _sweep400.jsonl items when items_path is None).
-    target="woman"/"man" uses multirace/arrows_<target>.pt and classifies
-    against the WOMAN/MAN option (multirace/targets.py registry)."""
+    target="black" (default) uses the arrows.pt direction, black_idx
+    classification and _sweep400.jsonl items when items_path is None.  Other
+    targets use multirace/arrows_<target>.pt and classify against the target
+    option (multirace/targets.py registry)."""
     if tag is None:
         tag = f"caa_L{int(layer)}_a{alpha:g}"
     attach_fn = make_attach_fn(layer=layer, alpha=alpha, target=target)
@@ -169,7 +137,7 @@ def run(alpha=1.0, layer=DEFAULT_LAYER, out_dir=RESULTS_DIR, tag=None,
 # --------------------------------------------------------------------------- #
 def fit(target="black"):
     """CAA has no per-method fit.  Its contrastive vector is steering/arrows.pt
-    (black) or multirace/arrows_<target>.pt (gender), built by the respective
+    (black) or multirace/arrows_<target>.pt, built by the respective
     build_arrows.py (NEEDS GPU).  Report whether it exists."""
     p = directions.arrows_path_for(target)
     builder = ("steering/build_arrows.py" if target == "black"
@@ -303,8 +271,8 @@ def main():
     ap.add_argument("--layer", type=int, default=DEFAULT_LAYER,
                     help=f"single block to steer (default {DEFAULT_LAYER})")
     ap.add_argument("--target", choices=common.SUPPORTED_TARGETS, default="black",
-                    help="steering target (black = round-1 default; woman/man = "
-                         "E3 gender, multirace arrows + classification)")
+                    help="steering target (black = default; woman/man = "
+                         "gender, multirace arrows + classification)")
     ap.add_argument("--items", default=None,
                     help="BBQ items jsonl (e.g. a position-balance rotation "
                          "file); default = the target's own _sweep400 file")

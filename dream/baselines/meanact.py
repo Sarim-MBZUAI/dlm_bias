@@ -13,7 +13,7 @@ Mean-AcT = GaussianOT with onlymean=True (OnlyMeanHook, transport.py:500-524):
 Black is the OT DESTINATION (mu2), the non-Black option the source (mu1), so
 (mu2 - mu1) is exactly the Black-minus-other diff-in-means dream/arrows.pt stores.
 The residual edit at block k is h <- h + vec_k, applied to ALL positions every
-diffusion step.  GAIN=1.2 is the Apple fork's hardcoded onlymean gain, kept verbatim.
+diffusion step.  GAIN=1.2 is the onlymean gain hardcoded in the AcT reference code.
 
 DIRECTION SOURCE (faithfulness knob):
   unit   -> directions.load_arrows()        (per-layer unit-normalized; family default)
@@ -21,9 +21,9 @@ DIRECTION SOURCE (faithfulness knob):
   fitted -> fit(): per-neuron (mu2-mu1) from a calib block cache (OnlyMeanHook.fit twin)
 
 CLI:
-    python dream/baselines/meanact.py --selftest                    # offline
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/meanact.py --fit   # needs calib cache
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/meanact.py --run --strength 2.0
+    python dream/baselines/meanact.py --selftest  # offline
+    python dream/baselines/meanact.py --fit  # needs calib cache
+    python dream/baselines/meanact.py --run --strength 2.0
 """
 import argparse
 import os
@@ -42,7 +42,7 @@ import common_dream as C  # noqa: E402
 import directions        # noqa: E402
 import calib             # noqa: E402  (CACHE_DIR + fit reads a calib cache)
 
-GAIN = 1.2               # Apple fork onlymean magic gain (transport.py:259)
+GAIN = 1.2               # AcT reference onlymean gain
 DEFAULT_OUT = os.path.join(ROOT, "results", "dream", "meanact")
 DIR_CHOICES = ("unit", "raw", "fitted")
 FIT_PATH = os.path.join(calib.CACHE_DIR, "meanact_meandiff_block.pt")
@@ -138,7 +138,7 @@ def _selftest():
         ok &= bool(cond)
         print(f"[selftest-meanact] {name:52s} : {'PASS' if cond else 'FAIL'}")
 
-    check("GAIN is the 1.2 fork magic number", abs(GAIN - 1.2) < 1e-12)
+    check("GAIN is the reference-implementation onlymean gain 1.2", abs(GAIN - 1.2) < 1e-12)
 
     arrows = torch.randn(L, H); s = 2.0
     vec = build_injection(s, arrows=arrows)

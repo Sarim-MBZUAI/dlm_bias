@@ -20,9 +20,9 @@ knobs.  CAA needs no per-method fit: its only artifact is dream/arrows.pt
 (dream/build_arrows.py; NEEDS GPU).  --fit here only verifies that prerequisite.
 
 CLI:
-    python dream/baselines/caa.py --selftest              # offline math, no GPU
-    python dream/baselines/caa.py --fit                   # verify arrows.pt exists
-    CUDA_VISIBLE_DEVICES=4 python dream/baselines/caa.py --run --alpha 4 --layer 14
+    python dream/baselines/caa.py --selftest  # offline math, no GPU
+    python dream/baselines/caa.py --fit  # verify arrows.pt exists
+    python dream/baselines/caa.py --run --alpha 4 --layer 14
 """
 import argparse
 import os
@@ -95,7 +95,7 @@ def fit():
               f"n_items={blob.get('n_items')} -- CAA needs no further fit.")
     else:
         print(f"[caa:fit] MISSING {p}. Build it (NEEDS GPU):\n"
-              f"    CUDA_VISIBLE_DEVICES=4 python dream/build_arrows.py")
+              f"    python dream/build_arrows.py")
 
 
 def _selftest():

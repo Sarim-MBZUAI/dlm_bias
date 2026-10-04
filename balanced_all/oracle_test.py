@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""balanced_all/oracle_test.py -- OFFLINE correctness proof for ANY rotation set.
+"""Offline correctness check for any position-balanced rotation set.
 
 Generalization of eval/balanced/oracle_test.py (Black-only) to any target in
 multirace/targets.py (target_idx_of / unk_idx_of are reused by import; the tag
@@ -31,9 +31,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _load_targets():
-    """Registry from the RUNNING tree first (code travels with the checkout;
-    DLM_BIAS_ROOT only redirects data), then the ROOT tree (common_eval.py's
-    lookup pattern)."""
+    """Load multirace/targets.py from this checkout first (DLM_BIAS_ROOT only
+    redirects data), then from ROOT."""
     for p in (os.path.join(REPO, "multirace", "targets.py"),
               os.path.join(ROOT, "multirace", "targets.py")):
         if os.path.exists(p):

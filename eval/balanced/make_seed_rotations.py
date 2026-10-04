@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 """Draw 3 independent 400-item eval samples (seeds 1/2/3) from the 1600 superset,
 each disjoint from the direction-build items, and write its 3 cyclic rotations.
-Rotation logic identical to make_rotations.py (oracle-validated)."""
+Rotation logic identical to make_rotations.py (oracle-validated).
+
+Usage: python eval/balanced/make_seed_rotations.py
+"""
 import json
 import os
 import random

@@ -1,11 +1,10 @@
 #!/usr/bin/env python
-"""FAITHFUL decode-space PID controller for LLaDA-8B-Instruct.
+"""Decode-space PID controller for LLaDA-8B-Instruct.
 
-CONTROL AXIS = the DIFFUSION DENOISING STEP  t = 0 .. STEPS-1  (NOT layer depth).
-
-Per item we run the LLaDA block-diffusion sampler (verbatim commit logic reused
-from bbq_eval.generate). At every denoising step t we close a loop on the
-decode-space observable p_black(t) and set ONE scalar actuator alpha(t):
+Control axis = the diffusion denoising step t = 0 .. STEPS-1 (not layer depth).
+Per item we run the LLaDA block-diffusion sampler (commit logic reused from
+bbq_eval.generate). At every step t we close a loop on the decode-space
+observable p_black(t) and set one scalar actuator alpha(t):
 
     p_black(t) = P(target letter token) at the answer position (gen pos 0)
                  (plain + space variant summed; selected target letter)
@@ -14,58 +13,44 @@ decode-space observable p_black(t) and set ONE scalar actuator alpha(t):
     d(t)       = e(t) - e(t-1)                          (derivative, e(-1):=0)
     alpha(t)   = clamp( Kp*e(t) + Ki*Iacc + Kd*d(t), alpha_min, alpha_max )
 
-SUPPRESSION (E5): --setpoint and --amin generalize the loop. Defaults
-(s*=0.9, amin=0) reproduce the original push-only attack bit-for-bit. Setting
-s* low (e.g. 0.0) and amin<0<=amax lets the SAME feedback law push AWAY from
-the target (negative actuation): e stays negative, alpha clamps in
-[amin, amax], anti-windup freezes at EITHER bound.
+Suppression: with the defaults (s*=0.9, amin=0) the loop only pushes toward the
+target. Setting s* low (e.g. 0.0) and amin<0<=amax lets the same law push away
+from the target; anti-windup then freezes at either bound.
 
-SENSOR CASE (E7): --sensor-case {upper,both}. Default 'upper' reproduces the
-original observable bit-for-bit (P("A")+P(" A"), uppercase ids only -- the
-paper's sensor, which is case-BLIND while the strict parser accepts lowercase
-answers). 'both' (opt-in) extends the summed token set with the tokenizer-
-encoded lowercase variants ("a", " a", ...) so the loop can SEE lowercase wins
-(the arab direction induces them; see analysis/trajectory/FINDINGS.md RQ2).
+Sensor case: --sensor-case upper (default) sums P("A")+P(" A") (uppercase ids
+only). 'both' additionally sums the tokenizer-encoded lowercase variants
+("a", " a", ...), since the strict parser also accepts lowercase answers.
 
-ACTUATOR = ALL 32 TRANSFORMER BLOCKS. The SAME alpha(t)*vhat is broadcast to every
-block's residual output each step (vhat = unit(arrows.pt r[14])). This gives real
-control authority AND makes decode-PID directly comparable to the normal open-loop
-baseline (constant-alpha * the same vhat at all 32 layers): the ONLY difference
-becomes constant alpha (open-loop) vs feedback-modulated alpha(t) (closed-loop).
+Actuator = all 32 transformer blocks. The same alpha(t)*vhat is added to every
+block's residual output each step (vhat = unit(arrows.pt r[14])), so the only
+difference from the open-loop baseline (constant alpha * the same vhat at all
+32 layers) is constant vs feedback-modulated alpha.
 
-ANTI-WINDUP: ON by default (conditional integration -- the integral accumulator is
-frozen on any step whose command saturates at 0 or alpha_max). NOTE: the paper's
-LAYER-space PID had no anti-windup; the decode-space controller adds this standard
-term because the plant carries persistent error. Labelled, not hidden.
+Anti-windup: on by default (conditional integration; the integral is frozen on
+any step whose command saturates). The layer-space PID Steering controller (Nguyen et al.) has
+no anti-windup; it is added here because the plant carries persistent error.
 
-alpha >= 0 at the DEFAULTS: we only ever push TOWARD Black (suppression mode
-needs explicit --amin < 0). Conditions differ ONLY in the gains:
-    base = no controller (clean, alpha == 0 always)
+Conditions differ only in the gains:
+    base = no controller (alpha == 0 always)
     P    = (Ki=0, Kd=0)     PI = (Ki>0, Kd=0)     PID = (Ki>0, Kd>0)
 
-TIMING: a single steered model forward per step. alpha(t) is computed from the most
-recent available measurement p_black; seeded by ONE unsteered probe forward on the
-initial all-masked sequence so alpha(0) reflects a real deficit (not a cold 0). Each
-step's steered forward both (a) commits tokens and (b) yields p_black for the NEXT
-step -- the loop observes the actual steered plant output. Forwards = 1 probe + STEPS.
-No post-commit gating in the primary run (pure PID over all steps); gating is a
-future variant.
+Timing: one steered forward per step. alpha(t) uses the most recent measurement,
+seeded by one unsteered probe forward on the initial all-masked sequence. Each
+steered forward both commits tokens and yields p_black for the next step.
+Forwards = 1 probe + STEPS.
 
-TARGET MAPPING: --target-mapping oracle preserves the historical annotation
-lookup. Experimental 'direction' identifies the target option from visible text
-using three unsteered completed-answer projections onto vhat at layer 14, then
-freezes that letter for generation. All three options are scored. This adds three
-forwards and does not use answer_info, correct-answer labels, or unknown masks.
-Its identification accuracy must be evaluated; it is not assumed to be reliable.
+Target mapping: --target-mapping oracle looks the target option up from BBQ
+answer_info. 'direction' (experimental) picks the target from visible text via
+three unsteered answer-text projections onto vhat at layer 14 and then freezes
+that letter; it adds three forwards and uses no labels. Its identification
+accuracy is reported, not assumed.
 
-Reuses bbq_eval: build_prompt / parse_letter / add_gumbel_noise /
-get_num_transfer_tokens / resolve_module / hidden_from_output / output_with_hidden.
+Requires steering/target_selector.py (score_candidates) next to this file.
 
-MODES
-    --selftest                     offline PID-math + anti-windup check (no GPU).
-    --smoke [--smoke-items N]      GPU smoke; prints alpha(t) trajectory.
-    --cond {base,P,PI,PID} ...     full/limited eval (--limit 0 = all 400).
-GPU RULE: run ONLY with CUDA_VISIBLE_DEVICES=0 or 2.
+Usage:
+    python steering/denoise_pid.py --selftest              # offline PID check (no GPU)
+    python steering/denoise_pid.py --smoke [--smoke-items N]
+    python steering/denoise_pid.py --cond {base,P,PI,PID} [--limit N] [--items FILE]
 """
 import argparse
 import importlib.util
@@ -214,7 +199,7 @@ def letter_token_ids(tok, sensor_case="upper"):
 
     sensor_case="upper" (default = ORIGINAL paper sensor, bit-for-bit):
         plain[L]/space[L] are the single ids of "A" / " A" (uppercase only).
-    sensor_case="both" (E7 case-full sensor, OPT-IN):
+    sensor_case="both" (case-full sensor, opt-in):
         plain[L]/space[L] become id LISTS that additionally contain the
         lowercase variants ("a", " a", ...), encoded via the SAME tokenizer
         call as the uppercase ids (never hardcoded). Duplicate ids (a
@@ -303,7 +288,7 @@ def controlled_generate(model, steerer, controller, prompt, tgt_plain, tgt_space
             p_meas = p_black_from_logits(logits, plen, tgt_plain, tgt_space)
             alpha_traj[t], pblack_traj[t], sat_traj[t] = steerer.alpha, p_meas, sat
 
-            # --- commit (verbatim bbq_eval.generate low-confidence logic) ---
+            # --- commit (same low-confidence logic as bbq_eval.generate) ---
             x0 = torch.argmax(B.add_gumbel_noise(logits, TEMPERATURE), dim=-1)
             p = torch.nn.functional.softmax(logits.to(torch.float64), dim=-1)
             x0_p = torch.gather(p, dim=-1, index=x0.unsqueeze(-1)).squeeze(-1)
@@ -376,7 +361,7 @@ def selftest():
 
     ok_all &= hi_ok and lo_ok and aw_ok and naw_ok and rel_ok
 
-    # ---------------- E5 suppression regime (s* low, amin < 0 <= amax) -------- #
+    # ---------------- suppression regime (s* low, amin < 0 <= amax) ----------- #
     # (a) s*=0, p high -> e negative -> command clamps to the NEGATIVE floor amin.
     AMIN = -6.0
     sup = PID(100.0, 10.0, 0.0, 0.0, 0.0, antiwindup=False, amin=AMIN); sup.reset()
@@ -444,7 +429,7 @@ def selftest():
 
     ok_all &= sup_ok and sup_cf_ok and awlo_ok and nawlo_ok and reg_ok
 
-    # ---------------- E7 case-full sensor (CPU, fake logits, no model) -------- #
+    # ---------------- case-full sensor (CPU, fake logits, no model) ----------- #
     # (a) with a synthetic logits tensor, sensor_case="both" (id lists) must
     # equal the upper-only mass + the lower-only mass.
     g = torch.Generator().manual_seed(0)
@@ -454,12 +439,12 @@ def selftest():
     p_lo = p_black_from_logits(fake, 2, LP, LS)
     p_both = p_black_from_logits(fake, 2, [UP, LP], [US, LS])
     both_ok = abs(p_both - (p_up + p_lo)) < 1e-12
-    print(f"[selftest] E7 sensor both == upper + lower mass "
+    print(f"[selftest] sensor both == upper + lower mass "
           f"({p_both:.6f} vs {p_up + p_lo:.6f}): {'PASS' if both_ok else 'FAIL'}")
     # (b) singleton-list sensor == original scalar sensor, exact float equality
     # (the list path sums the same two softmax terms in the same order).
     single_ok = p_black_from_logits(fake, 2, [UP], [US]) == p_up
-    print(f"[selftest] E7 singleton-list sensor == scalar sensor (exact): "
+    print(f"[selftest] singleton-list sensor == scalar sensor (exact): "
           f"{'PASS' if single_ok else 'FAIL'}")
     ok_all &= both_ok and single_ok
 
@@ -527,7 +512,7 @@ def generate_item(model, tok, steerer, controller, row, steer_on,
             steerer.vhat, source_layer=LAYER)
         ids = torch.tensor(tok(chat)["input_ids"], device=model.device).unsqueeze(0)
     else:
-        # Preserve historical oracle behavior, including its missing-tag A fallback.
+        # Oracle mapping; falls back to option A when no Black tag is present.
         bidx = black_idx_of(row)
         mapping = {"selected_index": bidx if bidx is not None else 0,
                    "candidate_scores": None, "margin": None, "tied_indices": [],
@@ -763,7 +748,7 @@ def main():
     ap.add_argument("--sensor-case", choices=list(SENSOR_CASES), default="upper",
                     help="letter tokens the observable sums over: 'upper' "
                          "(default, ORIGINAL sensor: 'A'/' A' only, bit-for-bit "
-                         "backward compatible) or 'both' (E7: additionally the "
+                         "backward compatible) or 'both' (additionally the "
                          "lowercase variants 'a'/' a', tokenizer-encoded)")
     ap.add_argument("--steps", type=int, default=STEPS,
                     help=f"denoising steps (default {STEPS}); must be a multiple "

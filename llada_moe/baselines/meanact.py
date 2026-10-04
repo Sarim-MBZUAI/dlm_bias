@@ -1,31 +1,22 @@
 #!/usr/bin/env python
-"""llada_moe/baselines/meanact.py -- Mean-AcT (Apple "Activation Transport") on
-LLaDA-MoE-7B-A1B-Instruct.  Port of dream/baselines/meanact.py at NATIVE
-granularity (the full residual stream, per-neuron, at every one of the 16
-transformer blocks).
+"""Mean-AcT (Activation Transport, mean-only variant) on LLaDA-MoE-7B-A1B-Instruct,
+applied to the residual stream of all 16 blocks.
 
-Mean-AcT = GaussianOT with onlymean=True (OnlyMeanHook, transport.py:500-524):
+Gaussian OT with onlymean=True reduces to an additive mean shift:
+    z <- z + strength * GAIN * (mu2 - mu1)
+with Black as the OT destination (mu2), so (mu2 - mu1) is the Black-minus-other
+diff-in-means in llada_moe/arrows.pt. GAIN=1.2 follows the reference
+implementation. Applied at all positions, every diffusion step.
 
-    onlymean branch : z_ot = (z - GAIN*mu1) + GAIN*mu2         (transport.py:259)
-    strength blend  : z_ot = strength*z_ot + (1-strength)*z    (transport.py:264)
-  collapse to a pure additive mean-shift:
-    z  <-  z + strength * GAIN * (mu2 - mu1)
+Direction source:
+  unit    directions.load_arrows()          per-layer unit-normalized (default)
+  raw     directions.load_arrows(raw=True)  raw diff-in-means
+  fitted  fit(): per-neuron (mu2-mu1) from a calib block cache
 
-Black is the OT DESTINATION (mu2), the non-Black option the source (mu1), so
-(mu2 - mu1) is exactly the Black-minus-other diff-in-means llada_moe/arrows.pt
-stores.  The residual edit at block k is h <- h + vec_k, applied to ALL positions
-every diffusion step.  GAIN=1.2 is the Apple fork's hardcoded onlymean gain,
-kept verbatim.
-
-DIRECTION SOURCE (faithfulness knob):
-  unit   -> directions.load_arrows()        (per-layer unit-normalized; family default)
-  raw    -> directions.load_arrows(raw=True) (raw diff-in-means; the literal mu2-mu1)
-  fitted -> fit(): per-neuron (mu2-mu1) from a calib block cache (OnlyMeanHook.fit twin)
-
-CLI:
-    python llada_moe/baselines/meanact.py --selftest                 # offline
-    python llada_moe/baselines/meanact.py --fit                      # needs calib cache
-    python llada_moe/baselines/meanact.py --run --strength 2.0       # NEEDS GPU
+Usage:
+    python llada_moe/baselines/meanact.py --selftest
+    python llada_moe/baselines/meanact.py --fit                  # needs calib cache
+    python llada_moe/baselines/meanact.py --run --strength 2.0   # GPU
 """
 import argparse
 import os
@@ -44,7 +35,7 @@ import common_lladamoe as C  # noqa: E402
 import directions        # noqa: E402
 import calib             # noqa: E402  (CACHE_DIR + fit reads a calib cache)
 
-GAIN = 1.2               # Apple fork onlymean magic gain (transport.py:259)
+GAIN = 1.2               # onlymean gain of the reference implementation
 DEFAULT_OUT = os.path.join(ROOT, "results", "lladamoe", "meanact")
 DIR_CHOICES = ("unit", "raw", "fitted")
 FIT_PATH = os.path.join(calib.CACHE_DIR, "meanact_meandiff_block.pt")
@@ -140,7 +131,7 @@ def _selftest():
         ok &= bool(cond)
         print(f"[selftest-meanact] {name:52s} : {'PASS' if cond else 'FAIL'}")
 
-    check("GAIN is the 1.2 fork magic number", abs(GAIN - 1.2) < 1e-12)
+    check("GAIN is the reference-implementation onlymean gain 1.2", abs(GAIN - 1.2) < 1e-12)
 
     arrows = torch.randn(L, H); s = 2.0
     vec = build_injection(s, arrows=arrows)
