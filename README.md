@@ -2,8 +2,9 @@
 
 Code for the anonymous submission *Noise Out, Bias In*.
 
-> **Warning:** this repository and the paper contain examples of stereotyped and stigmatizing content
-> about demographic groups.
+> [!CAUTION]
+> **Warning: this repository and the paper contain examples of stereotyped and stigmatizing content
+> about demographic groups.**
 
 Masked diffusion language models (dLLMs) re-predict every masked position at each denoising step before
 committing it. An adversary with access to the residual stream can therefore read how likely the model is
