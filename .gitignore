@@ -1,0 +1,23 @@
+# Model checkpoints downloaded by scripts/00_setup.sh into the repository root
+/LLaDA-8B-Instruct/
+/Dream-v0-Instruct-7B/
+/LLaDA-MoE-7B-A1B-Instruct/
+
+# Data built by scripts/00_setup.sh (the 400-item BBQ pool is tracked)
+data/bbq_cache/
+data/bbq_items/*
+!data/bbq_items/_sweep400.jsonl
+data/socialstigma/source/
+data/socialstigma/items/*
+!data/socialstigma/items/PLACEHOLDER.md
+
+# Run outputs and built artifacts
+results/*
+!results/PLACEHOLDER.md
+*.pt
+*/cache/
+
+# Python and secrets
+__pycache__/
+*.pyc
+.env
