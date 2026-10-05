@@ -1,6 +1,12 @@
 # Noise Out, Bias In: Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering
 
-Code for the anonymous submission *Noise Out, Bias In*.
+**Sarim Hashmi\*, Mukul Ranjan\*, Abdelrahman Elsayed, Muhammad Umer Sheikh, Fahad Shamshad, Nils Lukas**
+
+*Mohamed bin Zayed University of Artificial Intelligence (MBZUAI)*
+
+\* Equal contribution
+
+Official code for the paper.
 
 > [!CAUTION]
 > **Warning: this repository and the paper contain examples of stereotyped and stigmatizing content
@@ -151,3 +157,17 @@ Single run of the method:
 python steering/denoise_pid.py --cond PI --items results/balanced/_sweep400_rot0.jsonl --out-dir results/demo
 # defaults: s*=0.9, Kp=3, Ki=0.1, alpha_max=6, 64 steps, gen/block length 32, temperature 0
 ```
+
+## Citation
+
+```bibtex
+@misc{hashmi2026noiseout,
+  title  = {Noise Out, Bias In: Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering},
+  author = {Hashmi, Sarim and Ranjan, Mukul and Elsayed, Abdelrahman and Sheikh, Muhammad Umer and Shamshad, Fahad and Lukas, Nils},
+  year   = {2026}
+}
+```
+
+## Contact
+
+Sarim Hashmi (sarim.hashmi@mbzuai.ac.ae), Mukul Ranjan (mukul.ranjan@mbzuai.ac.ae), Nils Lukas (nils.lukas@mbzuai.ac.ae)
