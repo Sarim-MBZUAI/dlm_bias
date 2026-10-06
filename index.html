@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noise Out, Bias In</title>
+<meta name="description" content="Targeted bias injection in diffusion language models via closed-loop activation steering: a PI controller sets steering strength at every denoising step while the model stays frozen.">
+<meta property="og:title" content="Noise Out, Bias In: Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering">
+<meta property="og:description" content="Closed-loop activation steering of diffusion language models with a decode-time PI controller.">
+<meta property="og:image" content="static/images/fig_overview.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f6f7f9;
+  --fg: #1a1d23;
+  --muted: #5b6270;
+  --border: #e3e6eb;
+  --accent: #1f5fbf;
+  --code-bg: #f1f3f6;
+  --warn-bg: #fdf3e7;
+  --warn-border: #d98a2b;
+  --warn-fg: #7a4a10;
+  --ours: #eaf1fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111318;
+    --bg-alt: #181b22;
+    --fg: #e6e8ec;
+    --muted: #9aa1ad;
+    --border: #2a2f39;
+    --accent: #6ea3ff;
+    --code-bg: #1c2029;
+    --warn-bg: #2a2014;
+    --warn-border: #c98a3b;
+    --warn-fg: #f0c48a;
+    --ours: #17233a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111318;
+  --bg-alt: #181b22;
+  --fg: #e6e8ec;
+  --muted: #9aa1ad;
+  --border: #2a2f39;
+  --accent: #6ea3ff;
+  --code-bg: #1c2029;
+  --warn-bg: #2a2014;
+  --warn-border: #c98a3b;
+  --warn-fg: #f0c48a;
+  --ours: #17233a;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+header.hero { text-align: center; padding: 64px 0 32px; }
+h1 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(1.8rem, 4.5vw, 2.7rem);
+  line-height: 1.2;
+  margin: 0 auto 8px;
+  max-width: 820px;
+  text-wrap: balance;
+}
+.subtitle {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: clamp(1.05rem, 2.4vw, 1.35rem);
+  color: var(--muted);
+  margin: 0 auto 22px; max-width: 760px; text-wrap: balance;
+}
+.authors { font-size: 1.1rem; margin: 0 0 6px; }
+.authors a { white-space: nowrap; margin: 0 8px; }
+.affil { color: var(--muted); margin: 0 0 4px; }
+.note { color: var(--muted); font-size: .9rem; margin: 0 0 24px; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 18px; border-radius: 999px;
+  background: var(--fg); color: var(--bg);
+  font-weight: 500; font-size: .95rem;
+}
+.btn:hover { text-decoration: none; opacity: .85; }
+.btn svg { width: 18px; height: 18px; fill: currentColor; }
+.warn {
+  background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-fg);
+  border-radius: 8px; padding: 12px 16px; margin: 28px auto 0; max-width: 760px; font-size: .95rem;
+}
+section { padding: 36px 0; border-top: 1px solid var(--border); }
+h2 {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 600; font-size: 1.7rem;
+  margin: 0 0 16px; text-align: center;
+}
+h3 { font-size: 1.1rem; margin: 28px 0 8px; }
+p { margin: 0 0 14px; }
+.lead { font-size: 1.08rem; }
+figure { margin: 24px 0; text-align: center; }
+figure img {
+  max-width: 100%; height: auto; border-radius: 8px;
+  background: #fff; border: 1px solid var(--border);
+}
+figcaption { color: var(--muted); font-size: .92rem; margin-top: 10px; text-align: left; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.card { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.card .stat { font-size: 1.5rem; font-weight: 700; color: var(--accent); line-height: 1.2; }
+.card .label { font-weight: 600; margin: 4px 0 6px; }
+.card p { color: var(--muted); font-size: .93rem; margin: 0; }
+ol.steps { padding-left: 20px; }
+ol.steps li { margin-bottom: 10px; }
+.table-scroll { overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { background: var(--bg-alt); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+tr.ours td { background: var(--ours); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.small { color: var(--muted); font-size: .92rem; }
+code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.bib { position: relative; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; overflow-x: auto;
+  font: 13px/1.55 "JetBrains Mono", ui-monospace, monospace; margin: 0;
+}
+.copy {
+  position: absolute; top: 10px; right: 10px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  border-radius: 6px; padding: 4px 10px; font: inherit; font-size: .8rem; cursor: pointer;
+}
+footer { color: var(--muted); font-size: .85rem; text-align: center; padding: 32px 0 48px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <h1>Noise Out, Bias In</h1>
+  <p class="subtitle">Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering</p>
+  <p class="authors">
+    <a href="https://sarim-mbzuai.github.io/">Sarim Hashmi*</a>
+    <a href="https://mukul54.github.io/">Mukul Ranjan*</a>
+    <a href="https://scholar.google.com/citations?user=GCS11JkAAAAJ&amp;hl=en">Abdelrahman Elsayed</a>
+    <a href="https://www.linkedin.com/in/muhammadumersheikh/">Muhammad Umer Sheikh</a>
+    <a href="https://fahadshamshad.com">Fahad Shamshad</a>
+    <a href="https://nilslukas.github.io">Nils Lukas</a>
+  </p>
+  <p class="affil">Mohamed bin Zayed University of Artificial Intelligence (MBZUAI)</p>
+  <p class="note">* Equal contribution</p>
+  <div class="links">
+    <a class="btn" href="https://arxiv.org/pdf/2610.05894">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>Paper
+    </a>
+    <a class="btn" href="https://arxiv.org/abs/2610.05894">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2H4zm0 4h10v2H4zm0 4h16v2H4zm0 4h10v2H4z"/></svg>arXiv
+    </a>
+    <a class="btn" href="https://github.com/Sarim-MBZUAI/dlm_bias">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>Code
+    </a>
+  </div>
+  <div class="warn"><strong>Content warning:</strong> the paper and this page contain examples of stereotyped and stigmatizing content about demographic groups.</div>
+</header>
+
+<main class="wrap">
+
+<section>
+  <figure>
+    <img src="static/images/fig_overview.png" alt="Overview of closed-loop bias injection">
+    <figcaption>Closed-loop bias injection: at each denoising step a PI controller reads the target-answer probability and sets the steering strength for the next step. Weights, prompts and sampler stay unchanged.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Abstract</h2>
+  <p class="lead">Masked diffusion language models (dLLMs) re-predict each masked position at every denoising step before committing a token. This gives an adversary with access to the residual stream an opportunity to <strong>monitor the probability of a chosen answer during generation and adjust an intervention in response</strong>.</p>
+  <p>We study targeted bias injection through closed-loop activation steering. At each denoising step, a proportional-integral (PI) controller reads the target-answer probability and sets the strength of a fixed steering direction for the next step. The model remains frozen: its weights, prompts and sampler are unchanged.</p>
+</section>
+
+<section>
+  <h2>Highlights</h2>
+  <div class="findings">
+    <div class="card">
+      <div class="stat">1.8 → 16.7 pp</div>
+      <div class="label">Targeted bias on BBQ</div>
+      <p>Black-target gap on ambiguous questions for LLaDA-8B-Instruct, more than three times the strongest fixed-strength baseline.</p>
+    </div>
+    <div class="card">
+      <div class="stat">17.6% → 58.1%</div>
+      <div class="label">SocialStigmaQA</div>
+      <p>Rate of selecting stigmatizing answers under Decode PI.</p>
+    </div>
+    <div class="card">
+      <div class="stat">+37.2 pp</div>
+      <div class="label">Other targets</div>
+      <p>Gap increase for Old (+22.5 pp for Arab) with no training, about 40 minutes on one GPU per target.</p>
+    </div>
+    <div class="card">
+      <div class="stat">Feedback matters</div>
+      <div class="label">Beyond constant steering</div>
+      <p>Constant steering matched to the controller’s mean gives a much smaller gap and ~3× the invalid-output rate.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Method</h2>
+  <ol class="steps">
+    <li><strong>Fit a steering direction offline.</strong> Using held-out contrast pairs, compute the mean residual difference at block 14 between answers naming the target group and answers naming the comparator, and normalize it to one unit direction.</li>
+    <li><strong>Control steering strength during decoding.</strong> At each denoising step, compare the target-answer probability with a setpoint. The PI controller uses this error to choose the strength <code>α<sub>t</sub></code> for the next step, adding the fixed direction at every block and position.</li>
+  </ol>
+  <p>Once the answer token commits, later controller commands no longer change it.</p>
+  <figure>
+    <img src="static/images/fig_method.png" alt="Direction fitting and decode-time PI control">
+    <figcaption>Direction fitting and decode-time PI control.</figcaption>
+  </figure>
+  <figure>
+    <img src="static/images/fig_feedback.png" alt="Feedback assigns each example its own steering strength">
+    <figcaption>The controller adapts to each example: it pushes harder when the target answer remains unlikely and eases off as its probability approaches the setpoint.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Results</h2>
+  <p class="small">Tgt., Cmp. and Abst. are target, comparator and abstention rates; Inv. is the invalid-output rate (kept in every denominator). Gap = target − comparator rate; Δg = change in gap vs. the unsteered base, in percentage points.</p>
+
+  <h3>Black-target BBQ</h3>
+  <p class="small">LLaDA-8B-Instruct; 400 items, three answer rotations. Selected rows.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Method</th><th class="num">Tgt. (%)</th><th class="num">Cmp. (%)</th><th class="num">Abst. (%)</th><th class="num">Inv. (%) ↓</th><th class="num">Gap (pp) ↑</th><th class="num">Δg (pp)</th></tr></thead>
+      <tbody>
+        <tr><td>Unsteered base</td><td class="num">12.8</td><td class="num">11.0</td><td class="num">76.3</td><td class="num">0.0</td><td class="num">1.8</td><td class="num">—</td></tr>
+        <tr><td>CAA</td><td class="num">13.7</td><td class="num">10.3</td><td class="num">76.0</td><td class="num">0.0</td><td class="num">3.3</td><td class="num">+1.6</td></tr>
+        <tr><td>ActAdd</td><td class="num">14.1</td><td class="num">10.0</td><td class="num">75.9</td><td class="num">0.0</td><td class="num">4.1</td><td class="num">+2.3</td></tr>
+        <tr><td>Mean-AcT</td><td class="num">21.9</td><td class="num">18.4</td><td class="num">59.4</td><td class="num">0.3</td><td class="num">3.5</td><td class="num">+1.7</td></tr>
+        <tr><td>ITI-C</td><td class="num">18.8</td><td class="num">16.7</td><td class="num">64.6</td><td class="num">0.0</td><td class="num">2.1</td><td class="num">+0.3</td></tr>
+        <tr><td>Open loop, tuned (α = 4)</td><td class="num">34.8</td><td class="num">30.3</td><td class="num">32.6</td><td class="num">2.3</td><td class="num">4.6</td><td class="num">+2.8</td></tr>
+        <tr><td>Open loop, matched to PI mean (α = 3.28)</td><td class="num">22.2</td><td class="num">18.7</td><td class="num">38.3</td><td class="num">20.8</td><td class="num">3.5</td><td class="num">+1.7</td></tr>
+        <tr><td>Static α per item, hindsight</td><td class="num">35.2</td><td class="num">26.8</td><td class="num">24.5</td><td class="num">13.4</td><td class="num">8.4</td><td class="num">+6.7</td></tr>
+        <tr><td>Layer-wise PI</td><td class="num">23.3</td><td class="num">20.2</td><td class="num">56.6</td><td class="num">0.0</td><td class="num">3.1</td><td class="num">+1.3</td></tr>
+        <tr><td>Decode PID (ours)</td><td class="num">29.2</td><td class="num">13.2</td><td class="num">48.9</td><td class="num">8.8</td><td class="num">16.0</td><td class="num">+14.2</td></tr>
+        <tr class="ours"><td>Decode PI (ours)</td><td class="num">30.4</td><td class="num">13.8</td><td class="num">48.1</td><td class="num">7.8</td><td class="num">16.7</td><td class="num">+14.9</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>SocialStigmaQA</h3>
+  <p class="small">LLaDA-8B-Instruct; 518 items, three answer rotations. The unsteered strict-parser gap is −44.3 pp, so an all-invalid row receives Δg = +44.3 pp by construction; read gap changes alongside invalid-output rates.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Method</th><th class="num">Tgt. (%)</th><th class="num">Cmp. (%)</th><th class="num">Inv. (%) ↓</th><th class="num">Δg (pp) ↑</th><th class="num">Δg<sup>sem</sup> (pp) ↑</th></tr></thead>
+      <tbody>
+        <tr><td>Unsteered base</td><td class="num">17.6</td><td class="num">61.9</td><td class="num">0.0</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td>CAA</td><td class="num">21.0</td><td class="num">56.8</td><td class="num">0.0</td><td class="num">+8.6</td><td class="num">+8.6</td></tr>
+        <tr><td>ITI-C</td><td class="num">42.5</td><td class="num">42.9</td><td class="num">0.0</td><td class="num">+44.0</td><td class="num">+44.0</td></tr>
+        <tr><td>Open loop, tuned (α = 4)</td><td class="num">52.4</td><td class="num">34.1</td><td class="num">3.9</td><td class="num">+62.6</td><td class="num">+63.8</td></tr>
+        <tr><td>Layer-wise PI</td><td class="num">35.1</td><td class="num">33.5</td><td class="num">0.0</td><td class="num">+45.9</td><td class="num">+45.9</td></tr>
+        <tr><td>Decode PID (ours)</td><td class="num">55.1</td><td class="num">18.0</td><td class="num">20.1</td><td class="num">+81.5</td><td class="num">+100.6</td></tr>
+        <tr class="ours"><td>Decode PI (ours)</td><td class="num">58.1</td><td class="num">18.6</td><td class="num">17.4</td><td class="num">+83.8</td><td class="num">+99.9</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Other targets and models</h3>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Setting</th><th>Method</th><th class="num">Inv. (%) ↓</th><th class="num">Gap (pp) ↑</th><th class="num">Δg (pp)</th></tr></thead>
+      <tbody>
+        <tr><td>Arab, LLaDA-8B</td><td>Open loop (α = 4)</td><td class="num">0.0</td><td class="num">12.8</td><td class="num">+12.9</td></tr>
+        <tr class="ours"><td></td><td>Decode PI (ours)</td><td class="num">9.7</td><td class="num">22.3</td><td class="num">+22.5</td></tr>
+        <tr><td>Old, LLaDA-8B</td><td>Open loop (α = 4)</td><td class="num">19.0</td><td class="num">25.8</td><td class="num">+31.3</td></tr>
+        <tr class="ours"><td></td><td>Decode PI (ours)</td><td class="num">9.3</td><td class="num">31.8</td><td class="num">+37.2</td></tr>
+        <tr><td>Black, Dream-7B</td><td>ActAdd</td><td class="num">0.0</td><td class="num">6.7</td><td class="num">+3.3</td></tr>
+        <tr class="ours"><td></td><td>Decode PI (ours)</td><td class="num">0.0</td><td class="num">7.5</td><td class="num">+4.2</td></tr>
+        <tr><td>Black, LLaDA-MoE</td><td>CAA (= matched open loop)</td><td class="num">0.0</td><td class="num">25.6</td><td class="num">+22.6</td></tr>
+        <tr class="ours"><td></td><td>Decode PI (ours)</td><td class="num">0.0</td><td class="num">23.3</td><td class="num">+20.3</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small">Decode PI produces the largest gap for Arab, Old and Dream-7B; on LLaDA-MoE, CAA achieves a larger gap. Full tables are in the <a href="https://github.com/Sarim-MBZUAI/dlm_bias#results">repository</a>.</p>
+</section>
+
+<section>
+  <h2>BibTeX</h2>
+  <div class="bib">
+    <button class="copy" type="button" onclick="copyBib(this)">Copy</button>
+<pre id="bibtex">@misc{hashmi2026noiseout,
+  title         = {Noise Out, Bias In: Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering},
+  author        = {Hashmi, Sarim and Ranjan, Mukul and Elsayed, Abdelrahman and Sheikh, Muhammad Umer and Shamshad, Fahad and Lukas, Nils},
+  year          = {2026},
+  eprint        = {2610.05894},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2610.05894}
+}</pre>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  © 2026 the authors · <a href="https://github.com/Sarim-MBZUAI/dlm_bias">Code on GitHub</a>
+</footer>
+
+<script>
+function copyBib(btn) {
+  const text = document.getElementById('bibtex').innerText;
+  const done = () => { btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy', 1500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done).catch(() => {});
+}
+</script>
+</body>
+</html>
