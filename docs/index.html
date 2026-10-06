@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07110f">
+  <meta name="description" content="Noise Out, Bias In studies targeted bias injection in diffusion language models through closed-loop activation steering.">
+  <meta property="og:title" content="Noise Out, Bias In">
+  <meta property="og:description" content="Targeted bias injection in diffusion language models via closed-loop activation steering.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sarim-mbzuai.github.io/dlm_bias/">
+  <meta name="twitter:card" content="summary">
+  <link rel="canonical" href="https://sarim-mbzuai.github.io/dlm_bias/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script>document.documentElement.classList.add('js');</script>
+  <title>Noise Out, Bias In · Closed-Loop Activation Steering</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" id="top">
+    <div class="shell nav-shell">
+      <a class="wordmark" href="#top" aria-label="Noise Out, Bias In — home">
+        <span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>NO/BI <b>26</b></span>
+      </a>
+      <nav class="section-nav" aria-label="Page sections">
+        <a href="#abstract">Abstract</a>
+        <a href="#method">Method</a>
+        <a href="#results">Results</a>
+        <a href="#responsible-use">Scope</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light theme" title="Change colour theme">
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"></path></svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.2A8.7 8.7 0 0 1 8.8 3.5 8.7 8.7 0 1 0 20.5 15.2Z"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" aria-labelledby="paper-title">
+      <div class="hero-copy" data-reveal>
+        <p class="eyebrow"><span>arXiv:2610.05894</span><span>cs.CL</span><span>October 2026</span></p>
+        <h1 id="paper-title">Noise Out,<br><em>Bias In.</em></h1>
+        <p class="paper-subtitle">Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering</p>
+        <p class="hero-summary">A frozen diffusion language model can expose the same answer distribution again and again before a token commits. A simple feedback controller turns that repeated access into a new attack surface.</p>
+
+        <nav class="primary-links" aria-label="Paper resources">
+          <a class="button button-primary" href="https://arxiv.org/pdf/2610.05894" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 2.75h7l4 4v14.5h-11z"></path><path d="M13.5 2.75v4h4M9 12h6M9 15.5h6"></path></svg>
+            Read paper
+          </a>
+          <a class="button button-secondary" href="https://github.com/Sarim-MBZUAI/dlm_bias" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.4a9.8 9.8 0 0 0-3.1 19.1c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.7-1.3-2.2-.3-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.2-.4-1.2.1-2.6 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 4.9 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.6.7.7 1 1.6 1 2.7 0 3.8-2.3 4.6-4.6 4.9.4.3.7.9.7 1.8V21c0 .3.2.6.7.5A9.8 9.8 0 0 0 12 2.4Z"></path></svg>
+            View code
+          </a>
+          <a class="text-link" href="#results">Explore the evidence</a>
+        </nav>
+
+        <div class="authors" role="group" aria-label="Authors">
+          <a href="https://sarim-mbzuai.github.io/" target="_blank" rel="noreferrer">Sarim Hashmi<sup>*</sup></a>
+          <a href="https://mukul54.github.io/" target="_blank" rel="noreferrer">Mukul Ranjan<sup>*</sup></a>
+          <span>Abdelrahman Elsayed</span>
+          <span>Muhammad Umer Sheikh</span>
+          <a href="https://fahadshamshad.github.io/" target="_blank" rel="noreferrer">Fahad Shamshad</a>
+          <a href="https://nilslukas.github.io/" target="_blank" rel="noreferrer">Nils Lukas</a>
+        </div>
+        <p class="affiliation">Mohamed bin Zayed University of Artificial Intelligence · <sup>*</sup>Equal contribution</p>
+      </div>
+
+      <div class="control-visual" data-reveal role="img" aria-label="Illustration of a feedback controller reading target probability and adjusting steering over 64 denoising steps">
+        <div class="visual-topline">
+          <span><i class="status-dot"></i> Feedback active</span>
+          <span>Frozen weights</span>
+        </div>
+        <div class="token-row" aria-hidden="true">
+          <span class="token mask">[M]</span>
+          <span class="flow-line"></span>
+          <span class="token mask">[M]</span>
+          <span class="flow-line"></span>
+          <span class="token target">B</span>
+          <span class="lock">⌑</span>
+        </div>
+        <div class="chart-head">
+          <span>Target probability</span>
+          <strong>p<sub>t</sub></strong>
+        </div>
+        <svg class="telemetry-chart" viewBox="0 0 540 190" role="img" aria-label="Target probability rises over 64 denoising steps toward the controller setpoint">
+          <defs>
+            <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="currentColor" stop-opacity=".24"></stop>
+              <stop offset="1" stop-color="currentColor" stop-opacity="0"></stop>
+            </linearGradient>
+          </defs>
+          <g class="grid">
+            <path d="M32 28H518M32 75H518M32 122H518M32 169H518"></path>
+            <path d="M32 28V169M194 28V169M356 28V169M518 28V169"></path>
+          </g>
+          <path class="setpoint" d="M32 48H518"></path>
+          <text class="setpoint-label" x="40" y="42">setpoint 0.9</text>
+          <path class="chart-area" d="M32 149 C70 143 88 132 116 137 S171 128 194 125 S235 116 260 103 S303 89 326 76 S344 44 366 42 S418 45 450 43 S493 44 518 41 L518 169 L32 169 Z"></path>
+          <path class="chart-line" d="M32 149 C70 143 88 132 116 137 S171 128 194 125 S235 116 260 103 S303 89 326 76 S344 44 366 42 S418 45 450 43 S493 44 518 41"></path>
+          <circle class="chart-end" cx="518" cy="41" r="5"></circle>
+          <text class="axis-label" x="32" y="187">step 1</text>
+          <text class="axis-label" x="481" y="187">step 64</text>
+        </svg>
+        <div class="control-loop" aria-hidden="true">
+          <div><span>01</span><b>READ</b><small>P(target)</small></div>
+          <i></i>
+          <div><span>02</span><b>COMPARE</b><small>s* − p<sub>t−1</sub></small></div>
+          <i></i>
+          <div><span>03</span><b>ACT</b><small>α<sub>t</sub>v̂</small></div>
+        </div>
+        <p class="visual-note">Only pre-commit interventions can change the answer.</p>
+      </div>
+    </section>
+
+    <section class="metrics-band" aria-label="Headline results">
+      <div class="shell metrics-grid">
+        <div class="metric" data-reveal>
+          <span class="metric-index">01 / BBQ</span>
+          <strong><span>1.8</span><i>→</i><span>16.7</span><small>pp</small></strong>
+          <p>Black-target gap, unsteered to Decode PI</p>
+        </div>
+        <div class="metric" data-reveal>
+          <span class="metric-index">02 / SOCIALSTIGMAQA</span>
+          <strong><span>17.6</span><i>→</i><span>58.1</span><small>%</small></strong>
+          <p>Stigmatizing answer selection rate</p>
+        </div>
+        <div class="metric" data-reveal>
+          <span class="metric-index">03 / TARGET TRANSFER</span>
+          <strong><span>+</span><span>37.2</span><small>pp</small></strong>
+          <p>Largest observed gap shift on an additional target</p>
+        </div>
+        <div class="metric metric-accent" data-reveal>
+          <span class="metric-index">04 / FIT COST</span>
+          <strong><span>≈</span><span>40</span><small>min</small></strong>
+          <p>One GPU per target, with no model training</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section shell" id="abstract">
+      <div class="section-kicker" data-reveal><span>01</span><p>What we found</p></div>
+      <div class="abstract-grid">
+        <div data-reveal>
+          <h2>The denoising trajectory is a control channel.</h2>
+          <p class="lede">Autoregressive decoders expose an answer distribution once, at commitment. Masked diffusion language models expose it repeatedly while the answer can still change.</p>
+        </div>
+        <div class="abstract-copy" data-reveal>
+          <p>We study targeted bias injection through closed-loop activation steering. At every denoising step, a proportional-integral controller reads the probability of an adversary-selected answer and adjusts the strength of a fixed steering direction for the next step.</p>
+          <p>The model remains frozen: its weights, prompt, and sampler do not change. On ambiguous BBQ questions and SocialStigmaQA, this feedback attack produces substantially larger targeted shifts than open-loop steering. The result broadens the bias-audit boundary from the model alone to the full inference stack.</p>
+        </div>
+      </div>
+
+      <figure class="paper-figure overview-figure" data-reveal>
+        <div class="figure-label"><span>Figure 1</span><span>Attack overview &amp; feedback gain</span></div>
+        <button class="figure-open" type="button" data-image="assets/fig_overview.png" aria-label="Open overview figure at full size">
+          <img src="assets/fig_overview.png" width="1421" height="518" alt="Closed-loop attack overview: a PI controller reads target probability during repeated masked-token predictions and updates intervention strength; a chart compares feedback against fixed steering across four targets.">
+          <span>View full figure</span>
+        </button>
+        <figcaption>Same model weights, different decoding. Feedback increases the targeted shift across Black, Arab, Old, and SocialStigma settings.</figcaption>
+      </figure>
+    </section>
+
+    <section class="content-section method-section" id="method">
+      <div class="shell">
+        <div class="section-kicker" data-reveal><span>02</span><p>How it works</p></div>
+        <div class="section-heading" data-reveal>
+          <h2>Fit once. Sense every step. Steer before commitment.</h2>
+          <p>A fixed direction supplies what to change. Feedback decides how much, and when.</p>
+        </div>
+
+        <div class="method-steps" data-reveal>
+          <article>
+            <span>01</span>
+            <h3>Fit a direction</h3>
+            <p>Compute the mean residual difference between held-out target and comparator answers at block 14, then normalize it.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Read the model</h3>
+            <p>At each denoising step, observe the probability assigned to the adversary-selected target answer.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Close the loop</h3>
+            <p>The PI controller converts current and accumulated error into the next clipped intervention strength.</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Stop mattering</h3>
+            <p>Once the answer token commits, later commands cannot change it—timing is part of the attack.</p>
+          </article>
+        </div>
+
+        <figure class="paper-figure method-figure" data-reveal>
+          <div class="figure-label"><span>Figure 2</span><span>Direction fitting &amp; decode-time control</span></div>
+          <button class="figure-open" type="button" data-image="assets/fig_method.png" aria-label="Open method figure at full size">
+            <img src="assets/fig_method.png" width="1651" height="1006" loading="lazy" alt="Method diagram showing offline direction fitting, a decode-time PI feedback loop around a frozen diffusion language model, and the fixed-strength control condition.">
+            <span>View full figure</span>
+          </button>
+          <figcaption>Decode PI adds α<sub>t</sub>v̂ at every block and position, with a one-step delay between sensing and intervention.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="content-section shell results-section" id="results">
+      <div class="section-kicker" data-reveal><span>03</span><p>Evidence</p></div>
+      <div class="section-heading results-heading" data-reveal>
+        <h2>Feedback wins by adapting the dose to the example.</h2>
+        <p>Switch datasets to compare the unsteered model, a tuned open-loop attack, and Decode PI. Larger attack metrics are worse for model safety.</p>
+      </div>
+
+      <div class="results-explorer" data-reveal>
+        <div class="result-tabs" role="tablist" aria-label="Results datasets">
+          <button role="tab" id="tab-bbq" aria-controls="panel-bbq" aria-selected="true" tabindex="0" data-result-tab="bbq">BBQ</button>
+          <button role="tab" id="tab-stigma" aria-controls="panel-stigma" aria-selected="false" tabindex="-1" data-result-tab="stigma">SocialStigmaQA</button>
+          <button role="tab" id="tab-transfer" aria-controls="panel-transfer" aria-selected="false" tabindex="-1" data-result-tab="transfer">Other targets</button>
+        </div>
+
+        <section class="result-panel is-active" id="panel-bbq" role="tabpanel" aria-labelledby="tab-bbq" data-result-panel="bbq">
+          <div class="panel-copy">
+            <span class="dataset-label">LLaDA-8B-Instruct · 400 items · 3 rotations</span>
+            <h3>Black-target gap</h3>
+            <p>Decode PI reaches a 16.7-point target–comparator gap—over 3.6× the tuned fixed-strength result.</p>
+            <div class="panel-note"><b>Read with care</b><span>Decode PI invalid outputs: 7.8%. Tuned open loop: 2.3%.</span></div>
+          </div>
+          <div class="bar-chart" role="group" aria-label="Black-target gap comparison in percentage points">
+            <div class="bar-row"><span>Unsteered</span><div><i style="--value: 10.8%"></i></div><b>1.8</b></div>
+            <div class="bar-row"><span>Open loop, tuned</span><div><i style="--value: 27.5%"></i></div><b>4.6</b></div>
+            <div class="bar-row ours"><span>Decode PI</span><div><i style="--value: 100%"></i></div><b>16.7</b></div>
+            <p class="axis-caption">Target − comparator gap (pp)</p>
+          </div>
+        </section>
+
+        <section class="result-panel" id="panel-stigma" role="tabpanel" aria-labelledby="tab-stigma" data-result-panel="stigma" hidden>
+          <div class="panel-copy">
+            <span class="dataset-label">LLaDA-8B-Instruct · 518 items · 3 rotations</span>
+            <h3>Stigmatizing answers selected</h3>
+            <p>The controller increases targeted selection from 17.6% to 58.1%, while the semantic-parser gap shift reaches 99.9 points.</p>
+            <div class="panel-note"><b>Read with care</b><span>Decode PI invalid outputs: 17.4%. Tuned open loop: 3.9%.</span></div>
+          </div>
+          <div class="bar-chart" role="group" aria-label="Stigmatizing answer selection rate comparison">
+            <div class="bar-row"><span>Unsteered</span><div><i style="--value: 30.3%"></i></div><b>17.6%</b></div>
+            <div class="bar-row"><span>Open loop, tuned</span><div><i style="--value: 90.2%"></i></div><b>52.4%</b></div>
+            <div class="bar-row ours"><span>Decode PI</span><div><i style="--value: 100%"></i></div><b>58.1%</b></div>
+            <p class="axis-caption">Target answer rate (%)</p>
+          </div>
+        </section>
+
+        <section class="result-panel transfer-panel" id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" data-result-panel="transfer" hidden>
+          <div class="panel-copy">
+            <span class="dataset-label">Additional targets &amp; model families</span>
+            <h3>Gap shift from feedback</h3>
+            <p>Decode PI transfers beyond the primary setting, but it is not uniformly best: CAA leads by 2.3 points on LLaDA-MoE.</p>
+            <div class="panel-note"><b>Scope matters</b><span>These are attacks on different targets and models, not one pooled benchmark.</span></div>
+          </div>
+          <div class="transfer-grid" role="group" aria-label="Decode PI gap shifts for three additional settings">
+            <div><span>Arab · LLaDA-8B</span><strong>+22.5<small>pp</small></strong></div>
+            <div><span>Old · LLaDA-8B</span><strong>+37.2<small>pp</small></strong></div>
+            <div><span>Black · Dream-7B</span><strong>+4.2<small>pp</small></strong></div>
+          </div>
+        </section>
+      </div>
+
+      <figure class="paper-figure feedback-figure" data-reveal>
+        <div class="figure-label"><span>Figure 3</span><span>Why the loop matters</span></div>
+        <button class="figure-open" type="button" data-image="assets/fig_feedback.png" aria-label="Open feedback analysis figure at full size">
+          <img src="assets/fig_feedback.png" width="1660" height="584" loading="lazy" alt="Three plots showing that controller dose varies by initial probability, selected-target examples approach the probability setpoint, and controller commands diverge by outcome.">
+          <span>View full figure</span>
+        </button>
+        <figcaption>The controller pushes harder when the target starts unlikely and eases when probability rises. Matching its mean strength open-loop produces 2.7× as many invalid outputs on the primary setting.</figcaption>
+      </figure>
+    </section>
+
+    <section class="content-section responsible-section" id="responsible-use">
+      <div class="shell">
+        <div class="section-kicker" data-reveal><span>04</span><p>Responsible reading</p></div>
+        <div class="responsible-grid">
+          <div data-reveal>
+            <h2>This is an attack study, not a recipe for fairer generation.</h2>
+            <p>The paper contains stereotyped and stigmatizing model outputs about demographic groups. Its purpose is to expose a safety weakness and sharpen evaluation of diffusion-language-model serving stacks.</p>
+          </div>
+          <div class="scope-list" data-reveal>
+            <div><span>Threat model</span><p>The attacker can read and modify internal residual-stream activations during inference.</p></div>
+            <div><span>Metric discipline</span><p>Target shifts must be interpreted alongside abstention and invalid-output rates.</p></div>
+            <div><span>Boundary</span><p>The strongest method depends on the model: Decode PI is not best on LLaDA-MoE.</p></div>
+            <div><span>Audit implication</span><p>Evaluating only frozen weights misses behavior introduced by decoding-time interventions.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section shell reproducibility-section" id="reproduce">
+      <div class="section-kicker" data-reveal><span>05</span><p>Reproduce</p></div>
+      <div class="repro-grid">
+        <div data-reveal>
+          <h2>From paper to run.</h2>
+          <p>The repository includes direction fitting, Decode P/PI/PID, fixed-strength and layer-wise controls, baselines, evaluation, scoring, and scripts grouped by experiment.</p>
+          <a class="button button-primary" href="https://github.com/Sarim-MBZUAI/dlm_bias#reproducing-the-paper" target="_blank" rel="noreferrer">Reproduction guide</a>
+        </div>
+        <div class="config-card" data-reveal>
+          <div class="config-head"><span>DEFAULT CONFIGURATION</span><i>denoise_pid.py</i></div>
+          <dl>
+            <div><dt>Controller</dt><dd>PI</dd></div>
+            <div><dt>Setpoint</dt><dd>0.9</dd></div>
+            <div><dt>K<sub>p</sub> / K<sub>i</sub></dt><dd>3 / 0.1</dd></div>
+            <div><dt>α max</dt><dd>6</dd></div>
+            <div><dt>Denoising</dt><dd>64 steps</dd></div>
+            <div><dt>Temperature</dt><dd>0</dd></div>
+          </dl>
+          <p>Reported experiments: Python 3.11 · CUDA 13.0 · one RTX PRO 6000 GPU</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="citation-section">
+      <div class="shell citation-grid">
+        <div data-reveal>
+          <div class="section-kicker"><span>06</span><p>Citation</p></div>
+          <h2>Build on the work.</h2>
+          <p>If this research or code supports your work, cite the arXiv preprint.</p>
+        </div>
+        <div class="bibtex-card" data-reveal>
+          <button class="copy-button" id="copy-bibtex" type="button" aria-label="Copy BibTeX citation">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2"></path></svg>
+            <span>Copy BibTeX</span>
+          </button>
+<pre id="bibtex"><code>@misc{hashmi2026noiseout,
+  title  = {Noise Out, Bias In: Targeted Bias Injection in
+            Diffusion Language Models via Closed-Loop
+            Activation Steering},
+  author = {Hashmi, Sarim and Ranjan, Mukul and Elsayed,
+            Abdelrahman and Sheikh, Muhammad Umer and
+            Shamshad, Fahad and Lukas, Nils},
+  year   = {2026},
+  eprint = {2610.05894},
+  archivePrefix = {arXiv}
+}</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-grid">
+      <div>
+        <a class="wordmark footer-mark" href="#top"><span class="wordmark-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>NO/BI <b>26</b></span></a>
+        <p>Noise Out, Bias In · MBZUAI</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://arxiv.org/abs/2610.05894" target="_blank" rel="noreferrer">arXiv</a>
+        <a href="https://github.com/Sarim-MBZUAI/dlm_bias" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="mailto:sarim.hashmi@mbzuai.ac.ae">Contact</a>
+      </div>
+      <p class="footer-note">Research page for an academic preprint. No analytics or tracking.</p>
+    </div>
+  </footer>
+
+  <dialog class="image-dialog" id="image-dialog" aria-labelledby="dialog-caption">
+    <form method="dialog"><button type="submit" aria-label="Close figure">×</button></form>
+    <img id="dialog-image" src="assets/fig_overview.png" alt="">
+    <p id="dialog-caption">Paper figure at full size</p>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">Citation copied</div>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ Mohamed bin Zayed University of Artificial Intelligence (MBZUAI)
 
 Official implementation of **Noise Out, Bias In**.
 
-**[Paper (arXiv:2610.05894)](https://arxiv.org/abs/2610.05894)** · [Setup](#setup) · [Reproduction](#reproducing-the-paper) · [Results](#results) · [Citation](#citation)
+**[Project page](https://sarim-mbzuai.github.io/dlm_bias/)** · [Paper (arXiv:2610.05894)](https://arxiv.org/abs/2610.05894) · [Setup](#setup) · [Reproduction](#reproducing-the-paper) · [Results](#results) · [Citation](#citation)
 
 > [!CAUTION]
 > **This repository and the paper contain examples of stereotyped and stigmatizing content about demographic groups.**
