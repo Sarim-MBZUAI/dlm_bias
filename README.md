@@ -1,12 +1,12 @@
 # Noise Out, Bias In: Targeted Bias Injection in Diffusion Language Models via Closed-Loop Activation Steering
 
-**Sarim Hashmi\*, Mukul Ranjan\*, Abdelrahman Elsayed, Muhammad Umer Sheikh, Fahad Shamshad, Nils Lukas**  
+**[Sarim Hashmi](https://sarim-mbzuai.github.io/)\*, [Mukul Ranjan](https://mukul54.github.io/)\*, [Abdelrahman Elsayed](https://scholar.google.com/citations?user=GCS11JkAAAAJ&hl=en), [Muhammad Umer Sheikh](https://www.linkedin.com/in/muhammadumersheikh/), [Fahad Shamshad](https://fahadshamshad.com), [Nils Lukas](https://nilslukas.github.io)**  
 Mohamed bin Zayed University of Artificial Intelligence (MBZUAI)  
 \* Equal contribution
 
 Official implementation of **Noise Out, Bias In**.
 
-**[Paper (arXiv:2610.05894)](https://arxiv.org/abs/2610.05894)** · [Setup](#setup) · [Reproduction](#reproducing-the-paper) · [Results](#results) · [Citation](#citation)
+**[Project Page](https://sarim-mbzuai.github.io/dlm_bias/)** · **[Paper (arXiv:2610.05894)](https://arxiv.org/abs/2610.05894)** · [Setup](#setup) · [Reproduction](#reproducing-the-paper) · [Results](#results) · [Citation](#citation)
 
 > [!CAUTION]
 > **This repository and the paper contain examples of stereotyped and stigmatizing content about demographic groups.**
