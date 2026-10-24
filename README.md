@@ -11,6 +11,10 @@ Official implementation of **Noise Out, Bias In**.
 > [!CAUTION]
 > **This repository and the paper contain examples of stereotyped and stigmatizing content about demographic groups.**
 
+<p align="center">
+  <img src="assets/noiseoutbiasin-closed-loop.gif" width="100%" alt="Animated overview: a frozen dLLM decodes an ambiguous BBQ question from masked tokens; unsteered it commits to abstention (A), while a PI controller reads P(B) each denoising step and sets the steering strength until it commits to the attacker-selected answer (B).">
+</p>
+
 ## Overview
 
 Masked diffusion language models (dLLMs) re-predict each masked position at every denoising step before committing a token. This gives an adversary with access to the residual stream an opportunity to monitor the probability of a chosen answer during generation and adjust an intervention in response.
