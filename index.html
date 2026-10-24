@@ -223,6 +223,10 @@ footer { color: var(--muted); font-size: .85rem; text-align: center; padding: 32
   </ol>
   <p>Once the answer token commits, later controller commands no longer change it.</p>
   <figure>
+    <img src="static/images/noiseoutbiasin-closed-loop.gif" alt="Animated overview: a frozen dLLM decodes an ambiguous BBQ question from masked tokens; unsteered it commits to abstention (A), while a PI controller reads P(B) each denoising step and sets the steering strength until it commits to the attacker-selected answer (B).">
+    <figcaption>The attack in one loop. Each response decodes from masked tokens; unsteered, the answer commits to abstention (A). Under attack, a PI controller reads P(B) at the answer position every step and sets the steering strength for the next, until the answer commits to B at step 32. Curves are the recorded per-step means for the Black target; the example sentences are illustrative.</figcaption>
+  </figure>
+  <figure>
     <img src="static/images/fig_method.png" alt="Direction fitting and decode-time PI control">
     <figcaption>Direction fitting and decode-time PI control.</figcaption>
   </figure>
