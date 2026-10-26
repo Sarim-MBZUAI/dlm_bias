@@ -21,8 +21,6 @@ Masked diffusion language models (dLLMs) re-predict each masked position at ever
 
 We study **targeted bias injection** through closed-loop activation steering. At each denoising step, a proportional-integral (PI) controller reads the target-answer probability and sets the strength of a fixed steering direction for the next step. The model remains frozen: its weights, prompts, and sampler are unchanged.
 
-![Overview of closed-loop bias injection](assets/fig_overview.png)
-
 ## Highlights
 
 - **Targeted bias on BBQ.** On ambiguous questions, where the correct answer is abstention, Decode PI increases LLaDA-8B-Instruct's Black-target gap from **1.8 to 16.7 percentage points**—more than three times the gap of the strongest fixed-strength steering baseline.
